@@ -1,0 +1,129 @@
+<Window x:Class="Printonator.UI.PrinterConfigWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Printers &amp; paper setup" Height="560" Width="720"
+        WindowStartupLocation="CenterOwner" Background="#FFFFFF" FontFamily="Segoe UI">
+    <Window.Resources>
+        <!-- Styles/Toàn app: Colors + Buttons trong App.Resources -->
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="64"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Border Grid.Row="0" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+            <DockPanel Margin="16,0">
+                <Button Content="← Trở về" Style="{StaticResource GhostBtn}" DockPanel.Dock="Left"
+                        Padding="14,7" VerticalAlignment="Center" Click="Back_Click"/>
+                <Button Content="Scan printers" Style="{StaticResource RoundedBtn}" DockPanel.Dock="Right"
+                        Padding="14,7" VerticalAlignment="Center" Click="Scan_Click"/>
+                <StackPanel VerticalAlignment="Center" Margin="14,0,0,0">
+                    <TextBlock Text="Printers &amp; paper setup" FontSize="16" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                    <TextBlock x:Name="HeaderSub" Text="Trạng thái + khổ giấy + khả năng từng máy" FontSize="11" Foreground="{StaticResource FaintBrush}"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- Offline warning banner (Penpot gap) -->
+        <Border Grid.Row="1" x:Name="OfflineBanner" Background="{StaticResource WarnBgBrush}" Margin="16,10"
+                BorderBrush="#EAB308" BorderThickness="1" CornerRadius="6" Padding="12,8" Visibility="Collapsed">
+            <TextBlock x:Name="OfflineBannerText" FontSize="12" Foreground="#92400E" TextWrapping="Wrap"/>
+        </Border>
+
+        <!-- Printer list -->
+        <ListBox Grid.Row="2" x:Name="PrinterList" BorderThickness="0" Margin="16,4,16,16" Background="Transparent"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+            <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem">
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                    <Setter Property="Padding" Value="0"/>
+                    <Setter Property="Margin" Value="0,0,0,8"/>
+                    <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                </Style>
+            </ListBox.ItemContainerStyle>
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <Border Background="#FAFAFA" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                            CornerRadius="8" Padding="14,10">
+                        <DockPanel>
+                            <!-- nút native driver — góc phải mỗi máy -->
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="12,0,0,0">
+                                <Button Content="Printing Preferences" Style="{StaticResource GhostBtn}" Padding="8,5"
+                                        Tag="{Binding Name}" Click="Prefs_Click"
+                                        ToolTip="Mở dialog cài đặt in mặc định của driver máy này (khay giấy, màu, chất lượng, ghim sách...)"/>
+                                <Button Content="Printer Properties" Style="{StaticResource GhostBtn}" Padding="8,5"
+                                        Margin="6,0,0,0" Tag="{Binding Name}" Click="Props_Click"
+                                        ToolTip="Mở thuộc tính máy in (driver, cổng, chia sẻ...) — một số tab cần quyền admin"/>
+                            </StackPanel>
+                            <!-- status dot -->
+                            <Ellipse Width="10" Height="10" DockPanel.Dock="Left" VerticalAlignment="Center" Margin="0,0,12,0">
+                                <Ellipse.Style>
+                                    <Style TargetType="Ellipse">
+                                        <Setter Property="Fill" Value="{StaticResource ReadyBrush}"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsAvailable}" Value="False">
+                                                <Setter Property="Fill" Value="{StaticResource ErrorBrush}"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Ellipse.Style>
+                            </Ellipse>
+                            <!-- info -->
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding Name}" FontSize="13.5" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+                                    <Border Background="#F0F0F0" CornerRadius="3" Padding="4,1" Margin="8,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock Text="ảo" FontSize="9" Foreground="{StaticResource FaintBrush}">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsVirtual}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </Border>
+                                    <Border Background="{StaticResource ReadyBgBrush}" CornerRadius="8" Padding="6,1" Margin="8,0,0,0" VerticalAlignment="Center">
+                                        <TextBlock Text="Available" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource ReadyBrush}">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsAvailable}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </Border>
+                                    <Border Background="{StaticResource ErrorBgBrush}" CornerRadius="8" Padding="6,1" Margin="8,0,0,0" VerticalAlignment="Center">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsAvailable}" Value="True">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <TextBlock Text="{Binding StatusText}" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource ErrorBrush}"/>
+                                    </Border>
+                                </StackPanel>
+                                <TextBlock Text="{Binding CapabilitiesSummary}" FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,4,0,0"/>
+                                <TextBlock Text="{Binding PaperSummary}" FontSize="11" Foreground="{StaticResource MutedBrush}"/>
+                            </StackPanel>
+                        </DockPanel>
+                    </Border>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </Grid>
+</Window>

@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+    <Package Name="Printonator" Manufacturer="Printonator Project" Version="0.1.0"
+             UpgradeCode="B2C3D4E5-2345-6789-ABCD-EF0123456789"
+             Scope="perMachine"
+             Language="1033">
+        <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+        <MediaTemplate EmbedCab="yes" />
+
+        <!-- Cài .NET 8 runtime nếu chưa có -->
+        <WixVariable Id="WixUILicenseRtf" Value="license.rtf" />
+
+        <StandardDirectory Id="ProgramFilesFolder">
+            <Directory Id="INSTALLFOLDER" Name="Printonator">
+                <Component Id="MainExe" Guid="C3D4E5F6-3456-789A-BCDE-F0123456789A">
+                    <File Id="PrintonatorExe" Source="app\Printonator.UI.exe" KeyPath="yes" />
+                </Component>
+                <Component Id="CoreDll" Guid="460D81EB-1A8A-41E9-A2A8-1FB11213BB5C">
+                    <File Id="PrintonatorCoreDll" Source="app\Printonator.Core.dll" KeyPath="yes" />
+                </Component>
+                <Component Id="RuntimeConfig" Guid="D4E5F6A7-4567-89AB-CDEF-0123456789AB">
+                    <File Id="RuntimeCfg" Source="app\Printonator.UI.runtimeconfig.json" KeyPath="yes" />
+                </Component>
+                <Component Id="DepsJson" Guid="9D81F4C4-217C-4C4B-9A31-3B30C0203922">
+                    <File Id="DepsFile" Source="app\Printonator.UI.deps.json" KeyPath="yes" />
+                </Component>
+            </Directory>
+        </StandardDirectory>
+
+        <!-- Shortcut Start Menu + Desktop -->
+        <StandardDirectory Id="ProgramMenuFolder">
+            <Directory Id="ProgramMenuDir" Name="Printonator">
+                <Component Id="StartShortcut" Guid="E5F6A7B8-5678-9ABC-DEF0-123456789ABC">
+                    <Shortcut Id="StartMenuShortcut"
+                              Name="Printonator"
+                              Description="In hàng loạt chuyên nghiệp"
+                              Target="[INSTALLFOLDER]Printonator.UI.exe"
+                              WorkingDirectory="INSTALLFOLDER" />
+                    <RemoveFolder Id="RemoveProgramMenuDir" On="uninstall" />
+                    <RegistryValue Root="HKCU" Key="Software\Printonator" Name="installed" Type="integer" Value="1" KeyPath="yes" />
+                </Component>
+            </Directory>
+        </StandardDirectory>
+
+        <StandardDirectory Id="DesktopFolder">
+            <Component Id="DesktopShortcut" Guid="5A8E8F43-B6A2-4097-A1A9-3A29A4E1E85B">
+                <Shortcut Id="DesktopShortcut1"
+                          Name="Printonator"
+                          Description="In hàng loạt chuyên nghiệp"
+                          Target="[INSTALLFOLDER]Printonator.UI.exe"
+                          WorkingDirectory="INSTALLFOLDER" />
+                <RegistryValue Root="HKCU" Key="Software\Printonator" Name="desktop" Type="integer" Value="1" KeyPath="yes" />
+            </Component>
+        </StandardDirectory>
+
+        <!-- UI: wizard chuẩn -->
+        <UI>
+            <UIRef Id="WixUI_InstallDir" />
+        </UI>
+        <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+    </Package>
+</Wix>

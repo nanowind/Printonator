@@ -1,0 +1,53 @@
+16:40:31.181  ==============================================================
+16:40:31.198  RUN  Verb=/e  Printer='LBP242/243'  Wait=8s  (PID , Nanowind)
+16:40:31.199  Cmd: rundll32 printui.dll,PrintUIEntry /e /n"LBP242/243"
+16:40:31.536  Baseline: 8 process print-related da chay truoc, 14 cua so co san.
+16:40:31.595  Da khoi dong rundll32 PID=32036 (detach).
+16:40:42.704  KET LUAN: process moi xuat hien nhung KHONG thay cua so ("20512") — dialog co the an / khong hien.
+16:40:42.774  Cleanup: da dong 2 process da spawn. XEM LOG: C:\Users\scraw\Projects\Printonator\tools\test_printui.log
+16:40:43.334  ==============================================================
+16:40:43.345  RUN  Verb=/e  Printer='Microsoft Print to PDF'  Wait=8s  (PID , Nanowind)
+16:40:43.347  Cmd: rundll32 printui.dll,PrintUIEntry /e /n"Microsoft Print to PDF"
+16:40:43.605  Baseline: 8 process print-related da chay truoc, 14 cua so co san.
+16:40:43.661  Da khoi dong rundll32 PID=47828 (detach).
+16:40:54.777  KET LUAN: KHONG co gi xay ra — printui im lang, khong spawn process moi, khong mo cua so.
+16:40:54.797  Cleanup: da dong 1 process da spawn. XEM LOG: C:\Users\scraw\Projects\Printonator\tools\test_printui.log
+16:40:55.277  ==============================================================
+16:40:55.289  RUN  Verb=/e  Printer='Canon LBP151 (222)'  Wait=8s  (PID , Nanowind)
+16:40:55.290  Cmd: rundll32 printui.dll,PrintUIEntry /e /n"Canon LBP151 (222)"
+16:40:55.535  Baseline: 7 process print-related da chay truoc, 14 cua so co san.
+16:40:55.584  Da khoi dong rundll32 PID=47100 (detach).
+16:41:06.211  KET LUAN: KHONG co gi xay ra — printui im lang, khong spawn process moi, khong mo cua so.
+16:41:06.230  Cleanup: da dong 1 process da spawn. XEM LOG: C:\Users\scraw\Projects\Printonator\tools\test_printui.log
+16:43:01.582  ==============================================================
+16:43:01.595  RUN  Verb=/e  Printer='LBP242/243'  Wait=8s  (user: Nanowind)
+16:43:01.597  Cmd: rundll32 printui.dll,PrintUIEntry /e /n"LBP242/243"
+16:43:01.616  Baseline: 20 cua so top-level dang hien thi.
+16:43:01.694    base win: 398492 = Changes - Printonator - Visual Studio Code|pid=4628
+16:43:01.759  Da khoi dong cmd PID=44976 (chay runt rundll32 detach).
+16:43:09.960  KET LUAN: KHONG co gi xay ra — printui im lang.
+16:43:10.028  Cleanup: da dong 1 process da spawn. XEM LOG: C:\Users\scraw\Projects\Printonator\tools\test_printui.log
+16:43:11.629  ==============================================================
+16:43:11.662  RUN  Verb=/p  Printer='LBP242/243'  Wait=8s  (user: Nanowind)
+16:43:11.664  Cmd: rundll32 printui.dll,PrintUIEntry /p /n"LBP242/243"
+16:43:11.691  Baseline: 20 cua so top-level dang hien thi.
+16:43:11.784    base win: 398492 = Changes - Printonator - Visual Studio Code|pid=4628
+16:43:11.862  Da khoi dong cmd PID=26560 (chay runt rundll32 detach).
+16:43:20.019  KET LUAN: KHONG co gi xay ra — printui im lang.
+16:43:20.047  Cleanup: da dong 1 process da spawn. XEM LOG: C:\Users\scraw\Projects\Printonator\tools\test_printui.log
+16:43:21.353  ==============================================================
+16:43:21.378  RUN  Verb=/e  Printer='Microsoft Print to PDF'  Wait=8s  (user: Nanowind)
+16:43:21.379  Cmd: rundll32 printui.dll,PrintUIEntry /e /n"Microsoft Print to PDF"
+16:43:21.392  Baseline: 20 cua so top-level dang hien thi.
+16:43:21.445    base win: 398492 = Changes - Printonator - Visual Studio Code|pid=4628
+16:43:21.557  Da khoi dong cmd PID=49096 (chay runt rundll32 detach).
+16:43:29.723  KET LUAN: KHONG co gi xay ra — printui im lang.
+16:43:29.759  Cleanup: da dong 1 process da spawn. XEM LOG: C:\Users\scraw\Projects\Printonator\tools\test_printui.log
+16:53:43.283  ==============================================================
+16:53:43.298  SHELLPROPS  Printer='LBP242/243'  Wait=8s  (user: Nanowind)
+16:53:43.313  Baseline: 20 cua so.
+16:53:43.691  Tim thay 'LBP242/243' trong shell:::{A8A91A66-3A7D-4424-8D24-04E180695C7A} — invoke verb 'properties'...
+16:53:45.319    [+1s] CUA SO MOI: 796870 = LBP242/243 Properties|pid=14832
+16:53:45.333  KET LUAN: DIALOG PROPERTIES DA MO (796870)
+16:53:45.335  Dong dialog test sau 2s...
+16:53:48.438  Xong. Log: C:\Users\scraw\Projects\Printonator\tools\test_printui.log

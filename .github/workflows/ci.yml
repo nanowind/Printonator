@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # ---- Layer 1: build + format + unit tests (chạy mọi push/PR, không cần desktop) ----
+  build-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore Printonator.sln
+
+      - name: Build (Release)
+        run: dotnet build Printonator.sln -c Release --no-restore
+
+      - name: Format verify
+        run: dotnet format Printonator.sln --verify-no-changes
+
+      - name: Core unit tests (55)
+        run: dotnet test tests/Printonator.Core.Tests -c Release --no-build
+
+  # ---- Layer 2: E2E (FlaUI) — CẦN phiên desktop thật (runner tự quản / lab). ----
+  # GitHub hosted windows chạy headless → không mở WPF được → gated bằng workflow_dispatch.
+  ui-e2e:
+    runs-on: [ self-hosted, Windows, X64 ]
+    if: github.event_name == 'workflow_dispatch' # chỉ chạy thủ công khi có runner có desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore Printonator.sln
+
+      - name: Build (Debug)
+        run: dotnet build Printonator.sln -c Debug --no-restore
+
+      - name: Core unit tests
+        run: dotnet test tests/Printonator.Core.Tests -c Debug --no-build
+
+      - name: E2E (FlaUI, desktop) — 5 tests
+        run: dotnet test tests/Printonator.UITests -c Debug --no-build

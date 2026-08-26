@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+    <Bundle Name="Printonator" Version="0.1.0" Manufacturer="Printonator Project"
+            UpgradeCode="A1B2C3D4-1234-5678-9ABC-DEF012345678"
+            AboutUrl="https://github.com/printonator/printonator">
+        <BootstrapperApplicationRef Id="WixStandardBootstrapperApplication.HyperlinkSidebarLicense" />
+        <Chain>
+            <MsiPackage Id="PrintonatorMsi" SourceFile="printonator.msi"
+                        Vital="yes" Compressed="yes" />
+        </Chain>
+    </Bundle>
+</Wix>

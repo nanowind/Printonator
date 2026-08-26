@@ -1,0 +1,8 @@
+{
+  "recommendations": [
+    "ms-dotnettools.csdevkit",
+    "ms-dotnettools.csharp",
+    "Xavalon.XamlStyler",
+    "dolfik.xaml-language-support"
+  ]
+}

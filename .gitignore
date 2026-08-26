@@ -1,0 +1,40 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.userprefs
+
+# Test results
+TestResults/
+*.trx
+
+# Build output
+artifacts/
+publish/
+
+# AI workflow / local-only docs & state (never commit)
+.agents-workflow/
+six-phase-workflow/
+.qoder/
+.claude/
+.kilo/
+.codex/
+.opencode/
+.agents-workflow.env
+AGENTS.md
+CLAUDE.md
+SOUL.md
+.mcp.json
+
+# Local AI instruction memory (never commit)
+.github/instructions/
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# IDE
+.idea/
+*.swp

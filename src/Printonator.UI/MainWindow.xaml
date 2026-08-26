@@ -1,0 +1,481 @@
+﻿<Window x:Class="Printonator.UI.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="clr-namespace:Printonator.UI"
+        xmlns:models="clr-namespace:Printonator.Core.Models;assembly=Printonator.Core"
+        Title="Printonator" Height="860" Width="1320"
+        WindowStartupLocation="CenterScreen" Icon="app.ico"
+        Background="#FFFFFF"
+        FontFamily="Segoe UI">
+    <Window.TaskbarItemInfo>
+        <TaskbarItemInfo x:Name="TaskbarInfo"/>
+    </Window.TaskbarItemInfo>
+    <Window.Resources>
+        <!-- Converters dùng riêng MainWindow (palette + RoundedBtn/GhostBtn đã chuyển lên App.Resources) -->
+        <ui:FolderLeafConverter x:Key="FolderLeaf"/>
+                                     <!-- ===== Context menu: popup bo góc + đổ bóng, item icon + hover tròn, xóa màu đỏ ===== -->
+                                    <Style TargetType="ContextMenu">
+                                        <Setter Property="Background" Value="White"/>
+                                        <Setter Property="BorderBrush" Value="#EAEAEA"/>
+                                        <Setter Property="BorderThickness" Value="1"/>
+                                        <Setter Property="FontFamily" Value="Segoe UI"/>
+                                        <Setter Property="FontSize" Value="12.5"/>
+                                        <Setter Property="Foreground" Value="#1F1F1F"/>
+                                        <Setter Property="Padding" Value="5"/>
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="ContextMenu">
+                                                    <Border Background="{TemplateBinding Background}"
+                                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                                            CornerRadius="10" Padding="{TemplateBinding Padding}">
+                                                        <Border.Effect>
+                                                            <DropShadowEffect BlurRadius="20" ShadowDepth="3" Direction="270" Opacity="0.16" Color="#000000"/>
+                                                        </Border.Effect>
+                                                        <ItemsPresenter/>
+                                                    </Border>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                    <Style TargetType="MenuItem">
+                                        <Setter Property="Padding" Value="10,7"/>
+                                        <Setter Property="Foreground" Value="#1F1F1F"/>
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="MenuItem">
+                                                    <Border x:Name="Bg" Background="Transparent" CornerRadius="6"
+                                                            Padding="{TemplateBinding Padding}" Margin="1,1">
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="22"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                            </Grid.ColumnDefinitions>
+                                                            <!-- icon (glyph MDL2 truyền qua Tag) -->
+                                                            <TextBlock Grid.Column="0" Text="{TemplateBinding Tag}"
+                                                                       FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                                                       Foreground="{TemplateBinding Foreground}"
+                                                                       Opacity="0.75" VerticalAlignment="Center"/>
+                                                            <ContentPresenter Grid.Column="1" ContentSource="Header"
+                                                                              VerticalAlignment="Center"/>
+                                                        </Grid>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsHighlighted" Value="True">
+                                                            <Setter TargetName="Bg" Property="Background" Value="#F3F3F3"/>
+                                                        </Trigger>
+                                                        <Trigger Property="IsEnabled" Value="False">
+                                                            <Setter Property="Opacity" Value="0.45"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                    <!-- Mục nguy hiểm (Xóa) — chữ + icon đỏ -->
+                                    <Style x:Key="DangerMenuItem" TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                                        <Setter Property="Foreground" Value="#DC2626"/>
+                                    </Style>
+                                    <Style TargetType="Separator">
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="Separator">
+                                                    <Border Background="#EDEDED" Height="1" Margin="8,5"/>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                        </Window.Resources>
+
+    <Grid Background="{StaticResource BgBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="56"/>
+            <RowDefinition Height="52"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="44"/>
+        </Grid.RowDefinitions>
+
+        <!-- ===== Header ===== -->
+        <Border Grid.Row="0" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+            <DockPanel>
+                <!-- Logo: black square + P -->
+                <Border Width="26" Height="26" Background="{StaticResource AccentBrush}" CornerRadius="7"
+                        Margin="16,0,10,0" VerticalAlignment="Center">
+                    <TextBlock Text="P" Foreground="White" FontWeight="Bold" FontSize="14"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <TextBlock Text="Printonator" FontSize="16" FontWeight="SemiBold"
+                           Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                <!-- Search (Penpot gap: icon ⌕) -->
+                <Border Background="#F5F5F5" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                        CornerRadius="6" Height="28" Margin="20,0,0,0" Padding="8,0" VerticalAlignment="Center">
+                    <Grid>
+                        <TextBlock Text="⌕" FontSize="13" Foreground="{StaticResource FaintBrush}"
+                                   VerticalAlignment="Center" HorizontalAlignment="Left"/>
+                        <TextBox x:Name="SearchBox" Background="Transparent" BorderThickness="0" FontSize="12"
+                                 Padding="16,0,0,0" Width="190" VerticalContentAlignment="Center"
+                                 ToolTip="Tìm theo tên file" TextChanged="SearchBox_TextChanged"/>
+                    </Grid>
+                </Border>
+                <!-- Bell + badge — góc trên phải -->
+                                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right"
+                                                            VerticalAlignment="Center" Margin="0,0,16,0">
+                                                    <Border Width="30" Height="30" CornerRadius="6" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Background="White">
+                                                                            <ToggleButton x:Name="BellToggle" Background="Transparent" BorderThickness="0"
+                                                                                          Cursor="Hand" Checked="BellToggle_Changed" Unchecked="BellToggle_Changed">
+                                                                                <Grid>
+                                                                                    <TextBlock Text="🔔" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+<Border x:Name="BellBadgeBorder" Background="{StaticResource ErrorBrush}" CornerRadius="6" Width="14" Height="14"
+                                                        HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-5,-5,0" Visibility="Collapsed">
+                                                        <TextBlock x:Name="BellBadge" Text="0" Foreground="White" FontSize="8" FontWeight="Bold"
+                                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                                                </Grid>
+                                                                            </ToggleButton>
+                                                                        </Border>
+                                    <!-- Notification popover (giống Penpot) -->
+                                    <Popup x:Name="NotifPopup" PlacementTarget="{Binding ElementName=BellToggle}" Placement="Bottom"
+                                           StaysOpen="False" AllowsTransparency="True" IsOpen="{Binding IsChecked, ElementName=BellToggle}">
+                                        <Border Background="White" BorderBrush="#E5E5E5" BorderThickness="1" CornerRadius="10"
+                                                Width="368" Padding="0" Margin="0,6,0,0">
+                                            <StackPanel>
+                                                <TextBlock Text="Thông báo" FontSize="13" FontWeight="SemiBold" Foreground="#1F1F1F" Margin="16,12,0,8"/>
+                                                <!-- Done-notification (đã in xong) -->
+                                                <Border x:Name="DoneNotif" Background="#F0FDF4" Padding="16,8" BorderBrush="#F0F0F0" BorderThickness="0,1,0,0" Visibility="Collapsed">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Border Background="#DCFCE7" CornerRadius="4" Padding="6,2" VerticalAlignment="Top">
+                                                            <TextBlock Text="Done" FontSize="9" Foreground="#16A34A" FontWeight="SemiBold"/>
+                                                        </Border>
+                                                        <StackPanel Margin="10,0,0,0">
+                                                            <TextBlock x:Name="DoneNotifTitle" Text="Đã in xong" FontSize="12" Foreground="#16A34A" FontWeight="Medium"/>
+                                                            <TextBlock x:Name="DoneNotifSub" Text="" FontSize="10" Foreground="#8A8A8A" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </Border>
+                                                <!-- Update item -->
+                                                <Border Background="#F9F9F9" Padding="16,8" BorderBrush="#F0F0F0" BorderThickness="0,1,0,0">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Border Background="#EFF6FF" CornerRadius="4" Padding="6,2" VerticalAlignment="Top">
+                                                            <TextBlock Text="Update" FontSize="9" Foreground="#0369A1" FontWeight="SemiBold"/>
+                                                        </Border>
+                                                        <StackPanel Margin="10,0,0,0">
+                                                            <TextBlock Text="Printonator 1.2.0 có sẵn" FontSize="12" Foreground="#1F1F1F" FontWeight="Medium"/>
+                                                            <TextBlock Text="Tự động tải về, có kiểm chứng (Minisign + SHA-256)" FontSize="10" Foreground="#8A8A8A" Margin="0,2,0,0"/>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </Border>
+                                                <!-- Security item -->
+                                                <Border Padding="16,8" BorderBrush="#F0F0F0" BorderThickness="0,1,0,0">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Border Background="#FEF2F2" CornerRadius="4" Padding="6,2" VerticalAlignment="Top">
+                                                            <TextBlock Text="Security" FontSize="9" Foreground="#DC2626" FontWeight="SemiBold"/>
+                                                        </Border>
+                                                        <StackPanel Margin="10,0,0,0">
+                                                            <TextBlock Text="1 bản clone nghi vấn bị chặn" FontSize="12" Foreground="#DC2626" FontWeight="Medium"/>
+                                                            <TextBlock Text="Bản đang chạy không khớp checksum chính thức" FontSize="10" Foreground="#8A8A8A" Margin="0,2,0,0"/>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </Border>
+                                            </StackPanel>
+                                        </Border>
+                                    </Popup>
+                                </StackPanel>
+            </DockPanel>
+        </Border>
+
+<!-- ===== Toolbar ===== -->
+        <Border Grid.Row="1" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Background="#FFFFFF">
+            <DockPanel Margin="16,8">
+                <Button Content="+ Add files" Style="{StaticResource RoundedBtn}" Padding="16,7" Click="AddFiles_Click"/>
+                <ComboBox x:Name="PrinterCombo" Width="240" Margin="16,0,0,0" VerticalAlignment="Center"
+                          DisplayMemberPath="Name"
+                          SelectedItem="{Binding SelectedPrinter, Mode=TwoWay}"/>
+                <!-- Status dot: dot màu + padding đều 2 bên (status chi tiết ở tooltip) -->
+                <Ellipse x:Name="PrinterStatusDot" Width="10" Height="10" Fill="{StaticResource ReadyBrush}"
+                         VerticalAlignment="Center" Margin="12,0,12,0" Stroke="#FFFFFF" StrokeThickness="1.5"
+                         ToolTip="Trạng thái máy in" RenderOptions.EdgeMode="Aliased"/>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+<Button Content="Print selected" x:Name="PrintSelectedBtn" Style="{StaticResource GhostBtn}"
+                                              Click="PrintSelected_Click" Padding="12,6" Margin="0,0,8,0"/>
+                                     <Button Content="Print settings" Style="{StaticResource GhostBtn}" Click="PrintSettings_Click"
+                                              Padding="14,6" Margin="0,0,8,0" AutomationProperties.AutomationId="PrintSettingsBtn"
+                                              ToolTip="Bảng cấu hình in đầy đủ: page range, màu, khay giấy, scale, N-up, profile + dialog native của driver"/>
+                                     <Button Content="Printers" Style="{StaticResource GhostBtn}"
+                                              Click="Printers_Click" Padding="12,6" Margin="0,0,8,0"/>
+                                     <Button Content="Print all" x:Name="PrintAllBtn" Style="{StaticResource RoundedBtn}"
+                                              Padding="18,7" Click="PrintAll_Click"/>
+                                 </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- ===== Error banner ===== -->
+        <Border Grid.Row="2" x:Name="ErrorBanner" Background="{StaticResource WarnBgBrush}" BorderBrush="#EAB308"
+                BorderThickness="1" CornerRadius="6" Margin="16,8" Padding="12,8" Visibility="Collapsed">
+            <DockPanel>
+                <TextBlock Text="!" Foreground="{StaticResource WarnBrush}" FontWeight="Bold" FontSize="15"
+                           Margin="0,0,10,0" VerticalAlignment="Center"/>
+                <TextBlock x:Name="ErrorBannerText" Foreground="#92400E" FontSize="12.5" VerticalAlignment="Center"
+                           TextWrapping="Wrap"/>
+                <Button Content="Retry connection" x:Name="RetryBtn" DockPanel.Dock="Right"
+                        Background="Transparent" BorderThickness="0" Foreground="{StaticResource WarnBrush}"
+                        FontWeight="SemiBold" Cursor="Hand" Click="RetryConnection_Click"/>
+            </DockPanel>
+        </Border>
+
+        <!-- ===== Job table ===== -->
+        <Grid Grid.Row="4" Margin="16,4,16,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- Header row -->
+            <Border Grid.Row="0" Background="{StaticResource HeaderBgBrush}" CornerRadius="4" Padding="8,0" Height="34">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="16"/>
+                                            <ColumnDefinition Width="52"/>
+                                            <ColumnDefinition Width="14"/>
+                                            <ColumnDefinition Width="296"/>
+                                            <ColumnDefinition Width="16"/>
+                                            <ColumnDefinition Width="116"/>
+                                            <ColumnDefinition Width="16"/>
+                                            <ColumnDefinition Width="270"/>
+                                            <ColumnDefinition Width="16"/>
+                                            <ColumnDefinition Width="90"/>
+                                            <ColumnDefinition Width="16"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="3" Text="Name" x:Name="SortName" Tag="Name" Cursor="Hand"
+                                               Foreground="{StaticResource MutedBrush}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"
+                                               ToolTip="Bấm để sắp xếp" PreviewMouseLeftButtonDown="Sort_Column"/>
+                                        <TextBlock Grid.Column="5" Text="Pages to print" x:Name="SortPages" Tag="Pages" Cursor="Hand"
+                                               Foreground="{StaticResource MutedBrush}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" TextAlignment="Center"
+                                               ToolTip="Bấm để sắp xếp" PreviewMouseLeftButtonDown="Sort_Column"/>
+                                        <TextBlock Grid.Column="7" Text="Settings" x:Name="SortSettings" Tag="Settings" Cursor="Hand"
+                                               Foreground="{StaticResource MutedBrush}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"
+                                               ToolTip="Bấm để sắp xếp" PreviewMouseLeftButtonDown="Sort_Column"/>
+                                        <TextBlock Grid.Column="9" Text="Status" x:Name="SortStatus" Tag="Status" Cursor="Hand"
+                                               Foreground="{StaticResource MutedBrush}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"
+                                               ToolTip="Bấm để sắp xếp" PreviewMouseLeftButtonDown="Sort_Column"/>
+                                        <TextBlock Grid.Column="11" Text="Error" Foreground="{StaticResource MutedBrush}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                </Grid>
+            </Border>
+
+            <!-- Jobs list — grouped theo folder (main row = folder cha, sub rows = file) -->
+            <ListBox Grid.Row="1" x:Name="JobList" BorderThickness="0" Background="Transparent"
+                             ItemsSource="{Binding Jobs}" SelectionMode="Extended"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled" Margin="0,4,0,0">
+                <ListBox.GroupStyle>
+                    <GroupStyle>
+                        <GroupStyle.HeaderTemplate>
+                            <DataTemplate>
+                                <Border Background="{StaticResource HeaderBgBrush}" CornerRadius="5" Padding="8,3" Margin="0,8,0,2">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="📁" FontSize="11" VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding Name, Converter={StaticResource FolderLeaf}}" FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource TextBrush}" VerticalAlignment="Center" Margin="6,0,0,0"
+                                                   ToolTip="{Binding Name}"/>
+                                        <TextBlock Text="{Binding ItemCount, StringFormat=' ({0})'}" FontSize="11"
+                                                   Foreground="{StaticResource FaintBrush}" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </GroupStyle.HeaderTemplate>
+                    </GroupStyle>
+                </ListBox.GroupStyle>
+                <ListBox.InputBindings>
+                    <!-- Delete = xóa các file đang chọn khỏi hàng đợi (song song menu chuột phải) -->
+                    <KeyBinding Key="Delete" Command="ApplicationCommands.Delete"/>
+                </ListBox.InputBindings>
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                        <Setter Property="Padding" Value="0"/>
+                        <Setter Property="BorderThickness" Value="0"/>
+                        <Setter Property="Background" Value="Transparent"/>
+                        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                        <Style.Triggers>
+                            <!-- Hover + selected → hàng có phản hồi rõ ràng (UX) -->
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#F7F7F7"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Background" Value="#EEF4FB"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Border x:Name="RowBg" Background="Transparent" BorderThickness="0" Padding="8,2" Height="38">
+                            <Border.ContextMenu>
+                                                            <ContextMenu Opened="RowContextMenu_Opening">
+                                                                <MenuItem x:Name="CtxOpen" Header="Mở file" Click="CtxOpen_Click" Tag="&#xE8A5;"/>
+                                                                <MenuItem x:Name="CtxEdit" Header="Mở &amp; sửa…" Click="CtxEdit_Click" Tag="&#xE70F;"
+                                                                          ToolTip="Sửa xong tự nạp bản mới (↻ Reloaded)"/>
+                                                                <Separator/>
+                                                                <MenuItem x:Name="CtxPrint" Header="In file này" Click="CtxPrint_Click" Tag="&#xE749;"/>
+                                                                <MenuItem x:Name="CtxItemSettings" Header="Cấu hình in (Item settings)…" Click="CtxItemSettings_Click" Tag="&#xE713;"
+                                                                          ToolTip="Mở bảng cấu hình đầy đủ cho file đang chọn"/>
+                                                                <MenuItem x:Name="CtxPageRange" Header="Chọn trang cụ thể…" Click="CtxPageRange_Click" Tag="&#xE7C3;"/>
+                                                                <Separator/>
+                                                                <MenuItem x:Name="CtxRemove" Header="Xóa khỏi hàng đợi" Click="CtxRemove_Click" Tag="&#xE74D;"
+                                                                          Style="{StaticResource DangerMenuItem}"/>
+                                                            </ContextMenu>
+                                                        </Border.ContextMenu>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="16"/>
+                                                                    <ColumnDefinition Width="52"/>
+                                                                    <ColumnDefinition Width="14"/>
+                                                                    <ColumnDefinition Width="296"/>
+                                                                    <ColumnDefinition Width="16"/>
+                                                                    <ColumnDefinition Width="116"/>
+                                                                    <ColumnDefinition Width="16"/>
+                                                                    <ColumnDefinition Width="270"/>
+                                                                    <ColumnDefinition Width="16"/>
+                                                                    <ColumnDefinition Width="90"/>
+                                                                    <ColumnDefinition Width="16"/>
+                                                                    <ColumnDefinition Width="*"/>
+                                                                </Grid.ColumnDefinitions>
+                                                                <!-- checkbox -->
+                                                                <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" VerticalAlignment="Center"/>
+                                                                <!-- format badge -->
+                                                                <Border Grid.Column="1" Background="#F0F0F0" CornerRadius="3" Padding="4,1" Width="46" Height="18" VerticalAlignment="Center" HorizontalAlignment="Left">
+                                                                    <TextBlock Text="{Binding Format}" FontSize="9" Foreground="{StaticResource FaintBrush}"
+                                                                               FontWeight="SemiBold" TextAlignment="Center"/>
+                                                                </Border>
+                                                                <!-- name + reloaded badge -->
+                                                                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                                                                    <TextBlock Text="{Binding FileName}" Foreground="{StaticResource TextBrush}"
+                                                                               FontSize="13" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                                               ToolTip="{Binding FilePath}" MaxWidth="260">
+                                                                        <TextBlock.InputBindings>
+                                                                            <MouseBinding MouseAction="LeftDoubleClick" Command="{Binding DataContext.OpenFileCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                                          CommandParameter="{Binding}"/>
+                                                                        </TextBlock.InputBindings>
+                                                                    </TextBlock>
+                                                                    <!-- ↻ Reloaded badge (WasReloaded → Border + chữ cùng hiển thị; mặc định ẩn BORDER — tránh "đốm vàng" lạ) -->
+                                                                    <Border Background="#FFF9ED" BorderBrush="#EAB308" BorderThickness="1" CornerRadius="8"
+                                                                            Padding="4,0" Margin="6,0,0,0" VerticalAlignment="Center">
+                                                                        <Border.Style>
+                                                                            <Style TargetType="Border">
+                                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                <Style.Triggers>
+                                                                                    <DataTrigger Binding="{Binding WasReloaded}" Value="True">
+                                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                                    </DataTrigger>
+                                                                                </Style.Triggers>
+                                                                            </Style>
+                                                                        </Border.Style>
+                                                                        <TextBlock Text="↻ Reloaded" FontSize="9" FontWeight="SemiBold" Foreground="#CA8A04"/>
+                                                                    </Border>
+                                                                </StackPanel>
+                                                                <!-- pages to print -->
+                                                                <TextBox Grid.Column="5" Text="{Binding Config.PageRange, UpdateSourceTrigger=PropertyChanged}"
+                                                                         FontSize="11" VerticalContentAlignment="Center" BorderBrush="{StaticResource BorderBrush}"
+                                                                         BorderThickness="1" Padding="2,0" Margin="0,1"/>
+                                                                <!-- settings -->
+                                                                                                <TextBlock Grid.Column="7" VerticalAlignment="Center"
+                                                                                                           Text="{Binding Config.SummaryText, Mode=OneWay}"
+                                                                                                           TextTrimming="CharacterEllipsis"
+                                                                                                           ToolTip="Bấm chuột phải → 'Cấu hình in (Item settings)…' để chỉnh"/>
+                                                                <!-- status pill -->
+                                                                <Border Grid.Column="9" CornerRadius="10" Padding="6,1" VerticalAlignment="Center" HorizontalAlignment="Left">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="{StaticResource ReadyBgBrush}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding State}" Value="Error">
+                                                    <Setter Property="Background" Value="{StaticResource ErrorBgBrush}"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+<TextBlock FontSize="11" TextAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold"
+                                           Text="{Binding StateText}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="{StaticResource ReadyBrush}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding State}" Value="Error">
+                                                    <Setter Property="Foreground" Value="{StaticResource ErrorBrush}"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                </Border>
+                                <!-- error -->
+                                <TextBlock Grid.Column="11" Text="{Binding Error.Message}" Foreground="{StaticResource ErrorBrush}"
+                                           FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                           ToolTip="{Binding Error.Hint}"/>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Grid>
+
+        <!-- ===== Bulk bar (gọn — chỉ khi có selection): count + summary + mở bảng cấu hình đầy đủ ===== -->
+        <Border Grid.Row="5" x:Name="BulkBar" Background="#F6F6F4" BorderBrush="#D4D4D4" BorderThickness="1"
+                CornerRadius="8" Margin="16,8" Padding="14,8" Visibility="Collapsed">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center">
+                    <TextBlock x:Name="BulkCountText" Text="0 files selected" FontSize="13" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextBrush}"/>
+                    <TextBlock x:Name="BulkSummaryText" Text="" FontSize="11" Foreground="{StaticResource FaintBrush}"
+                               TextTrimming="CharacterEllipsis" MaxWidth="640"
+                               ToolTip="Cấu hình của file đầu tiên trong danh sách chọn (các file khác có thể khác nhau)"/>
+                </StackPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="Mở bảng đầy đủ để chỉnh page range, màu, khay, scale, N-up…"
+                               FontSize="11" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
+                    <Button Content="Cấu hình in…" Style="{StaticResource RoundedBtn}"
+                            Padding="14,7" Margin="10,0,0,0" Click="BulkSettings_Click"
+                            ToolTip="Mở bảng cấu hình in đầy đủ cho các file đang chọn"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- ===== Footer ===== -->
+        <Border Grid.Row="6" Background="{StaticResource HeaderBgBrush}" CornerRadius="4" Margin="16,6">
+            <DockPanel>
+                <TextBlock x:Name="FooterStats" Text="0 files | 0 printed | 0 error" FontSize="12"
+                           Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="10,0"/>
+                <!-- Progress bar (Penpot gap) -->
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0,0,0">
+                    <TextBlock x:Name="ProgressText" Text="0%" FontSize="11" Foreground="{StaticResource MutedBrush}"
+                               VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <ProgressBar x:Name="FooterProgress" Width="150" Height="6" Minimum="0" Maximum="100" Value="0"
+                                 Foreground="{StaticResource ReadyBrush}" Background="#E5E5E5" BorderThickness="0"/>
+                </StackPanel>
+                <!-- Tick: tự xóa file đã in khỏi hàng đợi -->
+                <CheckBox x:Name="AutoRemoveChk" Content="Tự xóa file đã in" FontSize="11"
+                          Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="20,0,0,0"
+                          ToolTip="Sau khi in xong (Done), tự gỡ file khỏi hàng đợi" Cursor="Hand"
+                          Checked="AutoRemoveChk_Toggled" Unchecked="AutoRemoveChk_Toggled"/>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
+                                    <Ellipse Width="9" Height="9" Fill="{StaticResource ReadyBrush}" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="FooterHint" Text="Nhấp = mở · đúp = sửa &amp; reload · Ctrl/Shift = chọn · chuột phải = menu"
+                                               FontSize="11" Foreground="{StaticResource FaintBrush}" Margin="6,0,0,0"/>
+                                </StackPanel>
+            </DockPanel>
+        </Border>
+    <!-- ===== Toast success (Penpot gap) ===== -->
+        <Border x:Name="Toast" Grid.Row="4" Background="White" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                CornerRadius="10" Padding="14,10" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                Margin="0,0,16,12" Panel.ZIndex="100" Visibility="Collapsed" Opacity="0">
+            <DockPanel>
+                <TextBlock Text="✓" Foreground="{StaticResource ReadyBrush}" FontWeight="Bold" FontSize="14"
+                           Margin="0,0,8,0" VerticalAlignment="Center"/>
+                <TextBlock x:Name="ToastText" FontSize="12.5" Foreground="{StaticResource TextBrush}"
+                           VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="320"/>
+            </DockPanel>
+        </Border>
+    </Grid>
+</Window>

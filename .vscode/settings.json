@@ -1,0 +1,12 @@
+{
+  "dotnet.defaultSolution": "Printonator.sln",
+  "csharp.debug.console": "integratedTerminal",
+  "files.exclude": {
+    "**/bin": true,
+    "**/obj": true
+  },
+  "search.exclude": {
+    "**/bin": true,
+    "**/obj": true
+  }
+}

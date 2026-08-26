@@ -1,0 +1,22 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ============================================================
+         Design system palette (Notion-style) — GLOBAL (App.Resources).
+         Nguồn sự thật duy nhất cho màu; mọi window dùng StaticResource
+         từ đây, KHÔNG copy trong từng window nữa.
+         ============================================================ -->
+    <SolidColorBrush x:Key="BgBrush" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="BorderBrush" Color="#E5E5E5"/>
+    <SolidColorBrush x:Key="TextBrush" Color="#1F1F1F"/>
+    <SolidColorBrush x:Key="MutedBrush" Color="#6B6B6B"/>
+    <SolidColorBrush x:Key="FaintBrush" Color="#8A8A8A"/>
+    <SolidColorBrush x:Key="HeaderBgBrush" Color="#F5F5F5"/>
+    <SolidColorBrush x:Key="ReadyBrush" Color="#16A34A"/>
+    <SolidColorBrush x:Key="ReadyBgBrush" Color="#F0FDF4"/>
+    <SolidColorBrush x:Key="ErrorBrush" Color="#DC2626"/>
+    <SolidColorBrush x:Key="ErrorBgBrush" Color="#FEF2F2"/>
+    <SolidColorBrush x:Key="WarnBrush" Color="#CA8A04"/>
+    <SolidColorBrush x:Key="WarnBgBrush" Color="#FFF9ED"/>
+    <SolidColorBrush x:Key="AccentBrush" Color="#1F1F1F"/>
+</ResourceDictionary>

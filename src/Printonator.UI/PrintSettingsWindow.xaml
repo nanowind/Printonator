@@ -1,0 +1,299 @@
+<Window x:Class="Printonator.UI.PrintSettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Cấu hình in" Height="680" Width="840"
+        MinHeight="600" MinWidth="720"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        AutomationProperties.AutomationId="PrintSettingsWindow"
+        Background="#FFFFFF" FontFamily="Segoe UI">
+    <Window.Resources>
+        <!-- Label cho từng option trong form — đồng nhất margin + kiểu chữ -->
+        <Style x:Key="OptionLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#1F1F1F"/>
+            <Setter Property="Margin" Value="0,10,0,4"/>
+        </Style>
+        <!-- Chỉ dẫn ngắn dưới mỗi option — giúp user biết option ảnh hưởng gì -->
+        <Style x:Key="HintText" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="10.5"/>
+            <Setter Property="Foreground" Value="#8A8A8A"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Margin" Value="0,2,0,0"/>
+        </Style>
+        <!-- Tiêu đề nhóm option trong mỗi cột -->
+        <Style x:Key="GroupTitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="#1F1F1F"/>
+            <Setter Property="Margin" Value="0,6,0,2"/>
+        </Style>
+
+        <!-- ===== TabControl dạng segmented (2 tab: Cơ bản / Nâng cao) — hợp design system ===== -->
+        <Style TargetType="TabControl">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabControl">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Border Grid.Row="0" Background="#F0F0EE" CornerRadius="8" Padding="3"
+                                    HorizontalAlignment="Left">
+                                <TabPanel IsItemsHost="True" KeyboardNavigation.TabIndex="1" Panel.ZIndex="1"/>
+                            </Border>
+                            <Border Grid.Row="1" Background="White" BorderBrush="#E5E5E5" BorderThickness="1"
+                                    CornerRadius="8" Padding="16" Margin="0,10,0,0">
+                                <ContentPresenter x:Name="PART_SelectedContentHost" ContentSource="SelectedContent"/>
+                            </Border>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="TabItem">
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#6B6B6B"/>
+            <Setter Property="Padding" Value="20,7"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="Bd" Background="Transparent" CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter ContentSource="Header" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="White"/>
+                                <Setter Property="Foreground" Value="#1F1F1F"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#E7E7E4"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="20">
+
+            <!-- ===== Tiêu đề + chỉ dẫn ===== -->
+            <TextBlock x:Name="TitleText" FontSize="15" FontWeight="SemiBold" Foreground="#1F1F1F"/>
+            <TextBlock Text="Tab Cơ bản: những tùy chọn hay dùng nhất. Tab Nâng cao: cách in trang, khay giấy, co giãn, gom trang. Tùy chọn 'theo máy in' sẽ dùng cấu hình của driver — mở 'Printing Preferences…' để xem/đổi."
+                       FontSize="11" Foreground="#8A8A8A" TextWrapping="Wrap" Margin="0,2,0,0"/>
+
+            <!-- ===== Profile (printer template) — dùng chung cho cả 2 tab ===== -->
+            <Border Background="#F6F6F4" BorderBrush="#D4D4D4" BorderThickness="1"
+                    CornerRadius="8" Padding="10,8" Margin="0,14,0,0">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Profile (printer template)" FontSize="12" FontWeight="SemiBold"
+                                   Foreground="#1F1F1F" VerticalAlignment="Center"/>
+                        <ComboBox x:Name="ProfileCombo" Width="240" FontSize="12" Margin="10,0,0,0"
+                                  VerticalAlignment="Center" SelectionChanged="ProfileCombo_SelectionChanged"
+                                  ToolTip="Chọn profile để nạp lại toàn bộ cấu hình bên dưới"/>
+                        <Button x:Name="SaveProfileBtn" Content="Lưu profile…" Style="{StaticResource GhostBtn}"
+                                Padding="10,5" Margin="8,0,0,0" Click="SaveProfile_Click"/>
+                        <Button x:Name="DeleteProfileBtn" Content="Xóa" Style="{StaticResource GhostBtn}"
+                                Padding="10,5" Margin="8,0,0,0" Click="DeleteProfile_Click"/>
+                    </StackPanel>
+                    <!-- Panel nhập tên profile khi bấm Lưu -->
+                    <StackPanel x:Name="SavePanel" Orientation="Horizontal" Visibility="Collapsed" Margin="0,8,0,0">
+                        <TextBox x:Name="ProfileNameBox" Width="220" FontSize="12" Padding="4,3"
+                                 ToolTip="Tên profile mới (vd: Hợp đồng 2 mặt)" VerticalContentAlignment="Center"/>
+                        <Button Content="Lưu" Style="{StaticResource RoundedBtn}" Padding="12,4"
+                                Margin="8,0,0,0" Click="ConfirmSaveProfile_Click"/>
+                        <Button Content="Hủy" Style="{StaticResource GhostBtn}" Padding="12,4"
+                                Margin="8,0,0,0" Click="CancelSaveProfile_Click"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- ===== 2 tab: Cơ bản (người dùng phổ thông) / Nâng cao ===== -->
+            <TabControl Margin="0,12,0,0">
+
+                <!-- ================= TAB CƠ BẢN ================= -->
+                <TabItem Header="Cơ bản">
+                    <StackPanel>
+                        <TextBlock Text="Trang &amp; bản in" Style="{StaticResource GroupTitle}"/>
+
+                        <TextBlock Text="Số bản (Copies)" Style="{StaticResource OptionLabel}"/>
+                        <TextBox x:Name="CopiesBox" Width="70" FontSize="13" Padding="4,3" HorizontalAlignment="Left"
+                                 VerticalContentAlignment="Center"/>
+                        <TextBlock Text="Số lần in mỗi file." Style="{StaticResource HintText}"/>
+
+                        <TextBlock Text="Trang cần in (Page range)" Style="{StaticResource OptionLabel}"/>
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton x:Name="RangeAll" Content="Tất cả (All)" GroupName="Range" FontSize="12"
+                                         VerticalAlignment="Center" Checked="Range_Changed"/>
+                            <RadioButton x:Name="RangeCustom" Content="Chọn trang:" GroupName="Range" FontSize="12"
+                                         Margin="14,0,0,0" VerticalAlignment="Center" Checked="Range_Changed"/>
+                            <TextBox x:Name="RangeBox" Width="150" FontSize="12" Padding="3,2" Margin="6,0,0,0"
+                                     IsEnabled="False" VerticalContentAlignment="Center" TextChanged="Range_Changed"
+                                     ToolTip="All · 1,3 · 2-5 · 1-2,7 · S2:1-3 (section 2, trang 1-3)"/>
+                        </StackPanel>
+                        <TextBlock x:Name="RangePreview" FontSize="11" Foreground="#16A34A" TextWrapping="Wrap"
+                                   Margin="0,4,0,0"/>
+                        <TextBlock x:Name="SectionInfo" FontSize="11" Foreground="#C2410C" TextWrapping="Wrap"
+                                   Margin="0,2,0,0" Visibility="Collapsed"/>
+                        <TextBlock Text="Cú pháp: 1,3 · 2-5 · 1-2,7 · S2:1-3 (section 2). Trang trùng tự bỏ qua." Style="{StaticResource HintText}"/>
+
+                        <TextBlock Text="Giấy &amp; màu" Style="{StaticResource GroupTitle}"/>
+
+                        <TextBlock Text="Khổ giấy (Paper size)" Style="{StaticResource OptionLabel}"/>
+                        <ComboBox x:Name="PaperCombo" Width="310" FontSize="12" HorizontalAlignment="Left"/>
+                        <TextBlock Text="'Theo tài liệu' = in đúng khổ gốc từng trang file · 'Theo máy in' = driver quyết." Style="{StaticResource HintText}"/>
+
+                        <TextBlock Text="In 2 mặt (Duplex)" Style="{StaticResource OptionLabel}"/>
+                        <ComboBox x:Name="DuplexCombo" Width="310" FontSize="12" HorizontalAlignment="Left">
+                            <ComboBoxItem Content="Theo máy in (As in printer)" Tag="AsPrinter"/>
+                            <ComboBoxItem Content="1 mặt (Simplex)" Tag="Simplex"/>
+                            <ComboBoxItem Content="2 mặt — lật cạnh dài (Long edge)" Tag="LongEdge"/>
+                            <ComboBoxItem Content="2 mặt — lật cạnh ngắn (Short edge)" Tag="ShortEdge"/>
+                        </ComboBox>
+                        <TextBlock Text="Lật cạnh dài = xoay theo chiều sách. Máy in không hỗ trợ 2 mặt sẽ in 1 mặt." Style="{StaticResource HintText}"/>
+
+                        <TextBlock Text="Chế độ màu (Color mode)" Style="{StaticResource OptionLabel}"/>
+                        <ComboBox x:Name="ColorModeCombo" Width="310" FontSize="12" HorizontalAlignment="Left">
+                            <ComboBoxItem Content="Theo máy in (As in printer)" Tag="AsPrinter"/>
+                            <ComboBoxItem Content="Theo nội dung (As in document)" Tag="AsDocument"/>
+                            <ComboBoxItem Content="Màu (Color)" Tag="Color"/>
+                            <ComboBoxItem Content="Đen trắng (Grayscale)" Tag="Grayscale"/>
+                        </ComboBox>
+                        <TextBlock Text="'Theo máy in' = driver quyết · 'Theo nội dung' = giữ màu trong file. Đen trắng tiết kiệm mực." Style="{StaticResource HintText}"/>
+
+                        <!-- Cài đặt máy in (driver) — đặt ngay tab Cơ bản vì đây là nơi người dùng hay cần -->
+                        <TextBlock Text="Cài đặt máy in (driver)" Style="{StaticResource GroupTitle}"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                            <TextBlock x:Name="PrinterNameText" Text="Không có máy in được chọn"
+                                       FontSize="12" Foreground="#6B6B6B" VerticalAlignment="Center"/>
+                            <Button x:Name="PrefsBtn" Content="Printing Preferences…" Style="{StaticResource GhostBtn}"
+                                    Padding="12,6" Margin="12,0,0,0" Click="Prefs_Click"/>
+                            <Button x:Name="PropsBtn" Content="Printer Properties…" Style="{StaticResource GhostBtn}"
+                                    Padding="12,6" Margin="8,0,0,0" Click="Props_Click"/>
+                        </StackPanel>
+                        <TextBlock Text="Mở dialog gốc của hãng máy in: chọn khay, chất lượng, ghim sách, màu... Thay đổi ở đây áp cho mọi file in ra máy này — kể cả các option đang để 'theo máy in'."
+                                   Style="{StaticResource HintText}"/>
+                        <TextBlock x:Name="NativeErrText" FontSize="11" Foreground="#DC2626" TextWrapping="Wrap"
+                                   Margin="0,4,0,0" Visibility="Collapsed"/>
+                    </StackPanel>
+                </TabItem>
+
+                <!-- ================= TAB NÂNG CAO ================= -->
+                <TabItem Header="Nâng cao">
+                    <StackPanel>
+                        <TextBlock Text="Những tùy chọn này dành cho người cần kiểm soát chi tiết từng lần in." FontSize="11"
+                                   Foreground="#8A8A8A" TextWrapping="Wrap" Margin="0,0,0,4"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="24"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Cột A -->
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Trang &amp; bản" Style="{StaticResource GroupTitle}"/>
+
+                                <TextBlock Text="Chỉ in trang lẻ / chẵn" Style="{StaticResource OptionLabel}"/>
+                                <ComboBox x:Name="ParityCombo" Width="280" FontSize="12" HorizontalAlignment="Left">
+                                    <ComboBoxItem Content="Tất cả các trang" Tag="All"/>
+                                    <ComboBoxItem Content="Chỉ trang lẻ (1,3,5…)" Tag="Odd"/>
+                                    <ComboBoxItem Content="Chỉ trang chẵn (2,4,6…)" Tag="Even"/>
+                                </ComboBox>
+                                <TextBlock Text="In nửa số trang để tiết kiệm mực / in 2 mặt trước." Style="{StaticResource HintText}"/>
+
+                                <TextBlock Text="Gom bản (Collation)" Style="{StaticResource OptionLabel}"/>
+                                <ComboBox x:Name="CollationCombo" Width="280" FontSize="12" HorizontalAlignment="Left">
+                                    <ComboBoxItem Content="Theo máy in (As in printer)" Tag="AsPrinter"/>
+                                    <ComboBoxItem Content="Theo tài liệu (By documents)" Tag="ByDocuments"/>
+                                    <ComboBoxItem Content="Theo trang (By pages)" Tag="ByPages"/>
+                                </ComboBox>
+                                <TextBlock Text="Khi in nhiều bản: gom từng bộ (1,2,3) hay gom theo trang (1,1,1)." Style="{StaticResource HintText}"/>
+                            </StackPanel>
+
+                            <!-- Cột B -->
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Giấy &amp; bố cục" Style="{StaticResource GroupTitle}"/>
+
+                                <TextBlock Text="Nguồn giấy / khay (Paper source)" Style="{StaticResource OptionLabel}"/>
+                                <ComboBox x:Name="PaperSourceCombo" Width="300" FontSize="12" HorizontalAlignment="Left"/>
+                                <TextBlock Text="Chọn khay giấy từ máy in (letterhead, giấy in hóa đơn…)." Style="{StaticResource HintText}"/>
+
+                                <TextBlock Text="Chiều giấy (Orientation)" Style="{StaticResource OptionLabel}"/>
+                                <ComboBox x:Name="OrientationCombo" Width="300" FontSize="12" HorizontalAlignment="Left">
+                                    <ComboBoxItem Content="Theo tài liệu (As in document)" Tag="AsDocument"/>
+                                    <ComboBoxItem Content="Theo máy in (As in printer)" Tag="AsPrinter"/>
+                                    <ComboBoxItem Content="Dọc (Portrait)" Tag="Portrait"/>
+                                    <ComboBoxItem Content="Ngang (Landscape)" Tag="Landscape"/>
+                                </ComboBox>
+                                <TextBlock Text="'Theo tài liệu' giữ chiều trong file; 'Dọc/Ngang' ép cả batch." Style="{StaticResource HintText}"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <TextBlock Text="Co giãn trang (Scale mode)" Style="{StaticResource OptionLabel}"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <ComboBox Grid.Column="0" x:Name="ScaleModeCombo" Width="205" FontSize="12"
+                                      HorizontalAlignment="Left" SelectionChanged="ScaleMode_Changed">
+                                <ComboBoxItem Content="Theo tài liệu (As in document)" Tag="AsDocument"/>
+                                <ComboBoxItem Content="Thu nhỏ vừa lề (Shrink)" Tag="ShrinkToPrintable"/>
+                                <ComboBoxItem Content="Co/giãn vừa vùng in (Fit)" Tag="FitToPrintable"/>
+                                <ComboBoxItem Content="Nguyên cỡ (Original)" Tag="Original"/>
+                                <ComboBoxItem Content="Lấp đầy trang (Fill)" Tag="Fill"/>
+                                <ComboBoxItem Content="Zoom%:" Tag="Zoom"/>
+                            </ComboBox>
+                            <TextBox Grid.Column="1" x:Name="ZoomBox" Width="56" FontSize="12" Padding="3,2"
+                                     Margin="8,0,0,0" IsEnabled="False" Text="100" TextAlignment="Right"
+                                     VerticalContentAlignment="Center"/>
+                            <TextBlock Grid.Column="2" Text="%" FontSize="12" Foreground="#6B6B6B"
+                                       VerticalAlignment="Center" Margin="4,0,0,0"/>
+                        </Grid>
+                        <TextBlock Text="Shrink = thu nhỏ trang lớn cho vừa lề; Fit = co/giãn vừa vùng in; Fill = phủ kín tờ." Style="{StaticResource HintText}"/>
+
+                        <TextBlock Text="Số trang trên tờ (Pages per sheet)" Style="{StaticResource OptionLabel}"/>
+                        <ComboBox x:Name="PerSheetCombo" Width="340" FontSize="12" HorizontalAlignment="Left">
+                            <ComboBoxItem Content="Không gom (1 trang/tờ)" Tag="1"/>
+                            <ComboBoxItem Content="2 trang/tờ (2-up)" Tag="2"/>
+                            <ComboBoxItem Content="4 trang/tờ (4-up)" Tag="4"/>
+                            <ComboBoxItem Content="6 trang/tờ (6-up)" Tag="6"/>
+                            <ComboBoxItem Content="9 trang/tờ (9-up)" Tag="9"/>
+                            <ComboBoxItem Content="16 trang/tờ (16-up)" Tag="16"/>
+                            <ComboBoxItem Content="Booklet (gấp sách, 2 mặt)" Tag="booklet"/>
+                        </ComboBox>
+                        <TextBlock Text="Gom nhiều trang vào 1 tờ — tiết kiệm giấy (2,4,6,9,16). Booklet cần máy in 2 mặt." Style="{StaticResource HintText}"/>
+
+                        <TextBlock Text="Độ phân giải (Printer resolution)" Style="{StaticResource OptionLabel}"/>
+                        <ComboBox x:Name="QualityCombo" Width="340" FontSize="12" HorizontalAlignment="Left">
+                            <ComboBoxItem Content="Theo máy in (As in printer)" Tag="AsPrinter"/>
+                            <ComboBoxItem Content="Cao (High ~200dpi)" Tag="High"/>
+                            <ComboBoxItem Content="Trung bình (Medium ~150dpi)" Tag="Medium"/>
+                            <ComboBoxItem Content="Thấp (Low ~100dpi)" Tag="Low"/>
+                            <ComboBoxItem Content="Nháp (Draft ~75dpi)" Tag="Draft"/>
+                        </ComboBox>
+                        <TextBlock Text="Nháp/Thấp in nhanh, tiết kiệm mực; chỉ áp với engine render (PDF/ảnh/TXT)." Style="{StaticResource HintText}"/>
+                    </StackPanel>
+                </TabItem>
+            </TabControl>
+
+            <!-- ===== Footer ===== -->
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                <Button x:Name="ApplyBtn" Content="Áp dụng" Style="{StaticResource RoundedBtn}"
+                        Padding="18,8" Click="Apply_Click"/>
+                <Button Content="Hủy" Style="{StaticResource GhostBtn}" Padding="18,8" Margin="10,0,0,0"
+                        Click="Cancel_Click"/>
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</Window>

@@ -1,0 +1,64 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{F677B0D0-C311-42FF-A59D-8FF8363BEB5B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Printonator.UI", "src\Printonator.UI\Printonator.UI.csproj", "{2186A664-369C-4894-A4DD-0C718AC2CBA4}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Printonator.Core", "src\Printonator.Core\Printonator.Core.csproj", "{4715FE30-7E41-4A4A-B369-F4C778C53377}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{44C83E15-8AB8-46E9-ACC2-14DEC0E5F75C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Printonator.UITests", "tests\Printonator.UITests\Printonator.UITests.csproj", "{6C344CAE-C95C-4751-BBBA-0FBE5FA504AA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Printonator.Core.Tests", "tests\Printonator.Core.Tests\Printonator.Core.Tests.csproj", "{278728CD-39C8-458B-9825-C2D8C8972E93}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Printonator.Spool", "src\Printonator.Spool\Printonator.Spool.csproj", "{72BC5534-F61D-47CD-9CB1-F353AEAA18F4}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Printonator.Mcp", "src\Printonator.Mcp\Printonator.Mcp.csproj", "{A5866F67-8209-4CF8-8127-C42F85984238}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{2186A664-369C-4894-A4DD-0C718AC2CBA4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2186A664-369C-4894-A4DD-0C718AC2CBA4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2186A664-369C-4894-A4DD-0C718AC2CBA4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2186A664-369C-4894-A4DD-0C718AC2CBA4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4715FE30-7E41-4A4A-B369-F4C778C53377}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4715FE30-7E41-4A4A-B369-F4C778C53377}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4715FE30-7E41-4A4A-B369-F4C778C53377}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4715FE30-7E41-4A4A-B369-F4C778C53377}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6C344CAE-C95C-4751-BBBA-0FBE5FA504AA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6C344CAE-C95C-4751-BBBA-0FBE5FA504AA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6C344CAE-C95C-4751-BBBA-0FBE5FA504AA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6C344CAE-C95C-4751-BBBA-0FBE5FA504AA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{278728CD-39C8-458B-9825-C2D8C8972E93}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{278728CD-39C8-458B-9825-C2D8C8972E93}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{278728CD-39C8-458B-9825-C2D8C8972E93}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{278728CD-39C8-458B-9825-C2D8C8972E93}.Release|Any CPU.Build.0 = Release|Any CPU
+		{72BC5534-F61D-47CD-9CB1-F353AEAA18F4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{72BC5534-F61D-47CD-9CB1-F353AEAA18F4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{72BC5534-F61D-47CD-9CB1-F353AEAA18F4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{72BC5534-F61D-47CD-9CB1-F353AEAA18F4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A5866F67-8209-4CF8-8127-C42F85984238}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A5866F67-8209-4CF8-8127-C42F85984238}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A5866F67-8209-4CF8-8127-C42F85984238}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A5866F67-8209-4CF8-8127-C42F85984238}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{2186A664-369C-4894-A4DD-0C718AC2CBA4} = {F677B0D0-C311-42FF-A59D-8FF8363BEB5B}
+		{4715FE30-7E41-4A4A-B369-F4C778C53377} = {F677B0D0-C311-42FF-A59D-8FF8363BEB5B}
+		{6C344CAE-C95C-4751-BBBA-0FBE5FA504AA} = {44C83E15-8AB8-46E9-ACC2-14DEC0E5F75C}
+		{278728CD-39C8-458B-9825-C2D8C8972E93} = {44C83E15-8AB8-46E9-ACC2-14DEC0E5F75C}
+		{72BC5534-F61D-47CD-9CB1-F353AEAA18F4} = {F677B0D0-C311-42FF-A59D-8FF8363BEB5B}
+		{A5866F67-8209-4CF8-8127-C42F85984238} = {F677B0D0-C311-42FF-A59D-8FF8363BEB5B}
+	EndGlobalSection
+EndGlobal
