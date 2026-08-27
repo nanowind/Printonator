@@ -604,6 +604,10 @@ public partial class MainWindow : Window
             _queue.ProcessExisting(job);   // KHÔNG enqueue lại — tránh trùng dòng
         JobList.Items.Refresh();
         UpdateFooter();
+
+        // PHẢI fire completion khi in xong (popup "Đã in xong") — đường này trước đây bỏ qua
+        // WaitBatchDoneAsync nên popup không bao giờ hiện khi in qua context menu.
+        _ = WaitBatchDoneAsync(targets.ToList());
     }
 
     private void CtxPageRange_Click(object sender, RoutedEventArgs e)
@@ -710,16 +714,15 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Chờ toàn bộ job trong lô về trạng thái cuối, rồi fire completion 1 lần.
-    /// Có thời gian chờ tối đa (30s) — khi in máy THẬT engine COM/spooler có thể lâu hoặc kẹt,
-    /// popup "Đã in xong" vẫn phải hiện (không chờ vô hạn).</summary>
+    /// Không dùng timeout — chờ tự nhiên đến khi mọi job trong lô về trạng thái cuối
+    /// (Done/Error/Cancelled); in xong là khi nào job xong, không chặt 30s.</summary>
     private async Task WaitBatchDoneAsync(List<PrintJob> batch)
     {
         var terminal = new[] { JobState.Done, JobState.Error, JobState.Cancelled };
         var toWait = new HashSet<PrintJob>(batch);
-        var deadline = DateTime.UtcNow.AddSeconds(30);
         try
         {
-            while (toWait.Count > 0 && DateTime.UtcNow < deadline)
+            while (toWait.Count > 0)
             {
                 var pending = toWait.Where(j => !terminal.Contains(j.State)).ToList();
                 if (pending.Count == 0) break;
@@ -740,10 +743,7 @@ public partial class MainWindow : Window
                     _queue.JobStateChanged -= handler;
                     tcs.TrySetResult(true);
                 }
-                // Chờ có timeout để không treo vô hạn khi máy thật lâu/kẹt
-                var completed = await Task.WhenAny(tcs.Task, Task.Delay(2000));
-                _queue.JobStateChanged -= handler;   // dọn handler nếu timeout
-                if (completed != tcs.Task) continue; // hết 2s không có change → re-check lại
+                await tcs.Task;
                 toWait.RemoveWhere(j => terminal.Contains(j.State));
             }
         }
