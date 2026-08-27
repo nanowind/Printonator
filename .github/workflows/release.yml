@@ -39,7 +39,9 @@ jobs:
       - name: Build Release
         run: dotnet build Printonator.sln -c Release
 
-      # Build installer bằng Inno Setup (ISCC). Stage Release binaries + download .NET runtime rồi build.
+      # Build installer bằng Inno Setup (ISCC). Stage Release binaries + download .NET runtime
+      # (chỉ để VERIFY SHA đồng bộ với hằng số trong printonator.iss — runtime KHÔNG gói vào installer,
+      # download on-demand lúc cài khi máy thiếu .NET).
       - name: Build Inno installer
         shell: powershell
         run: |
@@ -48,7 +50,7 @@ jobs:
           $bin = "src\Printonator.UI\bin\Release\net8.0-windows10.0.19041.0"
           New-Item -ItemType Directory -Force -Path "setup\app" | Out-Null
           Copy-Item "$bin\Printonator.UI.exe","$bin\Printonator.UI.dll","$bin\Printonator.UI.pdb","$bin\Printonator.Core.dll","$bin\Printonator.Core.pdb","$bin\Printonator.Spool.dll","$bin\Printonator.Spool.pdb","$bin\Printonator.UI.runtimeconfig.json","$bin\Printonator.UI.deps.json","$bin\Microsoft.Windows.SDK.NET.dll","$bin\WinRT.Runtime.dll" "setup\app\"
-          # Download .NET 8 Desktop Runtime vào setup\runtime (gitignored — không commit 55MB)
+          # Download .NET 8 Desktop Runtime (gitignored — chỉ để verify SHA ở bước kế)
           New-Item -ItemType Directory -Force -Path "setup\runtime" | Out-Null
           Invoke-WebRequest -Uri "https://dotnetcli.blob.core.windows.net/dotnet/WindowsDesktop/8.0.30/windowsdesktop-runtime-8.0.30-win-x64.exe" -OutFile "setup\runtime\windowsdesktop-runtime-8.0.30-win-x64.exe"
           # Build với ISCC
@@ -56,6 +58,19 @@ jobs:
           & $iscc "setup\printonator.iss" /DMyAppVersion=${{ steps.ver.outputs.VER }}
         env:
           MyAppVersion: ${{ steps.ver.outputs.VER }}
+
+      # Đồng bộ hằng số DotNetRuntimeSha256 trong printonator.iss với file thật trên CDN dot.net.
+      # Nếu CDN đổi file → FAIL build (để lệch thì mọi lần cài máy thiếu .NET đều abort ở bước verify SHA).
+      - name: Verify .NET runtime SHA-256 matches printonator.iss
+        shell: bash
+        run: |
+          HASH=$(sha256sum setup/runtime/windowsdesktop-runtime-8.0.30-win-x64.exe | cut -d' ' -f1)
+          EXPECTED="8bd710afa5de396c9eb2a3b68d00279b7b9aca372a2443e9acd4f48ffdef3f2d"
+          if [ "$HASH" != "$EXPECTED" ]; then
+            echo "Runtime SHA mismatch: $HASH (expected $EXPECTED) — cập nhật DotNetRuntimeSha256 trong printonator.iss"
+            exit 1
+          fi
+          echo "Runtime SHA OK: $HASH"
 
       - name: Compute SHA-256
         id: sha

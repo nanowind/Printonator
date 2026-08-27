@@ -23,6 +23,7 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _toastTimer = new() { Interval = TimeSpan.FromSeconds(4) };
     private string? _sortColumn;
     private bool _sortDescending;
+    private int _printerScanGeneration;   // scan cũ về sau không được ghi đè kết quả scan mới
 
     /// <summary>Danh sách thông báo hiển thị trong bell. Badge = số thông báo chưa đọc.</summary>
     public ObservableCollection<AppNotification> Notifications { get; } = new();
@@ -121,20 +122,56 @@ public partial class MainWindow : Window
     private void LoadPrinters()
     {
         // Chạy QUÉT MÁY IN NGOÀI UI thread — máy in MẠNG/LAN bị firewall (vd Avast) chặn có thể
-        // làm GetPrintQueues/GetPrintCapabilities treo; chạy nền + timeout để UI không đứng hình
-        // ("waiting for printer connection"). Nếu không quét được trong hạn → bỏ qua, app vẫn dùng.
+        // làm GetPrintQueues/GetPrintCapabilities treo; chạy nền + timeout để UI không đứng hình.
+        // MỌI kết cục (thành công / rỗng / timeout / lỗi) đều dispatch ApplyPrinterList — không bao
+        // giờ để dropdown rỗng câm (lỗi cũ: catch rỗng → không banner, không retry, rỗng vĩnh viễn).
+        var gen = ++_printerScanGeneration;
         _ = Task.Run(async () =>
         {
             try
             {
                 var r = await Task.Run(() => new PrinterService().ListPrinters())
-                                   .WaitAsync(TimeSpan.FromSeconds(15));
-                Dispatcher.BeginInvoke(new Action(() => ApplyPrinterList(r.IsSuccess ? r.Value! : null, r.IsSuccess ? null : r.Error)));
+                                   .WaitAsync(TimeSpan.FromSeconds(20));   // backstop cho GetPrintQueues() tự treo
+                DispatchApplyPrinterList(gen, r);
             }
-            catch (TimeoutException) { /* máy in bị chặn/treo — bỏ qua, không hiện cửa sổ chờ */ }
-            catch (Exception) { /* quét lỗi — bỏ qua */ }
+            catch (TimeoutException)
+            {
+                DispatchApplyPrinterList(gen, null, MakePrinterScanError(null));
+            }
+            catch (Exception ex)
+            {
+                DispatchApplyPrinterList(gen, null, MakePrinterScanError(ex));
+            }
         });
     }
+
+    /// <summary>Dispatch kết quả scan lên UI thread (nếu scan còn mới — scan cũ không ghi đè).
+    /// Rỗng = lỗi → banner + nút Retry, không để im.</summary>
+    private void DispatchApplyPrinterList(int gen, Result<List<PrinterInfo>>? r, PrintError? err = null)
+    {
+        if (gen != _printerScanGeneration) return;                    // scan cũ bỏ qua — không ghi đè
+        if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished) return;
+        try
+        {
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (r is not null && r.Value is { Count: > 0 })
+                    ApplyPrinterList(r.Value, null);
+                else
+                    ApplyPrinterList(null, err ?? r?.Error ?? MakePrinterScanError(null));
+            }));
+        }
+        catch { /* window đóng giữa chừng — bỏ qua */ }
+    }
+
+    private static PrintError MakePrinterScanError(Exception? ex) => new()
+    {
+        Code = ErrorCodes.SpoolerFailed,
+        Category = PrintErrorCategory.Printer,
+        Message = "Không quét được danh sách máy in (máy in mạng có thể bị firewall chặn).",
+        Hint = "Bấm Retry connection để thử lại.",
+        Detail = ex?.Message ?? "",
+    };
 
     /// <summary>Áp danh sách máy in lên combo (trên UI thread).
     /// Quan trọng: nếu scan thất bại / trả RỖNG (vd máy in mạng bị firewall chặn) →
@@ -149,6 +186,16 @@ public partial class MainWindow : Window
             return;
         }
         PrinterCombo.ItemsSource = printers;
+
+        // Máy in bị treo / bị firewall chặn → vẫn hiện (mục "Không phản hồi…") + báo vàng để user biết
+        // tại sao list thiếu máy, và có nút Retry (không để im như trước).
+        var unresponsive = printers.Count(p =>
+            !p.IsAvailable && p.StatusDetail?.StartsWith("Không phản hồi", StringComparison.Ordinal) == true);
+        if (unresponsive > 0)
+            ShowBanner(ErrorCodes.SpoolerFailed,
+                $"{unresponsive} máy in không phản hồi (có thể bị firewall chặn).",
+                "Bấm Retry connection để quét lại.");
+
         SelectedPrinter = printers.FirstOrDefault(p => p.IsDefault && p.IsAvailable)
                           ?? printers.FirstOrDefault(p => p.IsDefault)
                           ?? printers.FirstOrDefault(p => p.IsAvailable)

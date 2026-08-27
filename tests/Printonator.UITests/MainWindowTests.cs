@@ -28,10 +28,12 @@ public class UiTestCollection { }
 [Collection("UI")]
 public class MainWindowTests
 {
-    // Absolute path — test chạy từ bin của test project; resolve tới UI exe
+    // Absolute path — test chạy từ bin của test project; resolve tới UI exe.
+    // LƯU Ý: TFM hiện tại là net8.0-windows10.0.19041.0 (thư mục output khác TFM cũ net8.0-windows —
+    // thư mục cũ chứa exe STALE, test chạy nhầm binary cũ → sai kết quả). Phải build Debug trước khi test.
     private static readonly string AppPath = Path.GetFullPath(
         Path.Combine(AppContext.BaseDirectory,
-            @"..\..\..\..\..\src\Printonator.UI\bin\Debug\net8.0-windows\Printonator.UI.exe"));
+            @"..\..\..\..\..\src\Printonator.UI\bin\Debug\net8.0-windows10.0.19041.0\Printonator.UI.exe"));
 
     private static (Application app, Window main) Launch()
     {

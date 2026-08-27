@@ -10,6 +10,9 @@ namespace Printonator.Spool.Printing;
 /// </summary>
 public sealed class PrinterService
 {
+    /// <summary>StatusDetail khi máy in không phản hồi trong hạn chờ — UI dùng để nhận diện & báo "bị chặn".</summary>
+    public const string TimeoutStatusDetail = "Không phản hồi (quá thời gian chờ — có thể bị firewall chặn)";
+
     /// <summary>Liệt kê máy in kèm trạng thái + khả năng đầy đủ.</summary>
     public Result<List<PrinterInfo>> ListPrinters()
     {
@@ -20,18 +23,43 @@ public sealed class PrinterService
             using var server = new LocalPrintServer();
             defaultName = SafeQueueName(server.DefaultPrintQueue);
             var queues = server.GetPrintQueues();
+
+            // Budget TỔNG cho cả scan: máy in MẠNG bị firewall (vd Avast) chặn có thể treo
+            // GetPrintCapabilities/QueueStatus VÔ HẠN — không để 1 máy làm đứng cả danh sách.
+            // Mỗi máy chạy watchdog 4s; hết budget 15s → hủy toàn bộ, trả danh sách đã quét được.
+            using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(15));
             foreach (var q in queues)
             {
+                var name = SafeName(q) ?? "(không đọc được tên)";
                 try
                 {
-                    printers.Add(Describe(q, defaultName));
+                    // Sequential (KHÔNG chạy song song): System.Printing không thread-safe.
+                    // DescribeSafe không bao giờ ném → watchdog treo thì thread bị bỏ rơi nhưng không
+                    // fault (tránh unobserved task exception) và không đụng state dùng chung.
+                    var task = Task.Run(() => DescribeSafe(q, defaultName, name));
+                    printers.Add(task.WaitAsync(TimeSpan.FromSeconds(4), budget.Token).GetAwaiter().GetResult());
+                }
+                catch (OperationCanceledException)
+                {
+                    break; // hết budget — trả danh sách đã quét được
+                }
+                catch (TimeoutException)
+                {
+                    // Máy không phản hồi trong 4s (firewall chặn / offline) → VẪN hiện để user thấy
+                    // + bấm Retry; không nuốt im (quy ước "mỗi máy hiện rõ, không nuốt lỗi").
+                    printers.Add(new PrinterInfo
+                    {
+                        Name = name,
+                        IsAvailable = false,
+                        StatusDetail = TimeoutStatusDetail,
+                    });
                 }
                 catch (Exception ex)
                 {
                     // Một máy lỗi không được làm chết cả danh sách — nhưng vẫn báo lỗi rõ trên máy đó
                     printers.Add(new PrinterInfo
                     {
-                        Name = SafeName(q) ?? "(không đọc được tên)",
+                        Name = name,
                         IsAvailable = false,
                         StatusDetail = $"Lỗi đọc thông tin: {ex.Message}",
                     });
@@ -101,6 +129,20 @@ public sealed class PrinterService
             Trays = trays,
             IsVirtual = IsVirtualPrinter(q.Name),
         };
+    }
+
+    /// <summary>Describe nhưng KHÔNG bao giờ ném — thread watchdog bị bỏ rơi sau timeout không được
+    /// fault (tránh unobserved task exception). Trả placeholder riêng khi lỗi đọc.</summary>
+    private static PrinterInfo DescribeSafe(PrintQueue q, string? defaultName, string name)
+    {
+        try
+        {
+            return Describe(q, defaultName);
+        }
+        catch
+        {
+            return new PrinterInfo { Name = name, IsAvailable = false, StatusDetail = "Lỗi đọc thông tin." };
+        }
     }
 
     private static string? TryGetStatus(PrintQueue q)

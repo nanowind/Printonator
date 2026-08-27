@@ -1,4 +1,5 @@
 using System.Windows;
+using Printonator.Core.Models;
 using Printonator.Spool.Printing;
 
 namespace Printonator.UI;
@@ -10,16 +11,26 @@ namespace Printonator.UI;
 public partial class PrinterConfigWindow : Window
 {
     private readonly PrinterService _service = new();
+    private int _refreshGeneration;   // bấm Scan liên tục — scan cũ không ghi đè kết quả scan mới
 
     public PrinterConfigWindow()
     {
         InitializeComponent();
-        Loaded += (_, _) => Refresh();
+        Loaded += (_, _) => _ = RefreshAsync();
     }
 
-    private void Refresh()
+    private async Task RefreshAsync()
     {
-        var r = _service.ListPrinters();
+        // Quét NỀN + KHÔNG treo UI (máy in mạng bị firewall chặn có thể treo lâu) — PrinterService tự
+        // giới hạn 15s bên trong; cửa sổ đóng giữa chừng → bỏ qua kết quả.
+        var gen = ++_refreshGeneration;
+        var r = await Task.Run(() => _service.ListPrinters());
+        if (gen != _refreshGeneration || !IsLoaded) return;
+        try { Dispatcher.Invoke(() => ApplyResult(r)); } catch { /* cửa sổ đóng — bỏ qua */ }
+    }
+
+    private void ApplyResult(Result<List<PrinterInfo>> r)
+    {
         if (!r.IsSuccess)
         {
             OfflineBannerText.Text = r.Error!.Message + "  " + r.Error.Hint;
@@ -49,7 +60,7 @@ public partial class PrinterConfigWindow : Window
         }
     }
 
-    private void Scan_Click(object sender, RoutedEventArgs e) => Refresh();
+    private void Scan_Click(object sender, RoutedEventArgs e) => _ = RefreshAsync();
 
     private void Back_Click(object sender, RoutedEventArgs e) => Close();
 
