@@ -22,21 +22,29 @@ public sealed class PrinterService
         {
             using var server = new LocalPrintServer();
             defaultName = SafeQueueName(server.DefaultPrintQueue);
-            var queues = server.GetPrintQueues();
-
-            // Budget TỔNG cho cả scan: máy in MẠNG bị firewall (vd Avast) chặn có thể treo
-            // GetPrintCapabilities/QueueStatus VÔ HẠN — không để 1 máy làm đứng cả danh sách.
-            // Mỗi máy chạy watchdog 4s; hết budget 15s → hủy toàn bộ, trả danh sách đã quét được.
-            using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            foreach (var q in queues)
+            // Chỉ lấy TÊN máy in trên thread enum (rẻ — không gọi driver/device). MỖI máy được MỞ
+            // FRESH trên worker thread của nó. QUAN TRỌNG: PrintQueue/GetPrintCapabilities có THREAD
+            // AFFINITY — dùng PrintQueue từ thread KHÁC với thread tạo nó sẽ ném lỗi trên MỌI máy
+            // (regression v0.1.3: chuyển Describe sang Task.Run nhưng vẫn dùng PrintQueue cũ của enum).
+            var names = new List<string>();
+            foreach (var q in server.GetPrintQueues())
             {
-                var name = SafeName(q) ?? "(không đọc được tên)";
+                var n = SafeName(q);
+                if (!string.IsNullOrWhiteSpace(n)) names.Add(n);
+            }
+
+            // Budget TỔNG cho cả scan: máy in MẠNG bị firewall (vd Avast) chặn có thể treo mở queue
+            // vô hạn — không để 1 máy làm đứng cả danh sách. Mỗi máy chạy watchdog 4s; hết budget 15s
+            // → hủy toàn bộ, trả danh sách đã quét được.
+            using var budget = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            foreach (var name in names)
+            {
                 try
                 {
-                    // Sequential (KHÔNG chạy song song): System.Printing không thread-safe.
-                    // DescribeSafe không bao giờ ném → watchdog treo thì thread bị bỏ rơi nhưng không
-                    // fault (tránh unobserved task exception) và không đụng state dùng chung.
-                    var task = Task.Run(() => DescribeSafe(q, defaultName, name));
+                    // Mở LocalPrintServer + PrintQueue MỚI trên CHÍNH worker thread → đúng thread
+                    // affinity. DescribeFresh không bao giờ ném → watchdog treo thì thread bị bỏ rơi
+                    // nhưng không fault (tránh unobserved task exception) và không đụng state chung.
+                    var task = Task.Run(() => DescribeFresh(name, defaultName));
                     printers.Add(task.WaitAsync(TimeSpan.FromSeconds(4), budget.Token).GetAwaiter().GetResult());
                 }
                 catch (OperationCanceledException)
@@ -131,17 +139,25 @@ public sealed class PrinterService
         };
     }
 
-    /// <summary>Describe nhưng KHÔNG bao giờ ném — thread watchdog bị bỏ rơi sau timeout không được
-    /// fault (tránh unobserved task exception). Trả placeholder riêng khi lỗi đọc.</summary>
-    private static PrinterInfo DescribeSafe(PrintQueue q, string? defaultName, string name)
+    /// <summary>Mở 1 máy in FRESH trên worker thread (đúng thread affinity của System.Printing) + describe.
+    /// KHÔNG bao giờ ném — thread watchdog bị bỏ rơi sau timeout không được fault (tránh unobserved
+    /// task exception). Trả placeholder riêng khi lỗi đọc.</summary>
+    private static PrinterInfo DescribeFresh(string name, string? defaultName)
     {
         try
         {
+            using var server = new LocalPrintServer();
+            var q = server.GetPrintQueue(name);
             return Describe(q, defaultName);
         }
-        catch
+        catch (Exception ex)
         {
-            return new PrinterInfo { Name = name, IsAvailable = false, StatusDetail = "Lỗi đọc thông tin." };
+            return new PrinterInfo
+            {
+                Name = name,
+                IsAvailable = false,
+                StatusDetail = $"Lỗi đọc thông tin: {ex.Message}",
+            };
         }
     }
 
