@@ -120,16 +120,31 @@ public partial class MainWindow : Window
 
     private void LoadPrinters()
     {
-        var r = new PrinterService().ListPrinters();
-        if (!r.IsSuccess)
+        // Chạy QUÉT MÁY IN NGOÀI UI thread — máy in MẠNG/LAN bị firewall (vd Avast) chặn có thể
+        // làm GetPrintQueues/GetPrintCapabilities treo; chạy nền + timeout để UI không đứng hình
+        // ("waiting for printer connection"). Nếu không quét được trong hạn → bỏ qua, app vẫn dùng.
+        _ = Task.Run(async () =>
         {
-            ShowBanner(r.Error!.Code, r.Error.Message, r.Error.Hint);
+            try
+            {
+                var r = await Task.Run(() => new PrinterService().ListPrinters())
+                                   .WaitAsync(TimeSpan.FromSeconds(15));
+                Dispatcher.BeginInvoke(new Action(() => ApplyPrinterList(r.IsSuccess ? r.Value! : null, r.IsSuccess ? null : r.Error)));
+            }
+            catch (TimeoutException) { /* máy in bị chặn/treo — bỏ qua, không hiện cửa sổ chờ */ }
+            catch (Exception) { /* quét lỗi — bỏ qua */ }
+        });
+    }
+
+    /// <summary>Áp danh sách máy in lên combo (trên UI thread). list==null + err → giữ trạng thái cũ, báo nhẹ.</summary>
+    private void ApplyPrinterList(List<PrinterInfo>? printers, PrintError? err)
+    {
+        if (printers is null)
+        {
+            if (err is not null) ShowBanner(err.Code, err.Message, err.Hint);
             return;
         }
-        var printers = r.Value!;
         PrinterCombo.ItemsSource = printers;
-        // Ưu tiên máy in đang là mặc định của Windows; nếu không có default (hoặc default lỗi)
-        // thì chọn máy khả dụng đầu tiên.
         SelectedPrinter = printers.FirstOrDefault(p => p.IsDefault && p.IsAvailable)
                           ?? printers.FirstOrDefault(p => p.IsDefault)
                           ?? printers.FirstOrDefault(p => p.IsAvailable)
@@ -419,12 +434,16 @@ public partial class MainWindow : Window
         {
             foreach (var f in Directory.EnumerateFiles(root, "*", opt))
             {
-                var name = Path.GetFileName(f);
-                if (name.StartsWith("~$", StringComparison.Ordinal)) continue; // file khóa tạm của Office
-                if (IsSupported(f)) result.Add(f);
+                try
+                {
+                    var name = Path.GetFileName(f);
+                    if (name.StartsWith("~$", StringComparison.Ordinal)) continue; // file khóa tạm của Office
+                    if (IsSupported(f)) result.Add(f);
+                }
+                catch { /* 1 file lỗi (đang khóa/không đọc được) — bỏ qua FILE đó, KHÔNG làm hỏng cả thư mục */ }
             }
         }
-        catch { /* thư mục không đọc được — bỏ qua */ }
+        catch { /* thư mục gốc không đọc được — bỏ qua cả folder (hiếm) */ }
         return result;
     }
 
