@@ -53,8 +53,13 @@ jobs:
           # Download .NET 8 Desktop Runtime (gitignored — chỉ để verify SHA ở bước kế)
           New-Item -ItemType Directory -Force -Path "setup\runtime" | Out-Null
           Invoke-WebRequest -Uri "https://dotnetcli.blob.core.windows.net/dotnet/WindowsDesktop/8.0.30/windowsdesktop-runtime-8.0.30-win-x64.exe" -OutFile "setup\runtime\windowsdesktop-runtime-8.0.30-win-x64.exe"
-          # Build với ISCC
-          $iscc = (Get-ChildItem "$env:ProgramFiles(x86)\Inno Setup*\ISCC.exe" | Select-Object -First 1).FullName
+          # Build với ISCC. LƯU Ý: dùng ${env:ProgramFiles(x86)} (cú pháp đúng) — $env:ProgramFiles(x86)
+          # bị parse thành $env:ProgramFiles + "(x86)" → path "C:\Program Files(x86)" KHÔNG tồn tại → fail.
+          # Ưu tiên choco shim trên PATH, fallback Program Files (x86) / Program Files.
+          $iscc = (Get-Command iscc -ErrorAction SilentlyContinue).Source
+          if (-not $iscc) { $iscc = (Get-ChildItem "${env:ProgramFiles(x86)}\Inno Setup*\ISCC.exe" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName }
+          if (-not $iscc) { $iscc = (Get-ChildItem "$env:ProgramFiles\Inno Setup*\ISCC.exe" -ErrorAction SilentlyContinue | Select-Object -First 1).FullName }
+          if (-not $iscc) { throw "Không tìm thấy ISCC.exe (Inno Setup)" }
           & $iscc "setup\printonator.iss" /DMyAppVersion=${{ steps.ver.outputs.VER }}
         env:
           MyAppVersion: ${{ steps.ver.outputs.VER }}
@@ -119,8 +124,8 @@ jobs:
             - AI in giùm qua MCP + guardrail an toàn
             - 100% local, MIT
           draft: true
-          files: |
-            setup/printonator-setup.exe
-            setup/printonator-setup.exe.minisig
+          # Glob `*.exe*` → khớp installer + .minisig NẾU có (khi chưa đặt secret minisign thì file .minisig
+          # không tồn tại — tham chiếu literal path sẽ làm step fail).
+          files: setup/printonator-setup.exe*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
