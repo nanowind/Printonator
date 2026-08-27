@@ -16,7 +16,7 @@ public sealed class PrintQueue : IDisposable
     private Queue<PrintJob> _pending = new();
     private readonly List<Task> _workers = new();
     private int _activeWorkers;
-
+        
     /// <summary>Jobs đang hiển thị trên UI (bao gồm cả pending).</summary>
     public ObservableCollection<PrintJob> Jobs { get; } = new();
 
@@ -333,6 +333,13 @@ public sealed class PrintQueue : IDisposable
         {
             SetState(job, JobState.Error, WrapError(job, ex));
         }
+        finally
+        {
+            // KHÔNG fire AllJobsCompleted ở đây nữa: đường in THẬT (UI PrintJobs) tự chờ cả lô
+            // batch xong và gọi completion 1 lần (WaitBatchDoneAsync). Trước đây debounce trong
+            // Core fire theo từng drain → popup "In xong" nhảy theo từng file (bug). Đường Enqueue
+            // (DrainAsync) vẫn fire bình thường qua vòng lặp chính.
+        }
     }
 
     /// <summary>Bọc exception thành PrintError đầy đủ — dùng chung cho cả 2 đường drain.</summary>
@@ -345,11 +352,14 @@ public sealed class PrintQueue : IDisposable
         Detail = ex.ToString(),
     };
 
+    private bool _disposed;
     public void Dispose()
     {
-        _cts.Cancel();
-        _cts.Dispose();
-        _gate.Dispose();
+        if (_disposed) return;   // idempotent — tránh ObjectDisposedException khi gọi 2 lần
+        _disposed = true;
+        try { _cts.Cancel(); } catch { }
+        try { _cts.Dispose(); } catch { }
+        try { _gate.Dispose(); } catch { }
     }
 }
 

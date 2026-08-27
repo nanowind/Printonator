@@ -38,6 +38,56 @@ public class PrintQueueTests
     }
 
     [Fact]
+    public async Task ProcessExisting_AllReachDone()
+    {
+        // Đường in THẬT dùng ProcessExisting (không qua DrainAsync). Toàn bộ job lô phải về
+        // trạng thái cuối (Done) — không phụ thuộc AllJobsCompleted (completion giờ do UI
+        // WaitBatchDoneAsync điều khiển, không phải Core event).
+        var q = new PrintQueue();
+        var engine = new TestHelpers.FakeEngine();
+        q.RegisterEngine(engine);
+
+        var j1 = MakeJob("a.pdf");
+        var j2 = MakeJob("b.pdf");
+        q.AddOnly(j1);
+        q.AddOnly(j2);
+
+        q.ProcessExisting(j1);
+        q.ProcessExisting(j2);
+        await TestHelpers.WaitUntilAsync(() => j1.State == JobState.Done && j2.State == JobState.Done);
+
+        Assert.Equal(JobState.Done, j1.State);
+        Assert.Equal(JobState.Done, j2.State);
+        q.Dispose();
+    }
+
+    [Fact]
+    public async Task RemoveDoneJob_NoDeadlock()
+    {
+        // RemoveJob gỡ job Done không được deadlock/treo (bug cũ khi AllJobsCompleted còn giữ _sync).
+        var q = new PrintQueue();
+        var engine = new TestHelpers.FakeEngine();
+        q.RegisterEngine(engine);
+
+        var j1 = MakeJob("a.pdf");
+        var j2 = MakeJob("b.pdf");
+        q.AddOnly(j1);
+        q.AddOnly(j2);
+
+        q.ProcessExisting(j1);
+        q.ProcessExisting(j2);
+        await TestHelpers.WaitUntilAsync(() => j1.State == JobState.Done && j2.State == JobState.Done);
+
+        // UI làm đúng: xóa các job Done. Nếu RemoveJob bị chặn (deadlock) → test fail sau 4s.
+        foreach (var d in q.Jobs.Where(j => j.State == JobState.Done).ToList()) q.RemoveJob(d);
+        await TestHelpers.WaitUntilAsync(() => q.Jobs.Count == 0, timeoutMs: 4000);
+        Assert.Empty(q.Jobs);
+        await Task.Delay(100);  // chờ drain thoát hẳn trước khi Dispose (tránh CTS đã dispose)
+        q.Dispose();
+        q.Dispose();
+    }
+
+    [Fact]
     public async Task AddOnly_DoesNot_AutoPrint()
     {
         var q = new PrintQueue();

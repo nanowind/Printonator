@@ -109,7 +109,12 @@ public static class PrinterDialogs
 
     // ===================== Printer Properties: shell verb "properties" =====================
 
-    /// <summary>Mở "Printer Properties" của máy in (một số tab yêu cầu quyền admin).</summary>
+    /// <summary>Mở "Printer Properties" (Thuộc tính máy in) — đích thị cửa sổ
+/// General/Sharing/Ports/Advanced/Color Mgmt/Security/Device Settings của máy in.
+/// Dùng run.dll printui.dll PrintUIEntry /p (đúng dialog Printer Properties), KHÔNG phải
+/// shell verb "properties" lên folder Devices-and-Printers — thứ đó mở PROPERTIES CỦA THIẾT BỊ
+/// (hardware) chung chung, KHÔNG phải thuộc tính máy in.
+/// </summary>
     public static Result<bool> OpenPrinterProperties(string printerName)
     {
         if (string.IsNullOrWhiteSpace(printerName))
@@ -117,39 +122,22 @@ public static class PrinterDialogs
 
         try
         {
-            var shellType = Type.GetTypeFromProgID("Shell.Application");
-            if (shellType is null)
-                return FailWithMessage("Không khởi động được Windows Shell để mở thuộc tính máy in.", "");
-            var shell = Activator.CreateInstance(shellType);
-            if (shell is null)
-                return FailWithMessage("Không khởi động được Windows Shell để mở thuộc tính máy in.", "");
-
-            foreach (var folderPath in new[] { DevicesAndPrinters, PrintersAndFaxes })
+            // printui /p = Printer Properties chính chủ. Mở bằng Process + shell (không cần COM).
+            var psi = new System.Diagnostics.ProcessStartInfo
             {
-                var folder = Com(shell, "Namespace", folderPath);
-                if (folder is null) continue;
-                var items = Com(folder, "Items");
-                var count = items is null ? 0 : Convert.ToInt32(Com(items, "Count"));
-                for (var i = 0; i < count; i++)
-                {
-                    var item = Com(items, "Item", i);
-                    var name = item is null ? null : Com(item, "Name") as string;
-                    if (string.Equals(name, printerName, StringComparison.OrdinalIgnoreCase))
-                    {
-                        Com(item!, "InvokeVerb", "properties");
-                        return Result<bool>.Ok(true);
-                    }
-                }
-            }
-            return FailWithMessage($"Không tìm thấy máy in \"{printerName}\" trong Devices and Printers.",
-                "Bấm Scan printers hoặc mở Cài đặt → Máy in & máy quét.");
+                FileName = "rundll32.exe",
+                Arguments = $"printui.dll,PrintUIEntry /p /n \"{printerName}\"",
+                UseShellExecute = true,
+                CreateNoWindow = true,
+            };
+            var proc = System.Diagnostics.Process.Start(psi);
+            if (proc is null)
+                return FailWithMessage($"Không mở được Thuộc tính máy in \"{printerName}\".", "Thử mở Cài đặt → Máy in & máy quét.");
+            return Result<bool>.Ok(true);
         }
         catch (Exception ex)
         {
-            // Unwrap TargetInvocationException để thấy lỗi COM gốc
-            var root = ex;
-            while (root is TargetInvocationException { InnerException: not null } tie) root = tie.InnerException!;
-            return FailWithMessage($"Không mở được thuộc tính máy in \"{printerName}\".", "Thử lại hoặc mở Cài đặt → Máy in & máy quét.", $"{root.GetType().Name}: {root.Message}");
+            return FailWithMessage($"Không mở được Thuộc tính máy in \"{printerName}\".", "Thử lại hoặc mở Cài đặt → Máy in & máy quét.", ex.Message);
         }
     }
 

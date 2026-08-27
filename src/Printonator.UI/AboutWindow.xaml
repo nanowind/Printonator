@@ -1,0 +1,45 @@
+<Window x:Class="Printonator.UI.AboutWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Thông tin Printonator"
+        Width="520" SizeToContent="Height" MaxHeight="620"
+        WindowStartupLocation="CenterOwner" ResizeMode="CanResize"
+        Background="#FFFFFF" FontFamily="Segoe UI">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="24,20,24,20">
+        <TextBlock Text="Printonator" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}"/>
+        <TextBlock x:Name="VersionText" Text="Bản 1.0.0" FontSize="12" Foreground="{StaticResource MutedBrush}" Margin="0,2,0,0"/>
+
+        <TextBlock Text="Thay đổi phiên bản" FontSize="14" FontWeight="SemiBold"
+                   Foreground="{StaticResource TextBrush}" Margin="0,18,0,6"/>
+        <Border Background="{StaticResource HeaderBgBrush}" CornerRadius="8" Padding="12,10">
+            <TextBlock x:Name="ChangeLogText" FontSize="11.5" Foreground="{StaticResource TextBrush}"
+                       TextWrapping="Wrap" Text="Đang tải lịch sử thay đổi…"/>
+        </Border>
+
+        <TextBlock Text="Giấy phép" FontSize="14" FontWeight="SemiBold"
+                   Foreground="{StaticResource TextBrush}" Margin="0,18,0,6"/>
+        <TextBlock Text="MIT License — miễn phí, mã nguồn mở. © 2026 Phuc Nguyen" FontSize="11.5"
+                   Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
+
+        <TextBlock Text="Liên hệ &amp; ủng hộ" FontSize="14" FontWeight="SemiBold"
+                   Foreground="{StaticResource TextBrush}" Margin="0,18,0,6"/>
+        <StackPanel>
+            <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="{StaticResource TextBrush}">
+                <Run Text="GitHub: "/>
+                <Hyperlink NavigateUri="https://github.com/nanowind/Printonator" RequestNavigate="Hyperlink_Navigate">
+                    github.com/nanowind/Printonator
+                </Hyperlink>
+                <Run Text="  — thấy hữu ích thì ⭐ rate/review repo để mình phát triển tiếp!"/>
+            </TextBlock>
+            <TextBlock TextWrapping="Wrap" FontSize="11.5" Margin="0,6,0,0">
+                <Run Text="Email: phucnguyenqlcn@gmail.com · Zalo/phone +84 907 907 804"/>
+            </TextBlock>
+        </StackPanel>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,22,0,0">
+            <Button Content="Đóng" Style="{StaticResource RoundedBtn}" Padding="24,7" IsDefault="True" Click="Close_Click"/>
+        </StackPanel>
+    </StackPanel>
+    </ScrollViewer>
+</Window>

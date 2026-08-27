@@ -139,6 +139,24 @@ public class PrintConfigTests
     }
 
     [Fact]
+    public void SummaryText_Shows_Collate_Color_PagesPerSheet()
+    {
+        // Collate gom bản
+        var coll = new PrintConfig { Collation = PrintCollation.ByDocuments };
+        Assert.Contains("gom bản", coll.SummaryText);
+
+        // Collate rời bản
+        var uncoll = new PrintConfig { Collation = PrintCollation.ByPages };
+        Assert.Contains("rời bản", uncoll.SummaryText);
+
+        // "2 mặt theo máy" / "màu theo máy" khi driver quyết (phân biệt từng option), pages-per-sheet luôn hiện
+        var def = new PrintConfig(); // mặc định: ColorMode=AsPrinter, DuplexMode=AsPrinter, PagesPerSheet=1
+        Assert.Contains("2 mặt theo máy", def.SummaryText);   // duplex theo driver (có nhãn)
+        Assert.Contains("màu theo máy", def.SummaryText);     // màu theo driver (có nhãn)
+        Assert.Contains("1-tr/tờ", def.SummaryText);          // pages-per-sheet luôn hiện
+    }
+
+    [Fact]
     public void Preset_RoundTrip_Preserves_NewFields()
     {
         var path = Path.Combine(Path.GetTempPath(), $"printonator-preset-{Guid.NewGuid():N}.json");

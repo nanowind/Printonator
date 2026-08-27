@@ -3,9 +3,9 @@
 
 #define MyAppName "Printonator"
 #define MyAppVersion "0.1.0"
-#define MyAppPublisher "Printonator Project"
+#define MyAppPublisher "Phuc Nguyen"
 #define MyAppExeName "Printonator.UI.exe"
-#define MyAppURL "https://github.com/printonator/printonator"
+#define MyAppURL "https://github.com/nanowind/Printonator"
 
 [Setup]
 AppId={{A1B2C3D4-1234-5678-9ABC-DEF012345678}
@@ -25,6 +25,8 @@ WizardStyle=modern
 SetupIconFile=..\src\Printonator.UI\app.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 VersionInfoVersion={#MyAppVersion}
+; Bản phân phối CHÍNH THỨC: x64 (Windows 10/11 64-bit — phổ biến; Windows 11 toàn 64-bit).
+; Máy x86 32-bit không được hỗ trợ (apphost .NET mặc định x64).
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 ; Yêu cầu Windows 10/11
@@ -40,9 +42,16 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "app\Printonator.UI.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "app\Printonator.UI.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "app\Printonator.UI.pdb"; DestDir: "{app}"; Flags: ignoreversion
 Source: "app\Printonator.Core.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "app\Printonator.Core.pdb"; DestDir: "{app}"; Flags: ignoreversion
+Source: "app\Printonator.Spool.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "app\Printonator.Spool.pdb"; DestDir: "{app}"; Flags: ignoreversion
 Source: "app\Printonator.UI.runtimeconfig.json"; DestDir: "{app}"; Flags: ignoreversion
 Source: "app\Printonator.UI.deps.json"; DestDir: "{app}"; Flags: ignoreversion
+; Các dependency Windows/WinRT — Windows.Data.Pdf (PDF slicing) cần bộ SDK runtime này
+Source: "app\Microsoft.Windows.SDK.NET.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "app\WinRT.Runtime.dll"; DestDir: "{app}"; Flags: ignoreversion
 ; Kiểm tra .NET 8 runtime — cài nếu thiếu (xem [Code])
 
 [Icons]

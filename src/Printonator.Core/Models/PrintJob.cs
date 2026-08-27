@@ -197,6 +197,8 @@ public sealed class PrintConfig
         {
             var paper = PaperSize == PaperCatalog.AsDocument ? "khổ gốc" : PaperSize;
             var parts = new List<string> { $"{Math.Max(Copies, 1)}x", paper };
+
+            // Chế độ in — hiện rõ cả "theo máy" NHƯNG kèm nhãn để phân biệt với màu theo máy
             switch (DuplexMode)
             {
                 case PrintDuplexMode.LongEdge:
@@ -210,17 +212,29 @@ public sealed class PrintConfig
                     break;
                 case PrintDuplexMode.AsPrinter:
                 default:
-                    break; // theo driver → không hiện (không gây hiểu nhầm)
+                    parts.Add("2 mặt theo máy"); // driver quyết 1/2 mặt — ghi rõ đó là mục duplex
+                    break;
             }
-            if (ColorMode is PrintColorMode.Color or PrintColorMode.Grayscale)
-                parts.Add(ColorMode == PrintColorMode.Color ? "Màu" : "B&W");
+
+            // Màu — hiện rõ cả "theo máy", kèm nhãn "màu"
+            parts.Add(ColorMode switch
+            {
+                PrintColorMode.Color => "Màu",
+                PrintColorMode.Grayscale => "B&W",
+                _ => "màu theo máy", // AsPrinter/AsDocument
+            });
+
+            // Gom bản (collate) — được yêu cầu; ẩn "theo driver" (mặc định)
+            if (Collation == PrintCollation.ByDocuments) parts.Add("gom bản");
+            else if (Collation == PrintCollation.ByPages) parts.Add("rời bản");
+
             if (Parity == PageParityFilter.Odd) parts.Add("trang lẻ");
             else if (Parity == PageParityFilter.Even) parts.Add("trang chẵn");
             if (Quality != PrintQuality.AsPrinter) parts.Add($"res:{Quality}");
             if (!string.IsNullOrEmpty(PaperSource))
                 parts.Add($"khay: {PaperSource}");
             if (Booklet) parts.Add("booklet");
-            else if (PagesPerSheet > 1) parts.Add($"{PagesPerSheet}-tr/tờ");
+            else parts.Add($"{PagesPerSheet}-tr/tờ"); // luôn hiện số trang/tờ (1-tr/tờ cho đầy đủ)
             if (ScaleMode is not PrintScaleMode.AsDocument)
                 parts.Add(ScaleMode == PrintScaleMode.Zoom ? $"zoom {ScalePercent}%" : ScaleMode switch
                 {
@@ -249,6 +263,7 @@ public sealed record PrinterInfo
     /// <summary>Danh sách khay giấy (tên thân thiện) máy in hỗ trợ — cho UI chọn Paper source.</summary>
     public string[] Trays { get; init; } = [];
     public bool IsVirtual { get; init; }           // Microsoft Print to PDF...
+    public bool IsDefault { get; init; }            // máy in đang là mặc định của Windows
 
     /// <summary>Dòng trạng thái hiển thị trong UI (không dùng trực tiếp StatusDetail — tự fallback).</summary>
     public string StatusText => StatusDetail ?? (IsAvailable ? "Sẵn sàng" : "Không khả dụng");

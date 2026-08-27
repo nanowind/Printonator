@@ -1,0 +1,50 @@
+<Window x:Class="Printonator.UI.PrintDoneWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="In xong — Printonator"
+        Width="460" Height="Auto" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        Background="#FFFFFF" FontFamily="Segoe UI"
+        ShowInTaskbar="False">
+    <StackPanel Margin="24,20,24,16">
+        <TextBlock Text="✓ Đã in xong" FontSize="17" FontWeight="SemiBold"
+                   Foreground="{StaticResource ReadyBrush}"/>
+        <TextBlock x:Name="DoneText" FontSize="12.5" Foreground="{StaticResource TextBrush}"
+                   TextWrapping="Wrap" Margin="0,10,0,0"/>
+        <TextBlock x:Name="SideNote" FontSize="11.5" Foreground="{StaticResource WarnBrush}"
+                   TextWrapping="Wrap" Margin="0,6,0,0" Visibility="Collapsed"/>
+
+        <!-- Opt-in: xóa file đã in khỏi hàng đợi -->
+        <CheckBox x:Name="RemoveDoneChk" Content="Xóa các file đã in khỏi hàng đợi"
+                  FontSize="12" Foreground="{StaticResource TextBrush}" Margin="0,14,0,0"
+                  IsChecked="True" Cursor="Hand"/>
+
+        <Separator Margin="0,16,0,0"/>
+
+        <!-- About / license / contact (luôn hiển thị để người dùng biết) -->
+        <TextBlock Text="Printonator" FontSize="13" FontWeight="SemiBold"
+                   Foreground="{StaticResource TextBrush}" Margin="0,10,0,0"/>
+        <TextBlock x:Name="VersionText" Text="Bản 1.0.0" FontSize="11"
+                   Foreground="{StaticResource FaintBrush}" Margin="0,2,0,0"/>
+        <TextBlock Text="MIT License — miễn phí, mã nguồn mở. © 2026 Phuc Nguyen"
+                   FontSize="11" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,8,0,0"/>
+        <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource MutedBrush}" Margin="0,6,0,0">
+            <Hyperlink NavigateUri="https://github.com/nanowind/Printonator" RequestNavigate="Hyperlink_Navigate">
+                github.com/nanowind/Printonator
+            </Hyperlink>
+            <LineBreak/>
+            Thấy Printonator hữu ích? Hãy ⭐ rate / review repo để mình phát triển tiếp!
+        </TextBlock>
+        <TextBlock Text="Liên hệ: phucnguyenqlcn@gmail.com · Zalo/phone +84 907 907 804"
+                   FontSize="11" Foreground="{StaticResource FaintBrush}" TextWrapping="Wrap" Margin="0,8,0,0"/>
+        <Button Content="Kiểm tra bản mới" Style="{StaticResource GhostBtn}" Padding="12,5"
+                Margin="0,12,0,0" HorizontalAlignment="Left" Click="CheckUpdate_Click"/>
+        <TextBlock x:Name="UpdateStatusText" FontSize="11" Foreground="{StaticResource MutedBrush}"
+                   TextWrapping="Wrap" Margin="0,6,0,0"/>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
+            <Button Content="OK" Style="{StaticResource RoundedBtn}" Padding="24,7"
+                    IsDefault="True" Click="Ok_Click"/>
+        </StackPanel>
+    </StackPanel>
+</Window>

@@ -14,15 +14,17 @@ public sealed class PrinterService
     public Result<List<PrinterInfo>> ListPrinters()
     {
         var printers = new List<PrinterInfo>();
+        string? defaultName = null;
         try
         {
             using var server = new LocalPrintServer();
+            defaultName = SafeQueueName(server.DefaultPrintQueue);
             var queues = server.GetPrintQueues();
             foreach (var q in queues)
             {
                 try
                 {
-                    printers.Add(Describe(q));
+                    printers.Add(Describe(q, defaultName));
                 }
                 catch (Exception ex)
                 {
@@ -72,7 +74,12 @@ public sealed class PrinterService
         try { return q.Name; } catch { return null; }
     }
 
-    private static PrinterInfo Describe(PrintQueue q)
+    private static string? SafeQueueName(PrintQueue? q)
+    {
+        try { return q?.Name; } catch { return null; }
+    }
+
+    private static PrinterInfo Describe(PrintQueue q, string? defaultName)
     {
         var caps = q.GetPrintCapabilities();
         var status = TryGetStatus(q);
@@ -83,6 +90,8 @@ public sealed class PrinterService
         {
             Name = q.Name,
             IsAvailable = available,
+            IsDefault = !string.IsNullOrEmpty(defaultName)
+                       && q.Name.Equals(defaultName, StringComparison.OrdinalIgnoreCase),
             StatusDetail = status,
             SupportsDuplex = caps.DuplexingCapability.Contains(Duplexing.TwoSidedLongEdge)
                           || caps.DuplexingCapability.Contains(Duplexing.TwoSidedShortEdge),

@@ -77,9 +77,9 @@ public class MainWindowTests
             var list = main.FindFirstDescendant(c => c.ByAutomationId("JobList")).AsListBox();
             var before = list.Items.Length;
 
-            // Không chọn gì — bấm Print all (in tất cả Queued)
+            // Không chọn gì — bấm print chính (in tất cả Queued)
             // Dùng Invoke pattern thay Click() chuột thật — tránh SendInput flaky trong môi trường CI/test-host
-            var printAll = main.FindFirstDescendant(c => c.ByAutomationId("PrintAllBtn")).AsButton();
+            var printAll = main.FindFirstDescendant(c => c.ByAutomationId("PrintMainBtn")).AsButton();
             printAll.Invoke();
             Thread.Sleep(2000);
 

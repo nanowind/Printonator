@@ -28,7 +28,7 @@
 dotnet build Printonator.sln          # build toàn bộ
 dotnet run --project src/Printonator.UI   # chạy app WPF
 
-dotnet test Printonator.sln           # 52 Core + 4 UI tests
+dotnet test Printonator.sln           # 72 Core + 27 UI tests
 
 # MCP server ("AI in giùm") — 9 tools trên http://127.0.0.1:3939/mcp
 dotnet run --project src/Printonator.Mcp
@@ -39,11 +39,11 @@ dotnet run --project src/Printonator.Mcp
 | Item | Chi tiết |
 |---|---|
 | Server | `src/Printonator.Mcp` — HTTP `:3939/mcp` (mặc định) hoặc `--stdio`; **chỉ loopback, không CORS** |
-| Tools (8) | `list_printers`, `print_files`, `print_with_preset`, `get/save_preset`, `list_jobs`, `job_status`, `cancel_job` |
+| Tools (9) | `list_printers`, `print_files`, `get_presets`, `save_preset`, `print_with_preset`, `list_jobs`, `job_status`, `cancel_job`, + approve/job detail |
 | An toàn | `PRINTONATOR_REQUIRE_APPROVE` (mặc định `true` — AI không tự in), `PRINTONATOR_ALLOWED_PRINTERS`, `MAX_PAGES_PER_BATCH=200`, `MAX_COPIES_PER_FILE=100`, audit JSON — **fail-closed** |
 | Engine | Office (DOCX/XLSX/PPTX) in qua Word/Excel/PowerPoint COM; không có app đó hoặc file khác → shell fallback |
 
-Hướng dẫn chi tiết: **[docs/MCP.md](docs/MCP.md)** · Skill agent: `.kilo/skills/printonator-mcp/SKILL.md`
+Hướng dẫn chi tiết: **[docs/MCP.md](docs/MCP.md)**
 
 Ví dụ nhanh (PowerShell) — cho phép AI tự in vào 1 máy:
 ```powershell
@@ -59,9 +59,9 @@ src/
 ├─ Printonator.Core     # Queue engine, state machine, PresetStore (profile), PrintGuard (an toàn AI in)
 ├─ Printonator.Spool    # Windows Spooler/Printer: PrinterService + engine dynamic + native driver dialogs
 ├─ Printonator.Mcp      # MCP server: 8 tools + guard + page-count probe
-└─ Printonator.UI       # WPF: job table, Print Settings (2 cột), search/sort, toast, progress, Printer Config
+└─ Printonator.UI       # WPF: job table, Print Settings (2 cột), search/sort, toast, progress, Printer Config, bell notification, Info/About
 tests/
-├─ Printonator.Core.Tests  # 62 tests (page-range, section, queue, approve, preset, guard, print-config)
+├─ Printonator.Core.Tests  # 72 tests (page-range, section, queue, approve, preset, guard, print-config)
 └─ Printonator.UITests     # 27 tests (FlaUI app thật + engine dynamic: LibreOffice locator, browser CDP params, PDF slicing)
 ```
 
@@ -86,11 +86,20 @@ Bảng **Print settings** mới: page range (All/Ranges), color mode, khay giấ
 | [docs/COMPARISON_PRINT_CONDUCTOR.md](docs/COMPARISON_PRINT_CONDUCTOR.md) | Đối chiếu với Print Conductor (gap + roadmap) |
 | [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md) | Design system Notion-style cho UI |
 
+## Features mới (2026-08)
+
+- **Một nút In ngữ cảnh** — có chọn → "Print (N)", không chọn → "Print all (N)".
+- **Pre-flight confirm** khi lô > 100 tờ — xem tổng tờ + máy in trước khi in.
+- **Bell notification** — danh sách thông báo (in xong, bản mới, lỗi), badge = số chưa đọc.
+- **Nút Info** — changelog (từ GitHub Releases), license MIT, liên hệ/ủng hộ.
+- **Cột Settings rõ ràng** — 2 mặt/màu theo máy, gom bản, N trang/tờ.
+- **Printer Properties đúng** — mở Thuộc tính máy in (General/Sharing/Ports/...) thay vì hardware properties.
+- **Xác nhận in lại** file đã in khi bấm Print all.
+
 ## Roadmap (ưu tiên)
 
-1. **P0**: Engine render PDF slicing thật (cắt page range PDF đúng — PDF viewer browser từ chối ranges; cần lib/dịch vụ nhẹ) → Màn MCP/Safety UI + nút duyệt job `AwaitingApproval` (host MCP in-process trong app)
-2. **v1.x**: Cover/Report page → Gộp PDF single-job → CLI + preset export → Per-file printer
-3. **v2**: Watermark → Post-processing → Watch folder → Email/CAD/HEIC → Security Warning (clone detection) → i18n
+1. **v1.x**: Cover/Report page → Gộp PDF single-job → CLI + preset export → Per-file printer → i18n (EN)
+2. **v2**: Watermark → Post-processing → Watch folder → Email/CAD/HEIC → Security Warning (clone detection) → MCP/Safety UI + nút duyệt job `AwaitingApproval`
 
 ## Giấy phép
 

@@ -16,6 +16,17 @@ tools/*.log.err
 # Build output
 artifacts/
 publish/
+# Compiled app output staged for installer (setup/app) + built installer
+setup/app/
+setup/printonator-setup.exe
+setup/printonator-setup-*.exe
+.wix/**/bin/
+.wix/**/obj/
+# Bundled build tool DLLs
+*.wixext/
+# Test scripts run-logs
+tools/test_printui.log
+tools/test*.log*
 
 # AI workflow / local-only docs & state (never commit)
 .agents-workflow/
@@ -25,7 +36,7 @@ six-phase-workflow/
 .kilo/
 .codex/
 .opencode/
-.agents/skills
+.agents/
 .agents-workflow.env
 AGENTS.md
 CLAUDE.md

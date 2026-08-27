@@ -139,26 +139,102 @@
                                                                                 </Grid>
                                                                             </ToggleButton>
                                                                         </Border>
-                                    <!-- Notification popover (giống Penpot) -->
+                                    <!-- Notification popover (giống Penpot) — danh sách thông báo thật -->
                                     <Popup x:Name="NotifPopup" PlacementTarget="{Binding ElementName=BellToggle}" Placement="Bottom"
                                            StaysOpen="False" AllowsTransparency="True" IsOpen="{Binding IsChecked, ElementName=BellToggle}">
                                         <Border Background="White" BorderBrush="#E5E5E5" BorderThickness="1" CornerRadius="10"
-                                                Width="368" Padding="0" Margin="0,6,0,0">
+                                                Width="380" Padding="0,0,0,4" Margin="0,6,0,0">
                                             <StackPanel>
-                                                <TextBlock Text="Thông báo" FontSize="13" FontWeight="SemiBold" Foreground="#1F1F1F" Margin="16,12,0,8"/>
-                                                <!-- Done-notification (đã in xong) -->
-                                                <Border x:Name="DoneNotif" Background="#F0FDF4" Padding="16,8" BorderBrush="#F0F0F0" BorderThickness="0,1,0,0" Visibility="Collapsed">
-                                                    <StackPanel Orientation="Horizontal">
-                                                        <Border Background="#DCFCE7" CornerRadius="4" Padding="6,2" VerticalAlignment="Top">
-                                                            <TextBlock Text="Done" FontSize="9" Foreground="#16A34A" FontWeight="SemiBold"/>
-                                                        </Border>
-                                                        <StackPanel Margin="10,0,0,0">
-                                                            <TextBlock x:Name="DoneNotifTitle" Text="Đã in xong" FontSize="12" Foreground="#16A34A" FontWeight="Medium"/>
-                                                            <TextBlock x:Name="DoneNotifSub" Text="" FontSize="10" Foreground="#8A8A8A" Margin="0,2,0,0" TextWrapping="Wrap"/>
-                                                        </StackPanel>
-                                                    </StackPanel>
-                                                </Border>
-                                                <!-- Vùng trống khi chưa có thông báo nào (item real duy nhất là Done sau khi in xong) -->
+                                                <DockPanel Margin="16,12,14,8">
+                                                    <TextBlock Text="Thông báo" FontSize="14" FontWeight="SemiBold" Foreground="#1F1F1F" VerticalAlignment="Center"/>
+                                                    <!-- Nút kiểm tra bản mới — kiểu link nhỏ gọn, không đè chữ "Thông báo" -->
+                                                    <Button DockPanel.Dock="Right" Content="Kiểm tra bản mới"
+                                                            Background="Transparent" BorderThickness="0" Foreground="{StaticResource MutedBrush}"
+                                                            FontSize="11" Padding="6,3" Cursor="Hand" Click="BellCheckUpdate_Click"
+                                                            ToolTip="Kiểm tra xem có phiên bản mới của Printonator không"
+                                                            HorizontalAlignment="Right"/>
+                                                </DockPanel>
+                                                <!-- Danh sách thông báo (thay thế card đơn cũ) — dùng DataTrigger theo Kind để chọn màu, không cần converter -->
+                                                <ItemsControl ItemsSource="{Binding Notifications}" MaxHeight="300">
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate>
+                                                            <StackPanel/>
+                                                        </ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Button BorderThickness="0"
+                                                                    HorizontalContentAlignment="Stretch" Click="NotifItem_Click"
+                                                                    ToolTip="{Binding Detail}" Tag="{Binding Id}">
+                                                                <Button.Style>
+                                                                    <Style TargetType="Button">
+                                                                        <Setter Property="Background" Value="Transparent"/>
+                                                                        <Setter Property="Template">
+                                                                            <Setter.Value>
+                                                                                <ControlTemplate TargetType="Button">
+                                                                                    <Grid Background="{TemplateBinding Background}">
+                                                                                        <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center" Margin="14,10"/>
+                                                                                        <Border BorderBrush="#F0F0F0" BorderThickness="0,0,0,1" VerticalAlignment="Bottom"/>
+                                                                                    </Grid>
+                                                                                </ControlTemplate>
+                                                                            </Setter.Value>
+                                                                        </Setter>
+                                                                        <Style.Triggers>
+                                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                                <Setter Property="Background" Value="#F7F7F7"/>
+                                                                            </Trigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </Button.Style>
+                                                                <StackPanel>
+                                                                    <StackPanel Orientation="Horizontal">
+                                                                        <Border CornerRadius="5" Padding="7,2" VerticalAlignment="Top">
+                                                                            <Border.Style>
+                                                                                <Style TargetType="Border">
+                                                                                    <Setter Property="Background" Value="#DCFCE7"/>  <!-- Done: xanh -->
+                                                                                    <Style.Triggers>
+                                                                                        <DataTrigger Binding="{Binding Kind}" Value="Update">
+                                                                                            <Setter Property="Background" Value="#FEF3C7"/>  <!-- Update: cam -->
+                                                                                        </DataTrigger>
+                                                                                        <DataTrigger Binding="{Binding Kind}" Value="Warning">
+                                                                                            <Setter Property="Background" Value="#FEE2E2"/>  <!-- Warning: đỏ -->
+                                                                                        </DataTrigger>
+                                                                                    </Style.Triggers>
+                                                                                </Style>
+                                                                            </Border.Style>
+                                                                            <TextBlock FontSize="9" FontWeight="SemiBold" TextAlignment="Center">
+                                                                                <TextBlock.Style>
+                                                                                    <Style TargetType="TextBlock">
+                                                                                        <Setter Property="Text" Value="Done"/>
+                                                                                        <Setter Property="Foreground" Value="#16A34A"/>
+                                                                                        <Style.Triggers>
+                                                                                            <DataTrigger Binding="{Binding Kind}" Value="Update">
+                                                                                                <Setter Property="Text" Value="Update"/>
+                                                                                                <Setter Property="Foreground" Value="#B45309"/>
+                                                                                            </DataTrigger>
+                                                                                            <DataTrigger Binding="{Binding Kind}" Value="Warning">
+                                                                                                <Setter Property="Text" Value="Lỗi"/>
+                                                                                                <Setter Property="Foreground" Value="#B91C1C"/>
+                                                                                            </DataTrigger>
+                                                                                        </Style.Triggers>
+                                                                                    </Style>
+                                                                                </TextBlock.Style>
+                                                                            </TextBlock>
+                                                                        </Border>
+                                                                        <TextBlock Text="{Binding Title}" FontSize="12" FontWeight="Medium"
+                                                                                   Foreground="{StaticResource TextBrush}" Margin="10,0,0,0" VerticalAlignment="Center"
+                                                                                   TextTrimming="CharacterEllipsis"/>
+                                                                    </StackPanel>
+                                                                    <TextBlock Text="{Binding Detail}" FontSize="10" Foreground="{StaticResource MutedBrush}"
+                                                                               Margin="0,4,0,0" TextWrapping="Wrap" MaxWidth="300"/>
+                                                                    <TextBlock Text="{Binding TimeText}" FontSize="9" Foreground="{StaticResource FaintBrush}"
+                                                                               Margin="0,4,0,0" HorizontalAlignment="Right"/>
+                                                                </StackPanel>
+                                                            </Button>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                                <!-- Vùng trống khi chưa có thông báo nào -->
                                                 <TextBlock x:Name="NotifEmptyText" Text="Không có thông báo mới" FontSize="11"
                                                            Foreground="{StaticResource FaintBrush}" Margin="16,6,0,14"
                                                            Visibility="Collapsed"/>
@@ -180,16 +256,21 @@
                 <Ellipse x:Name="PrinterStatusDot" Width="10" Height="10" Fill="{StaticResource ReadyBrush}"
                          VerticalAlignment="Center" Margin="12,0,12,0" Stroke="#FFFFFF" StrokeThickness="1.5"
                          ToolTip="Trạng thái máy in" RenderOptions.EdgeMode="Aliased"/>
+                <!-- Nhắc khi khởi động: xác nhận đã chọn đúng máy in (tránh in lộn máy) — tự ẩn sau vài giây -->
+                <Border x:Name="PrinterReminder" Background="#FFF9ED" BorderBrush="#EAB308" BorderThickness="1"
+                        CornerRadius="6" Padding="8,4" Margin="0,0,8,0" VerticalAlignment="Center" Visibility="Collapsed"
+                        ToolTip="Kiểm tra máy in bên cạnh đã đúng máy bạn muốn in chưa">
+                    <TextBlock Text="Kiểm tra máy in ✓" FontSize="11" Foreground="#92400E" FontWeight="SemiBold"/>
+                </Border>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-<Button Content="Print selected" x:Name="PrintSelectedBtn" Style="{StaticResource GhostBtn}"
-                                              Click="PrintSelected_Click" Padding="12,6" Margin="0,0,8,0"/>
-                                     <Button Content="Print settings" Style="{StaticResource GhostBtn}" Click="PrintSettings_Click"
+<Button Content="Print settings" Style="{StaticResource GhostBtn}" Click="PrintSettings_Click"
                                               Padding="14,6" Margin="0,0,8,0" AutomationProperties.AutomationId="PrintSettingsBtn"
                                               ToolTip="Bảng cấu hình in đầy đủ: page range, màu, khay giấy, scale, N-up, profile + dialog native của driver"/>
                                      <Button Content="Printers" Style="{StaticResource GhostBtn}"
                                               Click="Printers_Click" Padding="12,6" Margin="0,0,8,0"/>
-                                     <Button Content="Print all" x:Name="PrintAllBtn" Style="{StaticResource RoundedBtn}"
-                                              Padding="18,7" Click="PrintAll_Click"/>
+                                     <!-- Một nút print DUY NHẤT (ngữ cảnh): có chọn → "Print (N)", không chọn → "Print all (N)" -->
+                                     <Button Content="Print all" x:Name="PrintMainBtn" Style="{StaticResource RoundedBtn}"
+                                              Padding="18,7" Click="PrintMain_Click" AutomationProperties.AutomationId="PrintMainBtn"/>
                                  </StackPanel>
             </DockPanel>
         </Border>
@@ -226,15 +307,15 @@
                                             <ColumnDefinition Width="16"/>
                                             <ColumnDefinition Width="52"/>
                                             <ColumnDefinition Width="14"/>
-                                            <ColumnDefinition Width="296"/>
+                                            <ColumnDefinition Width="3*"/>
                                             <ColumnDefinition Width="16"/>
                                             <ColumnDefinition Width="116"/>
                                             <ColumnDefinition Width="16"/>
-                                            <ColumnDefinition Width="270"/>
+                                            <ColumnDefinition Width="2.5*"/>
                                             <ColumnDefinition Width="16"/>
-                                            <ColumnDefinition Width="90"/>
+                                            <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="16"/>
-                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="2*"/>
                                         </Grid.ColumnDefinitions>
                                         <!-- Chọn tất cả / bỏ chọn (header của cột checkbox) — click: chưa chọn hết → chọn hết; đã chọn hết → bỏ hết -->
                                         <CheckBox Grid.Column="0" Grid.ColumnSpan="2" x:Name="SelectAllChk"
@@ -248,7 +329,8 @@
                                                ToolTip="Bấm để sắp xếp" PreviewMouseLeftButtonDown="Sort_Column"/>
                                         <TextBlock Grid.Column="7" Text="Settings" x:Name="SortSettings" Tag="Settings" Cursor="Hand"
                                                Foreground="{StaticResource MutedBrush}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"
-                                               ToolTip="Bấm để sắp xếp" PreviewMouseLeftButtonDown="Sort_Column"/>
+                                               ToolTip="Cấu hình in của file: Nx (số bản) · khổ giấy · 2 mặt / 2 mặt theo máy · màu / màu theo máy · gom/rời bản · N-tr/tờ (số trang trên tờ). Nhấn để sắp xếp·Bấm vào ô để chỉnh"
+                                               PreviewMouseLeftButtonDown="Sort_Column"/>
                                         <TextBlock Grid.Column="9" Text="Status" x:Name="SortStatus" Tag="Status" Cursor="Hand"
                                                Foreground="{StaticResource MutedBrush}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"
                                                ToolTip="Bấm để sắp xếp" PreviewMouseLeftButtonDown="Sort_Column"/>
@@ -323,15 +405,15 @@
                                                                     <ColumnDefinition Width="16"/>
                                                                     <ColumnDefinition Width="52"/>
                                                                     <ColumnDefinition Width="14"/>
-                                                                    <ColumnDefinition Width="296"/>
+                                                                    <ColumnDefinition Width="3*"/>
                                                                     <ColumnDefinition Width="16"/>
                                                                     <ColumnDefinition Width="116"/>
                                                                     <ColumnDefinition Width="16"/>
-                                                                    <ColumnDefinition Width="270"/>
+                                                                    <ColumnDefinition Width="2.5*"/>
                                                                     <ColumnDefinition Width="16"/>
-                                                                    <ColumnDefinition Width="90"/>
+                                                                    <ColumnDefinition Width="Auto"/>
                                                                     <ColumnDefinition Width="16"/>
-                                                                    <ColumnDefinition Width="*"/>
+                                                                    <ColumnDefinition Width="2*"/>
                                                                 </Grid.ColumnDefinitions>
                                                                 <!-- checkbox -->
                                                                 <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" VerticalAlignment="Center"/>
@@ -341,10 +423,10 @@
                                                                                FontWeight="SemiBold" TextAlignment="Center"/>
                                                                 </Border>
                                                                 <!-- name + reloaded badge -->
-                                                                <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center">
+                                                                <WrapPanel Grid.Column="3" VerticalAlignment="Center" Orientation="Horizontal">
                                                                     <TextBlock Text="{Binding FileName}" Foreground="{StaticResource TextBrush}"
                                                                                FontSize="13" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                                                                               ToolTip="{Binding FilePath}" MaxWidth="260">
+                                                                               ToolTip="{Binding FilePath}">
                                                                         <TextBlock.InputBindings>
                                                                             <MouseBinding MouseAction="LeftDoubleClick" Command="{Binding DataContext.OpenFileCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                                                           CommandParameter="{Binding}"/>
@@ -365,7 +447,7 @@
                                                                         </Border.Style>
                                                                         <TextBlock Text="↻ Reloaded" FontSize="9" FontWeight="SemiBold" Foreground="#CA8A04"/>
                                                                     </Border>
-                                                                </StackPanel>
+                                                                </WrapPanel>
                                                                 <!-- pages to print — bấm mở popup chọn Tất cả / khoảng trang -->
                                                                 <Border Grid.Column="5" x:Name="PagesCell" Background="#FFFFFF"
                                                                         BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
@@ -429,7 +511,7 @@
                                                                 <!-- settings — bấm trực tiếp để mở cấu hình in của file (thay vì chỉ chuột phải → menu) -->
                                                                                                 <TextBlock Grid.Column="7" VerticalAlignment="Center"
                                                                                                            Text="{Binding Config.SummaryText, Mode=OneWay}"
-                                                                                                           TextTrimming="CharacterEllipsis" Cursor="Hand"
+                                                                                                           TextWrapping="Wrap" TextTrimming="CharacterEllipsis" Cursor="Hand"
                                                                                                            MouseLeftButtonUp="SettingsCell_Click"
                                                                                                            ToolTip="Bấm để mở cấu hình in của file này"/>
                                                                 <!-- status pill -->
@@ -487,7 +569,7 @@
                                 </Border>
                                 <!-- error -->
                                 <TextBlock Grid.Column="11" Text="{Binding Error.Message}" Foreground="{StaticResource ErrorBrush}"
-                                           FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                           FontSize="12" VerticalAlignment="Center" TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
                                            ToolTip="{Binding Error.Hint}"/>
                             </Grid>
                         </Border>
@@ -544,15 +626,13 @@
                     <ProgressBar x:Name="FooterProgress" Width="150" Height="6" Minimum="0" Maximum="100" Value="0"
                                  Foreground="{StaticResource ReadyBrush}" Background="#E5E5E5" BorderThickness="0"/>
                 </StackPanel>
-                <!-- Tick: tự xóa file đã in khỏi hàng đợi -->
-                <CheckBox x:Name="AutoRemoveChk" Content="Tự xóa file đã in" FontSize="11"
-                          Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="20,0,0,0"
-                          ToolTip="Sau khi in xong (Done), tự gỡ file khỏi hàng đợi" Cursor="Hand"
-                          Checked="AutoRemoveChk_Toggled" Unchecked="AutoRemoveChk_Toggled"/>
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
-                                    <Ellipse Width="9" Height="9" Fill="{StaticResource ReadyBrush}" VerticalAlignment="Center"/>
+                <!-- (Xóa file đã in khỏi hàng đợi giờ nằm TRONG popup 'In xong' — không có tick ở footer nữa) -->
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="24,0,12,0">
                                     <TextBlock x:Name="FooterHint" Text="Nhấp = mở · đúp = sửa &amp; reload · Ctrl/Shift = chọn · chuột phải = menu"
-                                               FontSize="11" Foreground="{StaticResource FaintBrush}" Margin="6,0,0,0"/>
+                                               FontSize="11" Foreground="{StaticResource FaintBrush}" VerticalAlignment="Center" Margin="0,0,14,0"/>
+                                    <!-- Nút Info — mở changelog + about + contact + license -->
+                                    <Button Content="ℹ️ Info" Style="{StaticResource GhostBtn}" Padding="10,4" FontSize="10.5"
+                                            Click="Info_Click" ToolTip="Thông tin, thay đổi phiên bản, liên hệ và giấy phép"/>
                                 </StackPanel>
             </DockPanel>
         </Border>

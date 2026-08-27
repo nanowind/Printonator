@@ -23,8 +23,9 @@ public partial class MainWindow : Window
     private readonly DispatcherTimer _toastTimer = new() { Interval = TimeSpan.FromSeconds(4) };
     private string? _sortColumn;
     private bool _sortDescending;
-    private bool _autoRemovePrinted;   // tick "Tự xóa file đã in" (footer) — mặc định tắt
-    private int _printDoneCount;       // số lô đã in xong → badge bell
+
+    /// <summary>Danh sách thông báo hiển thị trong bell. Badge = số thông báo chưa đọc.</summary>
+    public ObservableCollection<AppNotification> Notifications { get; } = new();
 
     /// <summary>Cấu hình mặc định cho FILE MỚI (thay thế bảng Paper setup cũ) — áp khi thêm file.</summary>
     private readonly PrintConfig _defaultConfig = new();
@@ -38,14 +39,10 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = this;
-        LoadUiSettings();
-        AutoRemoveChk.IsChecked = _autoRemovePrinted;
         BellBadgeBorder.Visibility = Visibility.Collapsed;
-        DoneNotif.Visibility = Visibility.Collapsed;
-        NotifEmptyText.Visibility = Visibility.Visible; // chưa in xong lô nào → "Không có thông báo mới"
+        Notifications.CollectionChanged += (_, _) => UpdateNotificationBadge();
         JobList.SelectionChanged += OnSelectionChanged;
         _queue.JobStateChanged += OnJobStateChanged;
-        _queue.AllJobsCompleted += OnAllCompleted;
         _toastTimer.Tick += (_, _) =>
         {
             _toastTimer.Stop();
@@ -77,8 +74,32 @@ public partial class MainWindow : Window
         _queue.RegisterEngine(new SpoolPrintEngine());
         LoadPrinters();
         _queue.MaxRetries = 2;
+        _ = CheckForUpdatesSilentAsync();   // kiểm tra bản mới nền khi app mở — thông báo vào bell nếu có
         await Task.CompletedTask;
     }
+
+    /// <summary>Chạy update check nền ngay khi mở app (không làm phiền nếu không có bản mới).</summary>
+    private async Task CheckForUpdatesSilentAsync()
+    {
+        await Task.Run(async () =>
+        {
+            try
+            {
+                var info = await new UpdateChecker(CurrentVersion()).CheckAsync(CancellationToken.None);
+                if (info is null) return; // không có bản mới — im lặng
+                _ = Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    AddNotification(NotificationKind.Update, $"Có bản mới {info.Version}",
+                        info.Name, act: () => PromptAndInstallUpdate(info));
+                }));
+            }
+            catch { /* lỗi mạng — im lặng, không làm hỏng app */ }
+        });
+    }
+
+    /// <summary>Phiên bản app hiện tại (đọc assembly).</summary>
+    private static Version CurrentVersion()
+        => System.Reflection.Assembly.GetExecutingAssembly().GetName().Version ?? new Version(0, 1, 0);
 
     private void LoadPrinters()
     {
@@ -90,9 +111,32 @@ public partial class MainWindow : Window
         }
         var printers = r.Value!;
         PrinterCombo.ItemsSource = printers;
-        SelectedPrinter = printers.FirstOrDefault(p => p.IsAvailable) ?? printers.FirstOrDefault();
+        // Ưu tiên máy in đang là mặc định của Windows; nếu không có default (hoặc default lỗi)
+        // thì chọn máy khả dụng đầu tiên.
+        SelectedPrinter = printers.FirstOrDefault(p => p.IsDefault && p.IsAvailable)
+                          ?? printers.FirstOrDefault(p => p.IsDefault)
+                          ?? printers.FirstOrDefault(p => p.IsAvailable)
+                          ?? printers.FirstOrDefault();
         if (SelectedPrinter is not null) PrinterCombo.SelectedItem = SelectedPrinter;
         UpdatePrinterDot();
+        ShowPrinterReminder();
+    }
+
+    // Nhắc khi khởi động: hiện "Kiểm tra máy in ✓" cạnh hộp chọn, tự ẩn sau 6s.
+    private void ShowPrinterReminder()
+    {
+        if (PrinterReminder is null) return;
+        PrinterReminder.Visibility = System.Windows.Visibility.Visible;
+        PrinterReminder.Opacity = 1;
+        var t = new DispatcherTimer { Interval = TimeSpan.FromSeconds(6) };
+        t.Tick += (_, _) =>
+        {
+            t.Stop();
+            PrinterReminder.BeginAnimation(System.Windows.Controls.Control.OpacityProperty,
+                new System.Windows.Media.Animation.DoubleAnimation(0, TimeSpan.FromMilliseconds(600)));
+            PrinterReminder.Visibility = System.Windows.Visibility.Collapsed;
+        };
+        t.Start();
     }
 
     private void UpdatePrinterDot()
@@ -468,6 +512,7 @@ public partial class MainWindow : Window
         BulkCountText.Text = $"{count} files selected";
         BulkBar.Visibility = count > 0 ? Visibility.Visible : Visibility.Collapsed;
         SyncSelectAllState();
+        UpdateFooter(); // in-ngữ-cảnh: nút Print (N) cập nhật theo selection
         if (count > 0)
         {
             FooterHint.Text = $"Gợi ý: Ctrl+Click chọn rời · Shift+Click chọn dải · Ctrl+A chọn hết · Delete = xóa · Chuột phải = menu thao tác";
@@ -568,11 +613,20 @@ public partial class MainWindow : Window
         UpdateFooter();
     }
 
-    private void PrintAll_Click(object sender, RoutedEventArgs e)
+    // Nút print duy nhất (ngữ cảch): có chọn → in các file Selected đang Queued; không chọn → in tất cả Queued.
+    private void PrintMain_Click(object sender, RoutedEventArgs e)
     {
-        // In tất cả job đang CHỜ (Queued) — không tự in lại job đã xong/lỗi
-        // (muốn in lại job cũ → chọn nó rồi bấm Print selected)
-        var ready = Jobs.Where(j => j.State == JobState.Queued).ToList();
+        var selected = JobList.SelectedItems.OfType<PrintJob>()
+            .Where(j => j.State == JobState.Queued).ToList();
+        if (selected.Count > 0)
+        {
+            PrintJobs(selected, $"in {selected.Count} file đã chọn");
+            return;
+        }
+
+        // Không chọn → in tất cả job ĐÁNG IN (Queued + Done/Error/Cancelled — để print all có thể
+        // in lại file đã in khi user đồng ý qua confirm). PrintJobs sẽ hỏi nếu có file Done.
+        var ready = Jobs.Where(j => j.State is JobState.Queued or JobState.Done or JobState.Error or JobState.Cancelled).ToList();
         if (ready.Count == 0)
         {
             ShowBanner(ErrorCodes.NoFilesSelected, "Không có file nào ở trạng thái chờ in.", "Thêm file hoặc chọn file đã in để in lại.");
@@ -581,23 +635,34 @@ public partial class MainWindow : Window
         PrintJobs(ready, $"in tất cả ({ready.Count} file)");
     }
 
-    // In các file đang chọn — nút riêng, không phải Print all
-    private void PrintSelected_Click(object sender, RoutedEventArgs e)
-    {
-        var selected = JobList.SelectedItems.OfType<PrintJob>()
-            .Where(j => j.State == JobState.Queued).ToList();
-        if (selected.Count == 0)
-        {
-            ShowBanner(ErrorCodes.NoFilesSelected, "Chưa chọn file nào ở trạng thái chờ in.", "Chọn file rồi bấm Print selected.");
-            return;
-        }
-        PrintJobs(selected, $"in {selected.Count} file đã chọn");
-    }
-
     private void PrintJobs(List<PrintJob> jobs, string action)
     {
         var ready = jobs.Where(j => j.State is JobState.Queued or JobState.Done or JobState.Error or JobState.Cancelled).ToList();
         if (ready.Count == 0) { ShowBanner(ErrorCodes.NoFilesSelected, "Không có file nào ở trạng thái chờ in.", ""); return; }
+
+        // ===== Xác nhận IN LẠI file đã in trước đó =====
+        // Nếu user KHÔNG xóa file đã in (Done) khỏi hàng đợi, bấm in tiếp sẽ gộp luôn các file Done
+        // đó — nghĩa là in lại chúng (tốn giấy/mực). Phải cho user quyết: in lại hết / bỏ qua file đã in.
+        var alreadyPrinted = ready.Where(j => j.State == JobState.Done).ToList();
+        if (alreadyPrinted.Count > 0)
+        {
+            var ask = MessageBox.Show(
+                $"Có {alreadyPrinted.Count} file đã in xong trước đó trong hàng đợi.\n\n" +
+                "Chọn Có = in lại TẤT CẢ (kể cả file đã in).\n" +
+                "Chọn Không = chỉ in các file chưa in (bỏ qua file đã in).\n" +
+                "Chọn Hủy = không in gì cả.",
+                "Printonator — In lại file đã in?", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+            if (ask == MessageBoxResult.Cancel) return;
+            if (ask == MessageBoxResult.No)
+                ready = ready.Where(j => j.State != JobState.Done).ToList();
+            // Yes → giữ nguyên ready (in lại tất cả kể cả Done)
+            if (ready.Count == 0)
+            {
+                ShowBanner(ErrorCodes.NoFilesSelected, "Không còn file nào để in (đã bỏ qua file đã in).", "");
+                return;
+            }
+        }
+
         // Gắn máy in ĐANG CHỌN trên thanh công cụ cho MỌI job — máy in là lựa chọn toàn cục của batch.
         // (Trước đây dùng ??= chỉ gắn cho job CHƯA có máy → job giữ máy cũ ghi lúc thêm file,
         //  nên đổi combo sang LBP vẫn in vào "Microsoft Print to PDF".)
@@ -620,6 +685,52 @@ public partial class MainWindow : Window
         ShowToast($"Bắt đầu {action}...");
         JobList.Items.Refresh();
         UpdateFooter();
+
+        // Batch-done: chờ MỌI job trong lô về trạng thái cuối (Done/Error/Cancelled) rồi fire
+        // OnAllCompleted MỘT lần. Đây là điểm quyết định chính xác — thay cho debounce trong
+        // Core (không đáng tin khi engine nhanh → popup nhảy theo từng file).
+        _ = WaitBatchDoneAsync(ready);
+    }
+
+    /// <summary>Chờ toàn bộ job trong lô về trạng thái cuối, rồi fire completion 1 lần.</summary>
+    private async Task WaitBatchDoneAsync(List<PrintJob> batch)
+    {
+        var terminal = new[] { JobState.Done, JobState.Error, JobState.Cancelled };
+        var toWait = new HashSet<PrintJob>(batch);
+        try
+        {
+            while (toWait.Count > 0)
+            {
+                // Chờ job tiếp theo chưa xong
+                var pending = toWait.Where(j => !terminal.Contains(j.State)).ToList();
+                if (pending.Count == 0) break;
+
+                var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                Action<PrintJob> handler = _ => { };   // reassigned bên dưới
+                handler = j =>
+                {
+                    if (pending.Contains(j))
+                    {
+                        _queue.JobStateChanged -= handler;
+                        tcs.TrySetResult(true);
+                    }
+                };
+                _queue.JobStateChanged += handler;
+                // Tránh race nếu job xong ngay trước khi đăng ký
+                if (pending.All(j => terminal.Contains(j.State)))
+                {
+                    _queue.JobStateChanged -= handler;
+                    tcs.TrySetResult(true);
+                }
+                await tcs.Task;
+                toWait.RemoveWhere(j => terminal.Contains(j.State));
+            }
+        }
+        catch (Exception) { /* dù lỗi vẫn cố báo completion */ }
+
+        // Không còn job nào trong lô đang chạy → completion 1 lần
+        try { await Dispatcher.BeginInvoke(new Action(() => OnAllCompleted())); }
+        catch { }
     }
 
     /// <summary>Ép máy in đang chọn lên job — máy in thanh công cụ luôn thắng máy cũ đã ghi trong config.</summary>
@@ -643,11 +754,19 @@ public partial class MainWindow : Window
         LoadPrinters(); // sau khi đóng — nạp lại trạng thái mới
     }
 
-    // Mở/đóng popover thông báo khi bấm bell
+    /// <summary>Nút Info (footer góc phải) — mở cửa sổ về changelog, license, liên hệ.</summary>
+    private void Info_Click(object sender, RoutedEventArgs e)
+        => AboutWindow.Show(this);
+
+    // Mở/đóng popover thông báo khi bấm bell; khi mở → đánh dấu tất cả ĐÃ ĐỌC (badge về 0).
     private void BellToggle_Changed(object sender, RoutedEventArgs e)
     {
-        // Popup IsOpen đã bind theo IsChecked — chỉ cần sync trạng thái badge
         NotifPopup.IsOpen = BellToggle.IsChecked == true;
+        if (BellToggle.IsChecked == true)
+        {
+            foreach (var n in Notifications) n.Read = true;
+            UpdateNotificationBadge();   // badge = unread (0)
+        }
     }
 
     private void OnJobStateChanged(PrintJob job)
@@ -659,27 +778,101 @@ public partial class MainWindow : Window
             // Refresh dòng để binding trạng thái (✓ Done / màu lỗi) cập nhật — PrintJob không INPC
             JobList.Items.Refresh();
             UpdateFooter();
-            if (job.State == JobState.Done && _autoRemovePrinted)
-                ScheduleAutoRemove(job);
+            // (Xóa file đã in khỏi hàng đợi do popup 'In xong' quyết — không tự xóa âm thầm nữa)
         });
     }
 
     private void OnAllCompleted()
     {
-        Dispatcher.Invoke(() =>
+        // Dùng BeginInvoke (bất đồng bộ, KHÔNG block) — OnAllCompleted fire từ threadpool timer.
+        Dispatcher.BeginInvoke(new Action(() =>
         {
-            _printDoneCount++;
             var done = Jobs.Count(j => j.State == JobState.Done);
-            DoneNotifTitle.Text = $"Đã in xong {done} file";
-            DoneNotifSub.Text = $"{DateTime.Now:HH:mm} · {(_autoRemovePrinted ? "sẽ tự rời khỏi hàng đợi" : "vẫn giữ file trong hàng đợi")}";
-            DoneNotif.Visibility = Visibility.Visible;
-            NotifEmptyText.Visibility = Visibility.Collapsed;
-            BellBadge.Text = _printDoneCount.ToString();
-            BellBadgeBorder.Visibility = Visibility.Visible;
+
+            // Thông báo vào danh sách bell (KHÔNG còn card đơn bị ghi đè — mỗi lô một item).
+            AddNotification(NotificationKind.Done,
+                $"Đã in xong {done} file",
+                $"{DateTime.Now:HH:mm}");
             ShowToast($"Đã in xong tất cả ({done} file).");
+
+            // Popup hoàn tất — user quyết có xóa file đã in không (không tự xóa âm thầm).
+            var remove = PrintDoneWindow.Show(this, done, Jobs.ToList(), AppVersion);
+            if (remove)
+            {
+                var removes = Jobs.Where(j => j.State == JobState.Done).ToList();
+                foreach (var j in removes) _queue.RemoveJob(j);
+                JobList.Items.Refresh();
+            }
+
             UpdateFooter();
-        });
+        }));
     }
+
+    /// <summary>Thêm một thông báo vào danh sách bell; cập nhật badge = số chưa đọc.</summary>
+    private void AddNotification(NotificationKind kind, string title, string detail, Action? act = null)
+    {
+        Notifications.Add(new AppNotification(kind, title, detail, act));
+    }
+
+    /// <summary>Badge bell = số thông báo chưa đọc; ẩn khi không có gì. Cũng sync trạng thái rỗng.</summary>
+    private void UpdateNotificationBadge()
+    {
+        var unread = Notifications.Count(n => !n.Read);
+        BellBadge.Text = unread.ToString();
+        BellBadgeBorder.Visibility = unread > 0 ? Visibility.Visible : Visibility.Collapsed;
+        NotifEmptyText.Visibility = Notifications.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>Bấm 1 item thông báo: đánh dấu đọc + chạy hành động (vd download/install update).</summary>
+    private void NotifItem_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.Tag is Guid id)
+        {
+            var n = Notifications.FirstOrDefault(x => x.Id == id);
+            if (n is null) return;
+            n.Read = true;
+            UpdateNotificationBadge();
+            n.Act?.Invoke();
+        }
+        e.Handled = true;
+    }
+
+    /// <summary>Nút "Kiểm tra bản mới" trong bell — chạy update check nền, thêm thông báo nếu có bản mới.</summary>
+    private async void BellCheckUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        BellBadgeBorder.Visibility = Visibility.Visible;
+        BellBadge.Text = "…";
+        var info = await new UpdateChecker(CurrentVersion()).CheckAsync(CancellationToken.None);
+        if (info is null)
+        {
+            AddNotification(NotificationKind.Warning, "Bạn đang dùng bản mới nhất", AppVersion);
+            return;
+        }
+        AddNotification(NotificationKind.Update, $"Có bản mới {info.Version}",
+            info.Name, act: () => PromptAndInstallUpdate(info));
+    }
+
+    /// <summary>Xác nhận + tải + xác thực SHA-256 + chạy installer (GUI, không cài im lặng).</summary>
+    private async void PromptAndInstallUpdate(UpdateInfo info)
+    {
+        var ask = MessageBox.Show(
+            $"Có bản mới {info.Version}.\n\n{info.Notes}\n\nTải và cài?", "Printonator — Bản cập nhật",
+            MessageBoxButton.YesNo, MessageBoxImage.Information);
+        if (ask != MessageBoxResult.Yes) return;
+
+        var path = await info.DownloadAsync(CancellationToken.None);
+        if (path is null) { MessageBox.Show("Không tải được bản cập nhật.", "Printonator", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+        if (!await info.VerifySha256Async(path, info.InstallerSha256))
+        {
+            MessageBox.Show("Bản tải về không khớp checksum — đã hủy.", "Printonator", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        if (!info.LaunchInstaller(path))
+            MessageBox.Show("Không khởi động được trình cài đặt.", "Printonator", MessageBoxButton.OK, MessageBoxImage.Error);
+    }
+
+    private static string AppVersion =>
+        System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.0";
 
     // ===== Tick "Tự xóa file đã in" + lưu cài đặt UI =====
     /// <summary>
@@ -721,53 +914,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private static string UiSettingsPath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Printonator", "ui.json");
-
-    private void LoadUiSettings()
-    {
-        try
-        {
-            if (File.Exists(UiSettingsPath)
-                && JsonSerializer.Deserialize<JsonElement>(File.ReadAllText(UiSettingsPath)) is JsonElement j
-                && j.TryGetProperty("autoRemovePrinted", out var v) && v.ValueKind == JsonValueKind.True)
-                _autoRemovePrinted = true;
-        }
-        catch { }
-    }
-
-    private void SaveUiSettings()
-    {
-        try
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(UiSettingsPath)!);
-            File.WriteAllText(UiSettingsPath, JsonSerializer.Serialize(new { autoRemovePrinted = _autoRemovePrinted }));
-        }
-        catch { }
-    }
-
-    private void AutoRemoveChk_Toggled(object sender, RoutedEventArgs e)
-    {
-        _autoRemovePrinted = AutoRemoveChk.IsChecked == true;
-        SaveUiSettings();
-    }
-
-    /// <summary>Chờ 1 nhịp rồi gỡ file đã in (Done) khỏi hàng đợi nếu vẫn thỏa điều kiện.</summary>
-    private void ScheduleAutoRemove(PrintJob job)
-    {
-        _ = Task.Run(async () =>
-        {
-            await Task.Delay(2500);
-            Dispatcher.Invoke(() =>
-            {
-                if (!_autoRemovePrinted || job.State != JobState.Done || !Jobs.Contains(job)) return;
-                _queue.RemoveJob(job);
-                JobList.Items.Refresh();
-                UpdateFooter();
-            });
-        });
-    }
-
     private void UpdateFooter()
     {
         var total = Jobs.Count;
@@ -790,9 +936,12 @@ public partial class MainWindow : Window
                 ? System.Windows.Shell.TaskbarItemProgressState.Normal
                 : (total > 0 ? System.Windows.Shell.TaskbarItemProgressState.None : System.Windows.Shell.TaskbarItemProgressState.None);
 
-        // "Print all (N)" — số job đang chờ (Penpot gap)
+        // Nút print duy nhất — ngữ cảnh: có chọn → "Print (N)", không chọn → "Print all (N)" theo số Queued
         var queued = Jobs.Count(j => j.State == JobState.Queued);
-        PrintAllBtn.Content = queued > 0 ? $"Print all ({queued})" : "Print all";
+        var selQueued = JobList.SelectedItems.OfType<PrintJob>().Count(j => j.State == JobState.Queued);
+        PrintMainBtn.Content = selQueued > 0
+            ? $"Print ({selQueued})"
+            : (queued > 0 ? $"Print all ({queued})" : "Print all");
 
         // Checkbox chọn-tất-cả trên header sync theo selection hiện tại
         SyncSelectAllState();

@@ -1,0 +1,99 @@
+name: Release
+
+# Phát hành bản mới: build → installer Inno → checksum SHA-256 → minisign ký → tạo GitHub Release.
+# Kích hoạt: tự động khi đẩy tag "v*", hoặc thủ công (workflow_dispatch, dùng biến version).
+# Auto-update trong app (UpdateChecker) đọc release này: cờ "SHA256: <hex>" trong body + asset .exe.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version để tag (vd 0.1.0) — không cần tiền tố v'
+        required: true
+        default: '0.1.0'
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Determine version
+        id: ver
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            VER="${GITHUB_REF#refs/tags/v}"
+          else
+            VER="${{ github.event.inputs.version }}"
+          fi
+          echo "VER=$VER" >> "$GITHUB_OUTPUT"
+
+      - name: Build Release
+        run: dotnet build Printonator.sln -c Release
+
+      # Build installer bằng Inno Setup (ISCC). GitHub windows-latest có sẵn Inno qua winget không,
+      # nên dùng chocolatey (đã cài trên runner) → iscc.exe.
+      - name: Build Inno installer
+        shell: powershell
+        run: |
+          choco install innosetup -y --no-progress
+          $iscc = (Get-ChildItem "$env:ProgramFiles(x86)\Inno Setup*\ISCC.exe" | Select-Object -First 1).FullName
+          & $iscc "setup\printonator.iss" /DMyAppVersion=${{ steps.ver.outputs.VER }}
+        env:
+          MyAppVersion: ${{ steps.ver.outputs.VER }}
+
+      - name: Compute SHA-256
+        id: sha
+        shell: bash
+        run: |
+          HASH=$(sha256sum setup/printonator-setup.exe | cut -d' ' -f1)
+          echo "HASH=$HASH" >> "$GITHUB_OUTPUT"
+
+      # Minisign ký installer (public key nhúng trong app). Khi GitHub secret MINISIGN_SECRET_KEY
+      # được đặt (nội dung file secret.key, dạng một dòng base64) + MINISIGN_PASSPHRASE, bước này
+      # ký thật → tạo setup.exe.minisig. Chưa đặt secret → bỏ qua (release vẫn có SHA-256).
+      - name: Minisign sign installer
+        if: ${{ secrets.MINISIGN_SECRET_KEY != '' }}
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          MINISIGN_PASSPHRASE: ${{ secrets.MINISIGN_PASSPHRASE }}
+        shell: bash
+        run: |
+          # Cài minisign (tạm) và ký
+          if command -v minisign >/dev/null 2>&1; then :; else
+            curl -sL -o /tmp/minisign.zip https://github.com/jedisct1/minisign/releases/download/0.11/minisign-0.11-win64.zip
+            (cd /tmp && unzip -o minisign.zip)
+          fi
+          MSIG=$(command -v minisign || echo /tmp/x86_64/minisign.exe)
+          printf '%s\n' "$MINISIGN_PASSPHRASE" > /tmp/ms-pass
+          "$MSIG" -S -s <(printf '%s' "$MINISIGN_SECRET_KEY") \
+                 -t /tmp/ms-pass -m setup/printonator-setup.exe
+          ls -la setup/printonator-setup.exe.minisig
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.VER }}
+          name: Printonator v${{ steps.ver.outputs.VER }}
+          body: |
+            ## Printonator v${{ steps.ver.outputs.VER }}
+
+            SHA256: ${{ steps.sha.outputs.HASH }}
+
+            - In hàng loạt (PDF/DOCX/XLSX/PPTX/ảnh/TXT)
+            - AI in giùm qua MCP + guardrail an toàn
+            - 100% local, MIT
+          draft: true
+          files: |
+            setup/printonator-setup.exe
+            setup/printonator-setup.exe.minisig
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
