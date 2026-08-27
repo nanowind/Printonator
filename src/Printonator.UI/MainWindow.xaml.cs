@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -41,6 +42,7 @@ public partial class MainWindow : Window
         AutoRemoveChk.IsChecked = _autoRemovePrinted;
         BellBadgeBorder.Visibility = Visibility.Collapsed;
         DoneNotif.Visibility = Visibility.Collapsed;
+        NotifEmptyText.Visibility = Visibility.Visible; // chưa in xong lô nào → "Không có thông báo mới"
         JobList.SelectionChanged += OnSelectionChanged;
         _queue.JobStateChanged += OnJobStateChanged;
         _queue.AllJobsCompleted += OnAllCompleted;
@@ -50,7 +52,11 @@ public partial class MainWindow : Window
             FadeToast(0);
         };
         PrinterCombo.SelectionChanged += (_, _) => UpdatePrinterDot();
-        Closed += (_, _) => _queue.Dispose();
+        Closed += (_, _) =>
+        {
+            _queue.Dispose();
+            CleanupOrphanPrintProcesses();   // đóng app là dọn triệt để — mọi engine để lại gì thì gom lại
+        };
         CommandBindings.Add(new CommandBinding(ApplicationCommands.Paste, PasteFromClipboard_Executed));
         CommandBindings.Add(new CommandBinding(ApplicationCommands.Delete, DeleteSelection_Executed));
 
@@ -71,8 +77,6 @@ public partial class MainWindow : Window
         _queue.RegisterEngine(new SpoolPrintEngine());
         LoadPrinters();
         _queue.MaxRetries = 2;
-        // Demo data — in thật sẽ là file user kéo thả
-        AddDemoJobs();
         await Task.CompletedTask;
     }
 
@@ -119,46 +123,97 @@ public partial class MainWindow : Window
         ShowToast($"Đã xóa {targets.Count} file khỏi hàng đợi.");
     }
 
-    private void AddDemoJobs()
+    // ===== Select all (header cột checkbox) + popup trang in trên cột Pages =====
+
+    /// <summary>Click checkbox chọn-tất-cả trên header: chưa chọn hết → chọn hết; đã chọn hết → bỏ chọn hết.
+    /// (Dùng Click thay vì Checked/Unchecked để click lúc "indeterminate" luôn = CHỌN HẾT, đúng trực giác.)</summary>
+    private void SelectAllChk_Click(object sender, RoutedEventArgs e)
     {
-        var samples = new[]
-        {
-                ("HS_Thau_Quatest_2026.pdf", "PDF", "All", "A4", 4, true),
-                ("HD_266_HopDong_Luoi.pdf", "PDF", "2,5", "A4", 2, false),
-                ("GCN_KiemDinh_1611.xlsx", "XLSX", "3-4", "A4", 2, false),
-                ("BB_NT_DongNai.docx", "DOCX", "All", "A3", 1, false),
-                ("HoaDon_DNT_2026.pdf", "PDF", "1-2", "A4", 1, false),
-                ("ThietKe_BanVe.doc", "DOC", "All", "A3", 1, false),
-            };
-        var dir = Path.GetTempPath();
-        foreach (var (name, fmt, range, paper, copies, duplex) in samples)
-        {
-            var path = Path.Combine(dir, name);
-            try { if (!File.Exists(path)) File.WriteAllBytes(path, new byte[32]); } catch { }
-            var job = new PrintJob
-            {
-                FilePath = path,
-                FileName = name,
-                Format = fmt,
-                Config = DefaultConfigFor(paper, range, copies, duplex),
-                PageCount = fmt == "PDF" ? 12 : 8,
-            };
-            job.Sections.Add(new SectionMap { Index = 1, FirstPhysicalPage = 1, LastPhysicalPage = 2 });
-            job.Sections.Add(new SectionMap { Index = 2, FirstPhysicalPage = 3, LastPhysicalPage = 10 });
-            _queue.AddOnly(job);   // thêm nhưng KHÔNG tự in
-        }
-        UpdateFooter();
+        var total = JobList.Items.Count;
+        if (total == 0) { SyncSelectAllState(); return; }
+        if (JobList.SelectedItems.Count >= total) JobList.UnselectAll();
+        else JobList.SelectAll();
+        SyncSelectAllState();
+    }
+
+    /// <summary>Đồng bộ checkbox header: ✓ khi chọn hết, ■ (indeterminate) khi chọn một phần, trống khi không chọn.</summary>
+    private void SyncSelectAllState()
+    {
+        if (SelectAllChk is null) return; // XAML chưa dựng xong
+        var total = JobList.Items.Count;
+        var sel = JobList.SelectedItems.Count;
+        SelectAllChk.IsChecked = total > 0 && sel >= total ? true : sel > 0 ? null : (bool?)false;
+    }
+
+    /// <summary>Bấm vào cell Pages → mở popup dưới chính cell đó, nạp trạng thái hiện tại của file.</summary>
+    private void PagesCell_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement cell || cell.DataContext is not PrintJob job) return;
+        if (cell.FindName("PagesPopup") is not Popup pop) return;
+
+        var isAll = string.IsNullOrWhiteSpace(job.Config.PageRange)
+                 || job.Config.PageRange.Equals("All", StringComparison.OrdinalIgnoreCase);
+        if (cell.FindName("PRangeAll") is RadioButton allChk) allChk.IsChecked = isAll;
+        if (cell.FindName("PRangeCustom") is RadioButton customChk) customChk.IsChecked = !isAll;
+        if (cell.FindName("PRangeBox") is TextBox box)
+            box.Text = isAll ? "" : job.Config.PageRange.Trim();
+
+        pop.IsOpen = true;
+    }
+
+    /// <summary>Radio All/Khoảng-trang đổi → bật/tắt ô nhập tương ứng.</summary>
+    private void PRangeMode_Changed(object sender, RoutedEventArgs e)
+    {
+        if (sender is not RadioButton rb || rb.FindName("PRangeBox") is not TextBox box) return;
+        var customActive = rb.Name == "PRangeCustom" && rb.IsChecked == true;
+        box.IsEnabled = customActive;
+        if (customActive) box.Focus();
+    }
+
+    /// <summary>Áp dụng lựa chọn trong popup: row nằm trong selection → áp cho CẢ nhóm (chuẩn Windows), không → chỉ row đó.</summary>
+    private void PagesApply_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe) return;
+        if (fe.FindName("PagesPopup") is not Popup pop) return;
+        if (pop.PlacementTarget is not FrameworkElement cell || cell.DataContext is not PrintJob job) return;
+
+        var isAll = fe.FindName("PRangeAll") is RadioButton a && a.IsChecked == true;
+        // Rỗng coi như All (khớp NormalizeRange trong PrintSettingsWindow)
+        var range = isAll ? "All" : ((fe.FindName("PRangeBox") as TextBox)?.Text?.Trim() ?? "");
+        if (range.Length == 0) range = "All";
+
+        var targets = JobList.SelectedItems.Contains(job)
+            ? JobList.SelectedItems.OfType<PrintJob>().ToList()
+            : new List<PrintJob> { job };
+        foreach (var j in targets)
+            j.Config.PageRange = range;
+
+        pop.IsOpen = false;
+        JobList.Items.Refresh();
+        ShowToast($"Áp trang \"{(range == "All" ? "tất cả" : range)}\" cho {targets.Count} file.");
     }
 
     // ===== Add files (button + drag-drop) =====
     private void AddFiles_Click(object sender, RoutedEventArgs e)
     {
+        // Filter dựng TỪ SupportedExtensions (nguồn whitelist duy nhất) — không hardcode để tránh
+        // lệch danh sách đuôi (trước đây thiếu .rtf/.xlsm/.csv/.ppt/.ppsx/.jpeg/.bmp/.gif/.webp)
         var dlg = new Microsoft.Win32.OpenFileDialog
         {
             Multiselect = true,
-            Filter = "Print files|*.pdf;*.docx;*.doc;*.xlsx;*.xls;*.pptx;*.png;*.jpg;*.tiff;*.txt|All files|*.*",
+            Filter = "Print files|" + string.Join(";", SupportedExtensions.Select(ext => "*" + ext)) + "|All files|*.*",
         };
-        if (dlg.ShowDialog() == true) AddFiles(dlg.FileNames);
+        if (dlg.ShowDialog() != true) return;
+
+        // Lọc lại sau dialog (đề phòng path nhập tay / chọn "All files"): file không hỗ trợ → đếm skipped + toast
+        var supported = dlg.FileNames.Where(IsSupported).ToList();
+        var skipped = dlg.FileNames.Length - supported.Count;
+        if (supported.Count > 0)
+            AddFiles(supported, skipped > 0
+                ? $"Đã thêm {supported.Count} file, bỏ qua {skipped} file không hỗ trợ định dạng."
+                : null);
+        else if (skipped > 0)
+            ShowToast($"Đã bỏ qua {skipped} file không hỗ trợ định dạng (chỉ nhận PDF, Office, ảnh, TXT).");
     }
 
     // ===== Copy-paste từ Explorer (Ctrl+V) — file HOẶC folder (tự quét toàn bộ + thư mục con) =====
@@ -167,25 +222,18 @@ public partial class MainWindow : Window
         try
         {
             var toAdd = new List<string>();
-            var folderCount = 0;
             if (Clipboard.ContainsFileDropList())
-            {
-                foreach (var p in Clipboard.GetFileDropList().Cast<string>())
-                    AddPath(p, toAdd, ref folderCount);
-            }
+                toAdd.AddRange(Clipboard.GetFileDropList().Cast<string>());
             else if (Clipboard.ContainsText())
             {
-                var clipText = Clipboard.GetText();
-                foreach (var line in clipText.Split('\n'))
+                foreach (var line in Clipboard.GetText().Split('\n'))
                 {
                     var p = line.Trim().Trim('\r', '"', ' ');
-                    if (p.Length > 0) AddPath(p, toAdd, ref folderCount);
+                    if (p.Length > 0) toAdd.Add(p);
                 }
             }
             if (toAdd.Count == 0) return;
-            AddFiles(toAdd, folderCount > 0
-                ? $"Đã thêm {toAdd.Count} file từ {folderCount} thư mục (gồm cả thư mục con)."
-                : null);
+            AddPaths(toAdd);
         }
         catch (Exception ex)
         {
@@ -193,29 +241,112 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>Folder → quét đệ quy toàn bộ file hỗ trợ; file → thêm thẳng. Mặc định, không hỏi thêm.</summary>
-    private static void AddPath(string path, List<string> toAdd, ref int folderCount)
+    /// <summary>
+    /// Nguồn ingest DÙNG CHUNG (paste + drag&amp;drop): file → thêm thẳng nếu đuôi hỗ trợ; folder → quét đệ quy.
+    /// Trả về (added, skippedUnsupported, skippedMissing, folderCount). File không hỗ trợ định dạng HOẶC đường
+    /// dẫn không tồn tại → đếm vào skipped để toast "bỏ qua N file" — không bỏ qua im lặng (feedback trung thực).
+    /// </summary>
+    private (int Added, int SkippedUnsupported, int SkippedMissing, int FolderCount) AddPaths(IEnumerable<string> paths)
     {
-        if (Directory.Exists(path))
+        var toAdd = new List<string>();
+        var unsupported = 0;
+        var missing = 0;
+        var folderCount = 0;
+        foreach (var raw in paths)
         {
-            toAdd.AddRange(CollectFolderRecursive(path));
-            folderCount++;
+            var p = raw.Trim().Trim('\r', '"', ' ');
+            if (p.Length == 0) continue;
+            if (Directory.Exists(p))
+            {
+                var files = CollectFolderRecursive(p);
+                if (files.Count > 0) { toAdd.AddRange(files); folderCount++; }
+            }
+            else if (File.Exists(p))
+            {
+                if (IsSupported(p)) toAdd.Add(p);
+                else unsupported++;
+            }
+            else missing++; // path dán vào không tồn tại / đã hết hạn — đếm để báo trung thực, không im lặng
         }
-        else if (File.Exists(path))
+        if (toAdd.Count > 0)
         {
-            toAdd.Add(path);
+            var baseText = folderCount > 0
+                ? $"Đã thêm {toAdd.Count} file từ {folderCount} thư mục (gồm cả thư mục con)"
+                : $"Đã thêm {toAdd.Count} file vào hàng đợi";
+            AddFiles(toAdd, baseText + SkipSummary(unsupported, missing));
         }
+        else if (unsupported > 0 || missing > 0)
+        {
+            ShowToast($"Đã bỏ qua {SkippedList(unsupported, missing)}.");
+        }
+        return (toAdd.Count, unsupported, missing, folderCount);
     }
+
+    /// <summary>Hậu tố toast: ", bỏ qua X..." / "." khi không có gì bị bỏ qua.</summary>
+    private static string SkipSummary(int unsupported, int missing)
+    {
+        if (unsupported <= 0 && missing <= 0) return ".";
+        return $", bỏ qua {SkippedList(unsupported, missing)}.";
+    }
+
+    /// <summary>Ghép cụm "N file không hỗ trợ định dạng và M đường dẫn không tồn tại".</summary>
+    private static string SkippedList(int unsupported, int missing)
+    {
+        var parts = new List<string>();
+        if (unsupported > 0) parts.Add($"{unsupported} file không hỗ trợ định dạng");
+        if (missing > 0) parts.Add($"{missing} đường dẫn không tồn tại");
+        return string.Join(" và ", parts);
+    }
+
+    // ===== Drag & drop từ Explorer: kéo file/folder thả vào cửa sổ =====
+    private void Root_DragEnter(object sender, DragEventArgs e)
+    {
+        if (!IsFileDrop(e)) return;
+        DropHighlight.Visibility = Visibility.Visible;
+    }
+
+    private void Root_DragOver(object sender, DragEventArgs e)
+    {
+        if (IsFileDrop(e))
+        {
+            e.Effects = DragDropEffects.Copy;   // chỉ kéo-thả ngoài app; không có drag source trong app
+            e.Handled = true;
+        }
+        else e.Effects = DragDropEffects.None;
+    }
+
+    private void Root_DragLeave(object sender, DragEventArgs e)
+    {
+        // Root là drop-target DUY NHẤT trong cửa sổ (SearchBox đã tắt AllowDrop) nên
+        // DragLeave chỉ bắn khi chuột thực sự rời cửa sổ — không cần counter chống flicker.
+        if (!IsFileDrop(e)) return;
+        DropHighlight.Visibility = Visibility.Collapsed;
+    }
+
+    private void Root_Drop(object sender, DragEventArgs e)
+    {
+        DropHighlight.Visibility = Visibility.Collapsed;
+        if (!IsFileDrop(e)) return;
+        if (e.Data.GetData(DataFormats.FileDrop) is string[] files && files.Length > 0)
+            AddPaths(files);
+        e.Handled = true;
+    }
+
+    private static bool IsFileDrop(DragEventArgs e) => e.Data.GetDataPresent(DataFormats.FileDrop);
+
+    /// <summary>Đuôi file in được — nguồn DUY NHẤT cho whitelist (paste, drag&drop, quét thư mục).</summary>
+    private static readonly HashSet<string> SupportedExtensions = new(
+        [".pdf", ".docx", ".doc", ".rtf", ".xlsx", ".xls", ".xlsm", ".csv",
+         ".pptx", ".ppt", ".ppsx", ".png", ".jpg", ".jpeg", ".tiff", ".bmp",
+         ".gif", ".webp", ".txt"],
+        StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>File có định dạng in được? (Theo ĐUÔI — không cần file tồn tại.)</summary>
+    private static bool IsSupported(string path) => SupportedExtensions.Contains(Path.GetExtension(path));
 
     /// <summary>Quét thư mục ĐỆ QUY, lấy mọi file định dạng in được; bỏ file ẩn/hệ thống/tạm (~$Ôoffice).</summary>
     private static List<string> CollectFolderRecursive(string root)
     {
-        var supported = new HashSet<string>(
-            [".pdf", ".docx", ".doc", ".rtf", ".xlsx", ".xls", ".xlsm", ".csv",
-             ".pptx", ".ppt", ".ppsx", ".png", ".jpg", ".jpeg", ".tiff", ".bmp",
-             ".gif", ".webp", ".txt"],
-            StringComparer.OrdinalIgnoreCase);
-
         var result = new List<string>();
         var opt = new EnumerationOptions
         {
@@ -229,7 +360,7 @@ public partial class MainWindow : Window
             {
                 var name = Path.GetFileName(f);
                 if (name.StartsWith("~$", StringComparison.Ordinal)) continue; // file khóa tạm của Office
-                if (supported.Contains(Path.GetExtension(f))) result.Add(f);
+                if (IsSupported(f)) result.Add(f);
             }
         }
         catch { /* thư mục không đọc được — bỏ qua */ }
@@ -248,6 +379,13 @@ public partial class MainWindow : Window
     /// <summary>Context menu "Cấu hình in (Item settings)…".</summary>
     private void CtxItemSettings_Click(object sender, RoutedEventArgs e)
         => OpenPrintSettings(GetTargetJobs(sender));
+
+    /// <summary>Bấm trực tiếp ô "Settings" của 1 dòng → mở cấu hình in của ĐÚNG file đó.</summary>
+    private void SettingsCell_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is PrintJob job)
+            OpenPrintSettings(new List<PrintJob> { job });
+    }
 
     /// <summary>
     /// Mở bảng cấu hình in đầy đủ (PrintSettingsWindow).
@@ -284,13 +422,14 @@ public partial class MainWindow : Window
     };
 
     /// <summary>Cấu hình mặc định cho file mới (base từ _defaultConfig, áp khổ giấy theo loại file).</summary>
-    private PrintConfig DefaultConfigFor(string paper, string range = "All", int copies = 1, bool duplex = false)
+    private PrintConfig DefaultConfigFor(string paper, string range = "All", int copies = 1)
     {
         var cfg = _defaultConfig.Clone();
         cfg.PaperSize = paper;
         cfg.PageRange = range;
         cfg.Copies = copies;
-        cfg.Duplex = duplex;
+        // KHÔNG gán cfg.Duplex (=false): bool ghi đè làm mất DuplexMode=AsPrinter ("theo máy in")
+        // mà user đã chọn trong _defaultConfig — CopyInto(_defaultConfig) đã giữ nguyên enum (Major #2 fix).
         cfg.PrinterName ??= SelectedPrinter?.Name;
         return cfg;
     }
@@ -328,6 +467,7 @@ public partial class MainWindow : Window
         var count = JobList.SelectedItems.Count;
         BulkCountText.Text = $"{count} files selected";
         BulkBar.Visibility = count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        SyncSelectAllState();
         if (count > 0)
         {
             FooterHint.Text = $"Gợi ý: Ctrl+Click chọn rời · Shift+Click chọn dải · Ctrl+A chọn hết · Delete = xóa · Chuột phải = menu thao tác";
@@ -396,7 +536,7 @@ public partial class MainWindow : Window
     {
         var targets = GetTargetJobs(sender);
         if (targets.Count == 0) return;
-        ShowBanner(null, $"Đưa {targets.Count} file vào hàng đợi in.", "");
+        ShowToast($"Đưa {targets.Count} file vào hàng đợi in.");   // tin tốt → toast xanh, không phải banner lỗi
         ApplySelectedPrinter(targets);
         foreach (var job in targets)
             _queue.ProcessExisting(job);   // KHÔNG enqueue lại — tránh trùng dòng
@@ -462,6 +602,18 @@ public partial class MainWindow : Window
         // (Trước đây dùng ??= chỉ gắn cho job CHƯA có máy → job giữ máy cũ ghi lúc thêm file,
         //  nên đổi combo sang LBP vẫn in vào "Microsoft Print to PDF".)
         ApplySelectedPrinter(ready);
+
+        // ===== Pre-flight gate (chỉ khi lô lớn): ước tính tờ → vượt ngưỡng thì xác nhận =====
+        // Lô nhỏ (dưới ngưỡng) in thẳng 1 click — không làm chậm việc thường. Lô lớn: cho người
+        // xem "bao nhiêu tờ + máy in nào (sẽ áp cho mọi file)" trước khi tốn giấy/mực thật.
+        const int ConfirmSheetThreshold = 100;
+        var sheets = PrintConfirmWindow.EstimateSheets(ready);
+        if (sheets > ConfirmSheetThreshold
+            && !PrintConfirmWindow.Show(this, SelectedPrinter?.Name ?? "mặc định", ready, sheets))
+        {
+            return; // người dùng hủy — KHÔNG in, không toast "bắt đầu"
+        }
+
         // ProcessExisting: in job đã có, KHÔNG thêm dòng mới
         foreach (var j in ready)
             _queue.ProcessExisting(j);
@@ -521,6 +673,7 @@ public partial class MainWindow : Window
             DoneNotifTitle.Text = $"Đã in xong {done} file";
             DoneNotifSub.Text = $"{DateTime.Now:HH:mm} · {(_autoRemovePrinted ? "sẽ tự rời khỏi hàng đợi" : "vẫn giữ file trong hàng đợi")}";
             DoneNotif.Visibility = Visibility.Visible;
+            NotifEmptyText.Visibility = Visibility.Collapsed;
             BellBadge.Text = _printDoneCount.ToString();
             BellBadgeBorder.Visibility = Visibility.Visible;
             ShowToast($"Đã in xong tất cả ({done} file).");
@@ -529,6 +682,45 @@ public partial class MainWindow : Window
     }
 
     // ===== Tick "Tự xóa file đã in" + lưu cài đặt UI =====
+    /// <summary>
+    /// Dọn process MỒ CÔI do các engine in để lại, khi đóng app (defensive — gom triệt để).
+    /// Chỉ giết process KHÔNG có cửa sổ (windowless): Word/Excel/PowerPoint headless mồ côi mà COM
+    /// hay printto để lại, và Chrome/Edge headless in (CDP) — KHÔNG bao giờ đụng trình duyệt/Office
+    /// THẬT user đang mở (cái có cửa sổ, MainWindowTitle != ""). Đó là thứ làm máy nặng vài trăm
+    /// process sau nhiều lô in.
+    /// </summary>
+    private static void CleanupOrphanPrintProcesses()
+    {
+        string[] officeFamilies = ["WINWORD", "EXCEL", "POWERPNT"];
+        foreach (var name in officeFamilies)
+        {
+            try
+            {
+                foreach (var p in Process.GetProcessesByName(name))
+                    if (string.IsNullOrEmpty(p.MainWindowTitle))   // headless mồ côi, không cửa sổ
+                        KillProcess(p);
+            }
+            catch { }
+        }
+
+        // Chrome/Edge: chỉ giết headless mồ côi (CDP/printto), GIỮ trình duyệt user đang dùng.
+        foreach (var name in new[] { "chrome", "msedge" })
+        {
+            try
+            {
+                foreach (var p in Process.GetProcessesByName(name))
+                    if (string.IsNullOrEmpty(p.MainWindowTitle))
+                        KillProcess(p);
+            }
+            catch { }
+        }
+
+        static void KillProcess(Process p)
+        {
+            try { p.Kill(entireProcessTree: true); p.WaitForExit(3000); } catch { }
+        }
+    }
+
     private static string UiSettingsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Printonator", "ui.json");
 
@@ -583,8 +775,13 @@ public partial class MainWindow : Window
         var err = Jobs.Count(j => j.State == JobState.Error);
         FooterStats.Text = $"{total} files | {done} printed | {err} error";
 
-        // Progress bar + taskbar progress (Penpot gap)
-        var percent = total > 0 ? (int)(done * 100.0 / total) : 0;
+        // Progress bar + taskbar progress (Penpot gap).
+        // Đúng: chỉ đếm job đã THỰC SỰ nằm trong lô in này (bắt đầu rồi hoặc xong/ngừng), chứ
+        // KHÔNG đếm toàn bộ Jobs (bao gồm cả job còn Queued chưa đem in lần này). Nếu đếm cả
+        // job đang chờ, khi bấm in 1 file mà còn N file Queued khác → progress frozen sai (vd 50%).
+        // Denom = số job đã vào lô: Converting/Spooling (đang chạy) + Done/Error/Cancelled (kết thúc).
+        var inRun = Jobs.Count(j => j.State is not JobState.Queued and not JobState.AwaitingApproval);
+        var percent = inRun > 0 ? (int)(done * 100.0 / inRun) : 0;
         FooterProgress.Value = Math.Clamp(percent, 0, 100);
         ProgressText.Text = $"{percent}%";
         TaskbarInfo.ProgressValue = percent / 100.0;
@@ -596,6 +793,20 @@ public partial class MainWindow : Window
         // "Print all (N)" — số job đang chờ (Penpot gap)
         var queued = Jobs.Count(j => j.State == JobState.Queued);
         PrintAllBtn.Content = queued > 0 ? $"Print all ({queued})" : "Print all";
+
+        // Checkbox chọn-tất-cả trên header sync theo selection hiện tại
+        SyncSelectAllState();
+
+        // Overlay hướng dẫn khi hàng đợi trống
+        UpdateEmptyState();
+    }
+
+    /// <summary>Empty state (Kéo thả file...) hiện khi hàng đợi trống VÀ không đang tìm kiếm.</summary>
+    private void UpdateEmptyState()
+    {
+        if (EmptyState is null) return; // XAML chưa dựng xong
+        var empty = Jobs.Count == 0 && string.IsNullOrWhiteSpace(SearchBox?.Text);
+        EmptyState.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
     }
 
     // ===== Sort theo cột (user yêu cầu) =====
@@ -669,6 +880,7 @@ public partial class MainWindow : Window
         view.Filter = string.IsNullOrEmpty(q)
             ? null
             : o => o is PrintJob j && j.FileName.Contains(q, StringComparison.OrdinalIgnoreCase);
+        UpdateEmptyState(); // tìm không ra → không hiện nhầm empty state "kéo thả"
     }
 
     // ===== Toast success (Penpot gap) =====
@@ -689,6 +901,13 @@ public partial class MainWindow : Window
         Toast.BeginAnimation(OpacityProperty, anim);
     }
 
+    /// <summary>Mã lỗi thuộc loại "warn/offline thật" → banner giữ nền vàng; các mã còn lại là lỗi thật → nền đỏ.</summary>
+    private static readonly HashSet<string> WarningBannerCodes = new(
+        [ErrorCodes.PrinterOffline, ErrorCodes.PrinterNotFound, ErrorCodes.PrinterNoPermission,
+         ErrorCodes.SpoolerBusy, ErrorCodes.SpoolerFailed, ErrorCodes.EngineNotFound,
+         ErrorCodes.EngineTimeout, ErrorCodes.OfficeAppBusy, ErrorCodes.NoFilesSelected],
+        StringComparer.Ordinal);
+
     private void ShowBanner(string? code, string message, string detail)
     {
         ErrorBannerText.Text = detail.Length > 0
@@ -696,13 +915,44 @@ public partial class MainWindow : Window
             : message;
         // Nút "Retry connection" CHỈ hiện với lỗi kết nối máy in/spooler — lỗi file/tham số không retry được
         RetryBtn.Visibility = IsRetryable(code) ? Visibility.Visible : Visibility.Collapsed;
+
+        // "Nói thật" mức độ: cảnh báo máy in offline/bận + hướng dẫn → vàng (mặc định XAML);
+        // lỗi thật (file/job/không mở được…) → đỏ, phân biệt ngay bằng màu không cần đọc chữ.
+        if (code is null || WarningBannerCodes.Contains(code))
+            ResetBannerToWarn();
+        else
+            SetBannerToError();
+
         ErrorBanner.Visibility = Visibility.Visible;
+    }
+
+    private void ResetBannerToWarn()
+    {
+        // Trả về đúng màu mặc định khai báo trong XAML (vàng) — quan trọng sau khi banner đã hiện đỏ
+        if (TryFindResource("WarnBgBrush") is Brush bg) ErrorBanner.Background = bg;
+        ErrorBanner.BorderBrush = new SolidColorBrush(Color.FromRgb(0xEA, 0xB3, 0x08)); // #EAB308 (default XAML)
+        ErrorBannerText.Foreground = new SolidColorBrush(Color.FromRgb(0x92, 0x40, 0x0E)); // #92400E (default XAML)
+        if (ErrorBannerIcon is not null) ErrorBannerIcon.Foreground = TryFindResource("WarnBrush") as Brush;
+    }
+
+    private void SetBannerToError()
+    {
+        if (TryFindResource("ErrorBgBrush") is Brush bg) ErrorBanner.Background = bg;
+        if (TryFindResource("ErrorBrush") is Brush err)
+        {
+            ErrorBanner.BorderBrush = err;
+            ErrorBannerText.Foreground = err;
+            if (ErrorBannerIcon is not null) ErrorBannerIcon.Foreground = err;
+        }
     }
 
     private static bool IsRetryable(string? code)
         => code is ErrorCodes.SpoolerFailed or ErrorCodes.PrinterNotFound;
 
     private void HideBanner() => ErrorBanner.Visibility = Visibility.Collapsed;
+
+    /// <summary>✕ đóng banner — luôn cho phép đóng, không phụ thuộc Retry.</summary>
+    private void BannerClose_Click(object sender, RoutedEventArgs e) => HideBanner();
 
     public ICommand OpenFileCommand => new RelayCommand<PrintJob>(job =>
     {

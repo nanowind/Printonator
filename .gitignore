@@ -9,6 +9,9 @@ obj/
 # Test results
 TestResults/
 *.trx
+# Test run logs (test_full.ps1 writes these — run output, không phải source)
+tools/*.log
+tools/*.log.err
 
 # Build output
 artifacts/
@@ -22,6 +25,7 @@ six-phase-workflow/
 .kilo/
 .codex/
 .opencode/
+.agents/skills
 .agents-workflow.env
 AGENTS.md
 CLAUDE.md
@@ -30,6 +34,12 @@ SOUL.md
 
 # Local AI instruction memory (never commit)
 .github/instructions/
+# Impeccable design skill scaffolding (local tooling — CI workflow .github/workflows/ci.yml vẫn commit)
+.github/agents/
+.github/hooks/
+.github/skills/
+.impeccable/
+skills-lock.json
 # OS
 Thumbs.db
 Desktop.ini

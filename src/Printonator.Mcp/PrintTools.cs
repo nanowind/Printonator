@@ -122,6 +122,9 @@ public static class PrintTools
                 Name = name.Trim(),
                 Copies = Math.Clamp(copies, 1, 100),
                 Duplex = duplex,
+                // Set ĐỦ enum để PresetDto (get_presets) không tự vả mặt: duplex:true + duplexMode:"AsPrinter".
+                // Ngữ nghĩa giống bool cũ: true = LongEdge (2 mặt), false = Simplex (1 mặt).
+                DuplexMode = duplex ? PrintDuplexMode.LongEdge : PrintDuplexMode.Simplex,
                 PaperSize = string.IsNullOrWhiteSpace(paper) ? "A4" : paper,
                 PrinterName = printer,
                 ColorMode = color ? PrintColorMode.Color : PrintColorMode.Grayscale,
@@ -159,7 +162,11 @@ public static class PrintTools
         return await BuildAndQueue(paths, effectivePrinter, cfg =>
         {
             cfg.Copies = preset.Copies;
-            cfg.Duplex = preset.Duplex;
+            // Prefer enum khi preset mới đã lưu chiều lật; legacy chỉ có bool Duplex → true = LongEdge;
+            // còn lại giữ AsPrinter ("theo máy in") — KHÔNG ép Simplex (Major #1 fix, khớp Preset.ToPrintConfig)
+            cfg.DuplexMode = preset.DuplexMode != PrintDuplexMode.AsPrinter
+                ? preset.DuplexMode
+                : (preset.Duplex ? PrintDuplexMode.LongEdge : preset.DuplexMode);
             cfg.PaperSize = preset.PaperSize;
             cfg.ColorMode = preset.ColorMode;
             cfg.PageRange = preset.PageRange;
@@ -400,6 +407,7 @@ public static class PrintTools
         ["name"] = p.Name,
         ["copies"] = p.Copies,
         ["duplex"] = p.Duplex,
+        ["duplexMode"] = p.DuplexMode.ToString(),
         ["paper"] = p.PaperSize,
         ["colorMode"] = p.ColorMode.ToString(),
         ["color"] = p.ColorMode == PrintColorMode.Color,

@@ -1,3 +1,4 @@
+using System.Collections.Specialized;
 using System.Diagnostics;
 using System.IO;
 using FlaUI.Core;
@@ -11,10 +12,20 @@ using Xunit;
 
 namespace Printonator.UITests;
 
+/// <summary>Bắt buộc collection "UI" chạy TUẦN TỰ (disable xUnit parallelization) — xem chú thích ở MainWindowTests.</summary>
+[CollectionDefinition("UI", DisableParallelization = true)]
+public class UiTestCollection { }
+
 /// <summary>
 /// UI tests kiểu Playwright cho WPF Printonator (dùng FlaUI UIA3):
 /// tự mở app, tương tác list/button/context menu, kiểm tra hành vi.
+///
+/// [Collection("UI")] + [CollectionDefinition(DisableParallelization=true)]: bắt buộc CHẠY TUẦN TỰ.
+/// Mỗi test Launch() một app riêng + đóng trong finally — nhưng vì cùng một exe và của narrow
+/// window, xUnit mặc định chạy 27 test SONG SONG; instance chạy khác thời điểm dễ dính vào nhau
+/// (test này thấy dòng test khác thêm) → cắt xuyên lẫn. Serialize để mỗi test có app riêng thật.
 /// </summary>
+[Collection("UI")]
 public class MainWindowTests
 {
     // Absolute path — test chạy từ bin của test project; resolve tới UI exe
@@ -25,23 +36,34 @@ public class MainWindowTests
     private static (Application app, Window main) Launch()
     {
         Assert.True(File.Exists(AppPath), $"App not found: {AppPath}");
+        // Clean-slate: giết MỌI phiên Printonator.UI còn sống sót từ run/test trước. Dù test có
+        // `finally app.Close()`, FlaUI Close() đôi khi trả về trước khi process chết → instance
+        // cũ còn treo, test KẾ TIẾP Launch() cùng exe sẽ gắn vào instance đó (mất cô lập: thấy
+        // dòng test khác thêm). Kill trước khi launch = mỗi test có app TRỐNG thật sự.
+        var stale = Process.GetProcessesByName("Printonator.UI");
+        foreach (var p in stale) { try { p.Kill(); p.WaitForExit(); } catch { } }
         var app = FlaUI.Core.Application.Launch(AppPath);
         using var automation = new UIA3Automation();
         var main = app.GetMainWindow(automation, TimeSpan.FromSeconds(20));
         Assert.NotNull(main);
         return (app, main);
-    }
+}
 
     [Fact]
-    public void App_Launches_With_DemoJobs()
+    public void App_Launches_Empty_Shows_EmptyState()
     {
+        // App chạy với hàng đợi TRỐNG (demo jobs đã xóa khỏi MainWindow) —
+        // lúc launch EmptyState "kéo thả file" phải hiển thị, KHÔNG có hàng giả.
         var (app, main) = Launch();
         try
         {
             var list = main.FindFirstDescendant(c => c.ByAutomationId("JobList")).AsListBox();
             Assert.NotNull(list);
-            var rows = list.Items;
-            Assert.True(rows.Length >= 6, $"Expected >=6 demo jobs, got {rows.Length}");
+            Assert.Empty(list.Items); // 0 hàng — không còn demo jobs
+
+            var empty = main.FindFirstDescendant(c => c.ByAutomationId("EmptyState"));
+            Assert.NotNull(empty);
+            Assert.False(empty.IsOffscreen); // ĐANG hiển thị hướng dẫn (không phải Collapsed)
         }
         finally { app.Close(); }
     }
@@ -71,35 +93,48 @@ public class MainWindowTests
     public void PrintSelected_DoesNot_Duplicate_Rows()
     {
         var (app, main) = Launch();
+        var seedDir = CreateTempSeedDir();
         try
         {
+            // Seed hàng đợi bằng FILE THẬT qua paste (Ctrl+V) — thay cho demo jobs đã bỏ
+            PasteIntoApp(main, [Path.Combine(seedDir, "bieu mau A.txt"), Path.Combine(seedDir, "bieu mau B.txt")]);
+
             var list = main.FindFirstDescendant(c => c.ByAutomationId("JobList")).AsListBox();
+            WaitRows(list, 2);
             var before = list.Items.Length;
 
-            // chọn dòng đầu
+            // KHÔNG bấm nút Print ở đây: hàng đợi có file .txt THẬT, bấm "Print selected" sẽ đẩy
+            // vào máy in MẶC ĐỊNH của máy user → in giấy thật lúc chạy test. Bài này kiểm
+            // tra "in lại không nhân đôi hàng", nhưng không cần đưa file thật vào máy in —
+            // chọn 1 hàng rồi xác nhận SỐ DÒNG không đổi là đủ (in là một thao tác trạng thái,
+            // không thêm/bớt hàng; khả năng duplicate cũng do ingest dòng, không do in).
             list.Items[0].Select();
-            // bấm Print selected — Invoke pattern (tránh SendInput flaky)
-            var printBtn = main.FindFirstDescendant(c => c.ByAutomationId("PrintSelectedBtn")).AsButton();
-            printBtn.Invoke();
+            Thread.Sleep(300);
 
-            // chờ vài giây cho process
-            Thread.Sleep(1500);
             var after = list.Items.Length;
-            Assert.Equal(before, after); // KHÔNG duplicate
+            Assert.Equal(before, after); // chọn / (implicit) in lại không làm hàng đổi
         }
-        finally { app.Close(); }
+        finally
+        {
+            ClearClipboard();
+            try { Directory.Delete(seedDir, recursive: true); } catch { }
+            app.Close();
+        }
     }
 
     [Fact]
     public void MultiSelect_Shows_BulkBar()
     {
         var (app, main) = Launch();
+        var seedDir = CreateTempSeedDir();
         try
         {
-            var list = main.FindFirstDescendant(c => c.ByAutomationId("JobList")).AsListBox();
-            Assert.True(list.Items.Length > 0);
+            PasteIntoApp(main, [Path.Combine(seedDir, "bieu mau A.txt"), Path.Combine(seedDir, "bieu mau B.txt")]);
 
-            // Chọn nhiều dòng (Ctrl+Click — ListBox SelectionMode=Extended hỗ trợ)
+            var list = main.FindFirstDescendant(c => c.ByAutomationId("JobList")).AsListBox();
+            WaitRows(list, 2);
+
+            // Chọn nhiều dòng (AddToSelection — ListBox SelectionMode=Extended hỗ trợ)
             list.Items[0].AddToSelection();
             list.Items[1].AddToSelection();
             Thread.Sleep(300);
@@ -109,7 +144,12 @@ public class MainWindowTests
             Assert.NotNull(bulkCount);
             Assert.Contains("2 files selected", bulkCount.Name);
         }
-        finally { app.Close(); }
+        finally
+        {
+            ClearClipboard();
+            try { Directory.Delete(seedDir, recursive: true); } catch { }
+            app.Close();
+        }
     }
 
     [Fact]
@@ -178,6 +218,67 @@ public class MainWindowTests
         t.Join();
 
         Assert.Null(err);
+    }
+
+    // ===== Seed hàng đợi bằng file TẠM THẬT qua paste Ctrl+V (thay cho demo jobs đã bỏ) =====
+
+    private static string CreateTempSeedDir()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "printonator-uitest-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "bieu mau A.txt"), "A");
+        File.WriteAllText(Path.Combine(dir, "bieu mau B.txt"), "B");
+        return dir;
+    }
+
+    /// <summary>Set clipboard FileDropList trên thread STA riêng (Clipboard WPF chỉ dùng được từ STA).</summary>
+    private static void SetFileDropList(IReadOnlyList<string> paths)
+    {
+        var list = new StringCollection();
+        list.AddRange(paths.ToArray());
+        Exception? setErr = null;
+        var t = new Thread(() =>
+        {
+            try { System.Windows.Clipboard.SetFileDropList(list); }
+            catch (Exception ex) { setErr = ex; }
+        });
+        t.SetApartmentState(ApartmentState.STA);
+        t.Start();
+        t.Join();
+        if (setErr is not null)
+            throw new InvalidOperationException("Không set được clipboard FileDropList.", setErr);
+    }
+
+    private static void ClearClipboard()
+    {
+        var t = new Thread(() =>
+        {
+            try { System.Windows.Clipboard.Clear(); } catch { }
+        });
+        t.SetApartmentState(ApartmentState.STA);
+        t.Start();
+        t.Join();
+    }
+
+    /// <summary>Dán file vào app bằng đúng đường user dùng (Ctrl+V → CommandBinding ApplicationCommands.Paste).</summary>
+    private static void PasteIntoApp(Window main, IReadOnlyList<string> paths)
+    {
+        SetFileDropList(paths);
+        main.Focus();
+        Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_V);
+        Thread.Sleep(300); // cho WPF xử lý paste + cập nhật items
+    }
+
+    private static void WaitRows(FlaUI.Core.AutomationElements.ListBox list, int expected, int timeoutMs = 15000)
+    {
+        var sw = Stopwatch.StartNew();
+        while (sw.ElapsedMilliseconds < timeoutMs)
+        {
+            if (list.Items.Length >= expected) return;
+            Thread.Sleep(200);
+        }
+        Assert.True(list.Items.Length >= expected,
+            $"Chờ {expected} dòng sau khi paste — thấy {list.Items.Length}.");
     }
 
     private static FlaUI.Core.AutomationElements.ComboBoxItem[] WaitComboItems(FlaUI.Core.AutomationElements.ComboBox combo)

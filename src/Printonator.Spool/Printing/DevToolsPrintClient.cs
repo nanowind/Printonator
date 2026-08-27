@@ -118,6 +118,7 @@ public sealed class DevToolsPrintClient
     {
         try { ws?.Dispose(); } catch { }
         try { proc?.Kill(entireProcessTree: true); } catch { }
+        try { proc?.WaitForExit(5000); } catch { }   // chờ hẳn — tránh để process con sót sau khi app bị kill
         try { proc?.Dispose(); } catch { }
     }
 

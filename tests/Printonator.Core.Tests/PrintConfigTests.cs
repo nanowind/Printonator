@@ -183,4 +183,118 @@ public class PrintConfigTests
             try { if (File.Exists(path)) File.Delete(path); } catch { }
         }
     }
+
+    [Fact]
+    public void DuplexMode_Default_Is_AsPrinter()
+    {
+        var cfg = new PrintConfig();
+        Assert.Equal(PrintDuplexMode.AsPrinter, cfg.DuplexMode);
+        Assert.False(cfg.Duplex); // AsPrinter không tính là "2 mặt ép"
+    }
+
+    [Fact]
+    public void Duplex_Bool_RoundTrips_To_DuplexMode()
+    {
+        var cfg = new PrintConfig();
+
+        cfg.Duplex = true;
+        Assert.Equal(PrintDuplexMode.LongEdge, cfg.DuplexMode);
+        Assert.True(cfg.Duplex);
+
+        cfg.Duplex = false;
+        Assert.Equal(PrintDuplexMode.Simplex, cfg.DuplexMode); // giữ hành vi cũ "mặc định 1 mặt"
+        Assert.False(cfg.Duplex);
+
+        cfg.DuplexMode = PrintDuplexMode.ShortEdge;
+        Assert.True(cfg.Duplex); // ShortEdge vẫn là "2 mặt"
+
+        cfg.DuplexMode = PrintDuplexMode.AsPrinter;
+        Assert.False(cfg.Duplex); // AsPrinter không tính là "2 mặt ép"
+    }
+
+    [Fact]
+    public void CopyInto_Preserves_DuplexMode_Enum()
+    {
+        var src = new PrintConfig { DuplexMode = PrintDuplexMode.ShortEdge };
+        var target = new PrintConfig { Duplex = true }; // mặc định khác → phải bị ghi đè hết
+        src.CopyInto(target);
+
+        Assert.Equal(PrintDuplexMode.ShortEdge, target.DuplexMode); // không mất chiều lật qua shim bool
+        Assert.True(target.Duplex);
+    }
+
+    [Fact]
+    public void SummaryText_Shows_ShortEdge()
+    {
+        var cfg = new PrintConfig { DuplexMode = PrintDuplexMode.ShortEdge };
+        Assert.Contains("2 mặt — lật cạnh ngắn", cfg.SummaryText);
+    }
+
+    [Fact]
+    public void Preset_RoundTrip_Keeps_DuplexMode()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"printonator-preset-{Guid.NewGuid():N}.json");
+        try
+        {
+            var store = new PresetStore(path);
+            var preset = new Preset
+            {
+                Name = "Lịch 2 mặt",
+                Copies = 1,
+                DuplexMode = PrintDuplexMode.ShortEdge,
+            };
+            Assert.True(store.Save(preset));
+
+            var loaded = store.Load().Single(p => p.Name == "Lịch 2 mặt");
+            Assert.Equal(PrintDuplexMode.ShortEdge, loaded.DuplexMode);
+            // Enum là nguồn sự thật; bool Duplex chỉ là shim legacy (không set trong preset này → false)
+            Assert.False(loaded.Duplex);
+
+            var cfg = loaded.ToPrintConfig();
+            Assert.Equal(PrintDuplexMode.ShortEdge, cfg.DuplexMode);
+        }
+        finally
+        {
+            try { if (File.Exists(path)) File.Delete(path); } catch { }
+        }
+    }
+
+    [Fact]
+    public void Preset_Legacy_BoolOnly_Loads_As_LongEdge()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"printonator-preset-{Guid.NewGuid():N}.json");
+        try
+        {
+            // JSON cũ (trước khi có trường DuplexMode): chỉ có "Duplex": true
+            File.WriteAllText(path, """[{"Name":"Hợp đồng cũ","Copies":1,"Duplex":true,"PaperSize":"A4"}]""");
+            var store = new PresetStore(path);
+            var preset = store.Load().Single(p => p.Name == "Hợp đồng cũ");
+
+            Assert.True(preset.Duplex);
+            Assert.Equal(PrintDuplexMode.AsPrinter, preset.DuplexMode); // trường mới khuyết → mặc định
+
+            var cfg = preset.ToPrintConfig();
+            Assert.Equal(PrintDuplexMode.LongEdge, cfg.DuplexMode); // bool cũ → LongEdge (giữ hành vi cũ "2 mặt")
+            Assert.True(cfg.Duplex);
+        }
+        finally
+        {
+            try { if (File.Exists(path)) File.Delete(path); } catch { }
+        }
+    }
+
+    [Fact]
+    public void Preset_AsPrinter_Profile_Stays_AsPrinter()
+    {
+        // Regression Major #1: profile "Theo máy in" (legacy JSON chỉ có "Duplex":false, không có enum)
+        // KHÔNG được ép thành "1 mặt" (Simplex) khi áp vào job — enum phải giữ AsPrinter, driver quyết lúc in.
+        var preset = new Preset
+        {
+            Name = "Theo máy in",
+            Duplex = false, // legacy: bool false, không có DuplexMode trong JSON
+        };
+        var cfg = preset.ToPrintConfig();
+        Assert.Equal(PrintDuplexMode.AsPrinter, cfg.DuplexMode);
+        Assert.False(cfg.Duplex); // shim: AsPrinter không tính là "2 mặt ép"
+    }
 }

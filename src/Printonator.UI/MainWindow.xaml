@@ -87,7 +87,9 @@
                                     </Style>
                         </Window.Resources>
 
-    <Grid Background="{StaticResource BgBrush}">
+    <Grid Background="{StaticResource BgBrush}"
+          AllowDrop="True" DragEnter="Root_DragEnter" DragOver="Root_DragOver"
+          DragLeave="Root_DragLeave" Drop="Root_Drop">
         <Grid.RowDefinitions>
             <RowDefinition Height="56"/>
             <RowDefinition Height="52"/>
@@ -117,7 +119,8 @@
                                    VerticalAlignment="Center" HorizontalAlignment="Left"/>
                         <TextBox x:Name="SearchBox" Background="Transparent" BorderThickness="0" FontSize="12"
                                  Padding="16,0,0,0" Width="190" VerticalContentAlignment="Center"
-                                 ToolTip="Tìm theo tên file" TextChanged="SearchBox_TextChanged"/>
+                                 ToolTip="Tìm theo tên file" TextChanged="SearchBox_TextChanged"
+                                 AllowDrop="False"/>
                     </Grid>
                 </Border>
                 <!-- Bell + badge — góc trên phải -->
@@ -155,30 +158,10 @@
                                                         </StackPanel>
                                                     </StackPanel>
                                                 </Border>
-                                                <!-- Update item -->
-                                                <Border Background="#F9F9F9" Padding="16,8" BorderBrush="#F0F0F0" BorderThickness="0,1,0,0">
-                                                    <StackPanel Orientation="Horizontal">
-                                                        <Border Background="#EFF6FF" CornerRadius="4" Padding="6,2" VerticalAlignment="Top">
-                                                            <TextBlock Text="Update" FontSize="9" Foreground="#0369A1" FontWeight="SemiBold"/>
-                                                        </Border>
-                                                        <StackPanel Margin="10,0,0,0">
-                                                            <TextBlock Text="Printonator 1.2.0 có sẵn" FontSize="12" Foreground="#1F1F1F" FontWeight="Medium"/>
-                                                            <TextBlock Text="Tự động tải về, có kiểm chứng (Minisign + SHA-256)" FontSize="10" Foreground="#8A8A8A" Margin="0,2,0,0"/>
-                                                        </StackPanel>
-                                                    </StackPanel>
-                                                </Border>
-                                                <!-- Security item -->
-                                                <Border Padding="16,8" BorderBrush="#F0F0F0" BorderThickness="0,1,0,0">
-                                                    <StackPanel Orientation="Horizontal">
-                                                        <Border Background="#FEF2F2" CornerRadius="4" Padding="6,2" VerticalAlignment="Top">
-                                                            <TextBlock Text="Security" FontSize="9" Foreground="#DC2626" FontWeight="SemiBold"/>
-                                                        </Border>
-                                                        <StackPanel Margin="10,0,0,0">
-                                                            <TextBlock Text="1 bản clone nghi vấn bị chặn" FontSize="12" Foreground="#DC2626" FontWeight="Medium"/>
-                                                            <TextBlock Text="Bản đang chạy không khớp checksum chính thức" FontSize="10" Foreground="#8A8A8A" Margin="0,2,0,0"/>
-                                                        </StackPanel>
-                                                    </StackPanel>
-                                                </Border>
+                                                <!-- Vùng trống khi chưa có thông báo nào (item real duy nhất là Done sau khi in xong) -->
+                                                <TextBlock x:Name="NotifEmptyText" Text="Không có thông báo mới" FontSize="11"
+                                                           Foreground="{StaticResource FaintBrush}" Margin="16,6,0,14"
+                                                           Visibility="Collapsed"/>
                                             </StackPanel>
                                         </Border>
                                     </Popup>
@@ -215,11 +198,15 @@
         <Border Grid.Row="2" x:Name="ErrorBanner" Background="{StaticResource WarnBgBrush}" BorderBrush="#EAB308"
                 BorderThickness="1" CornerRadius="6" Margin="16,8" Padding="12,8" Visibility="Collapsed">
             <DockPanel>
-                <TextBlock Text="!" Foreground="{StaticResource WarnBrush}" FontWeight="Bold" FontSize="15"
+                <TextBlock x:Name="ErrorBannerIcon" Text="!" Foreground="{StaticResource WarnBrush}" FontWeight="Bold" FontSize="15"
                            Margin="0,0,10,0" VerticalAlignment="Center"/>
                 <TextBlock x:Name="ErrorBannerText" Foreground="#92400E" FontSize="12.5" VerticalAlignment="Center"
                            TextWrapping="Wrap"/>
-                <Button Content="Retry connection" x:Name="RetryBtn" DockPanel.Dock="Right"
+                <!-- ✕ đóng banner — luôn hiện, bất kể lỗi có retry được hay không -->
+                <Button Content="✕" DockPanel.Dock="Right" Style="{StaticResource GhostBtn}" Padding="8,2"
+                        Margin="0,0,4,0" VerticalAlignment="Center" Click="BannerClose_Click"
+                        ToolTip="Đóng thông báo"/>
+                <Button Content="Retry connection" x:Name="RetryBtn" DockPanel.Dock="Right" Margin="0,0,10,0"
                         Background="Transparent" BorderThickness="0" Foreground="{StaticResource WarnBrush}"
                         FontWeight="SemiBold" Cursor="Hand" Click="RetryConnection_Click"/>
             </DockPanel>
@@ -249,6 +236,10 @@
                                             <ColumnDefinition Width="16"/>
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
+                                        <!-- Chọn tất cả / bỏ chọn (header của cột checkbox) — click: chưa chọn hết → chọn hết; đã chọn hết → bỏ hết -->
+                                        <CheckBox Grid.Column="0" Grid.ColumnSpan="2" x:Name="SelectAllChk"
+                                                  HorizontalAlignment="Left" VerticalAlignment="Center" Cursor="Hand"
+                                                  ToolTip="Chọn tất cả / bỏ chọn tất cả" Click="SelectAllChk_Click"/>
                                         <TextBlock Grid.Column="3" Text="Name" x:Name="SortName" Tag="Name" Cursor="Hand"
                                                Foreground="{StaticResource MutedBrush}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"
                                                ToolTip="Bấm để sắp xếp" PreviewMouseLeftButtonDown="Sort_Column"/>
@@ -297,7 +288,7 @@
                         <Setter Property="Padding" Value="0"/>
                         <Setter Property="BorderThickness" Value="0"/>
                         <Setter Property="Background" Value="Transparent"/>
-                        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                        <Setter Property="FocusVisualStyle" Value="{StaticResource RowFocusVisual}"/>
                         <Style.Triggers>
                             <!-- Hover + selected → hàng có phản hồi rõ ràng (UX) -->
                             <Trigger Property="IsMouseOver" Value="True">
@@ -375,23 +366,95 @@
                                                                         <TextBlock Text="↻ Reloaded" FontSize="9" FontWeight="SemiBold" Foreground="#CA8A04"/>
                                                                     </Border>
                                                                 </StackPanel>
-                                                                <!-- pages to print -->
-                                                                <TextBox Grid.Column="5" Text="{Binding Config.PageRange, UpdateSourceTrigger=PropertyChanged}"
-                                                                         FontSize="11" VerticalContentAlignment="Center" BorderBrush="{StaticResource BorderBrush}"
-                                                                         BorderThickness="1" Padding="2,0" Margin="0,1"/>
-                                                                <!-- settings -->
+                                                                <!-- pages to print — bấm mở popup chọn Tất cả / khoảng trang -->
+                                                                <Border Grid.Column="5" x:Name="PagesCell" Background="#FFFFFF"
+                                                                        BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                                                                        CornerRadius="4" Padding="6,2" Cursor="Hand" VerticalAlignment="Center"
+                                                                        MouseLeftButtonUp="PagesCell_Click"
+                                                                        ToolTip="Bấm để chọn trang cần in: tất cả hoặc khoảng trang (vd 1-5, 8)">
+                                                                    <StackPanel Orientation="Horizontal">
+                                                                        <!-- Hiển thị: "Tất cả" khi trống/All, còn lại hiện range đã nhập -->
+                                                                        <TextBlock FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis">
+                                                                            <TextBlock.Style>
+                                                                                <Style TargetType="TextBlock">
+                                                                                    <Setter Property="Text" Value="{Binding Config.PageRange}"/>
+                                                                                    <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+                                                                                    <Style.Triggers>
+                                                                                        <DataTrigger Binding="{Binding Config.PageRange}" Value="">
+                                                                                            <Setter Property="Text" Value="Tất cả"/>
+                                                                                            <Setter Property="Foreground" Value="{StaticResource FaintBrush}"/>
+                                                                                        </DataTrigger>
+                                                                                        <DataTrigger Binding="{Binding Config.PageRange}" Value="All">
+                                                                                            <Setter Property="Text" Value="Tất cả"/>
+                                                                                            <Setter Property="Foreground" Value="{StaticResource FaintBrush}"/>
+                                                                                        </DataTrigger>
+                                                                                    </Style.Triggers>
+                                                                                </Style>
+                                                                            </TextBlock.Style>
+                                                                        </TextBlock>
+                                                                        <TextBlock Text=" ▾" FontSize="9" Foreground="{StaticResource FaintBrush}"
+                                                                                   VerticalAlignment="Center"/>
+                                                                    </StackPanel>
+                                                                </Border>
+                                                                <Popup x:Name="PagesPopup" PlacementTarget="{Binding ElementName=PagesCell}" Placement="Bottom"
+                                                                       StaysOpen="False" AllowsTransparency="True">
+                                                                    <Border Background="White" BorderBrush="#EAEAEA" BorderThickness="1" CornerRadius="10"
+                                                                            Padding="14,12" Width="270" Margin="0,4,0,0">
+                                                                        <Border.Effect>
+                                                                            <DropShadowEffect BlurRadius="20" ShadowDepth="3" Direction="270" Opacity="0.16" Color="#000000"/>
+                                                                        </Border.Effect>
+                                                                        <StackPanel>
+                                                                            <TextBlock Text="Trang cần in" FontSize="12.5" FontWeight="SemiBold" Foreground="#1F1F1F"/>
+                                                                            <!-- GroupName theo FilePath: 2 radio nằm trong 2 StackPanel khác nhau nên KHÔNG
+                                                                                 tự loại nhau — phải gán nhóm tường minh, duy nhất theo từng dòng (job) -->
+                                                                            <RadioButton x:Name="PRangeAll" Content="Tất cả các trang" FontSize="12" Margin="0,8,0,0"
+                                                                                         GroupName="{Binding FilePath}" Checked="PRangeMode_Changed"/>
+                                                                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                                                                <RadioButton x:Name="PRangeCustom" Content="Khoảng trang:" FontSize="12"
+                                                                                             GroupName="{Binding FilePath}"
+                                                                                             VerticalAlignment="Center" Checked="PRangeMode_Changed"/>
+                                                                                <TextBox x:Name="PRangeBox" Width="110" FontSize="12" Padding="3,2" Margin="8,0,0,0"
+                                                                                         IsEnabled="False" VerticalContentAlignment="Center"
+                                                                                         ToolTip="Ví dụ: 1,3 · 2-5 · 1-2,7 · S2:1-3 (section 2)"/>
+                                                                            </StackPanel>
+                                                                            <TextBlock Text="Cú pháp: 1,3 · 2-5 · 1-2,7 · S2:1-3. Trang trùng tự bỏ qua."
+                                                                                       FontSize="10.5" Foreground="#8A8A8A" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                                                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+                                                                                <Button Content="Áp dụng" Style="{StaticResource RoundedBtn}" Padding="14,6"
+                                                                                        Click="PagesApply_Click"/>
+                                                                            </StackPanel>
+                                                                        </StackPanel>
+                                                                    </Border>
+                                                                </Popup>
+                                                                <!-- settings — bấm trực tiếp để mở cấu hình in của file (thay vì chỉ chuột phải → menu) -->
                                                                                                 <TextBlock Grid.Column="7" VerticalAlignment="Center"
                                                                                                            Text="{Binding Config.SummaryText, Mode=OneWay}"
-                                                                                                           TextTrimming="CharacterEllipsis"
-                                                                                                           ToolTip="Bấm chuột phải → 'Cấu hình in (Item settings)…' để chỉnh"/>
+                                                                                                           TextTrimming="CharacterEllipsis" Cursor="Hand"
+                                                                                                           MouseLeftButtonUp="SettingsCell_Click"
+                                                                                                           ToolTip="Bấm để mở cấu hình in của file này"/>
                                                                 <!-- status pill -->
                                                                 <Border Grid.Column="9" CornerRadius="10" Padding="6,1" VerticalAlignment="Center" HorizontalAlignment="Left">
                                     <Border.Style>
                                         <Style TargetType="Border">
-                                            <Setter Property="Background" Value="{StaticResource ReadyBgBrush}"/>
+                                            <!-- Mặc định (Queued, Cancelled): xám idle — chưa chạy, chứ KHÔNG phải done -->
+                                            <Setter Property="Background" Value="{StaticResource HeaderBgBrush}"/>
                                             <Style.Triggers>
+                                                <DataTrigger Binding="{Binding State}" Value="Done">
+                                                    <Setter Property="Background" Value="{StaticResource ReadyBgBrush}"/>
+                                                </DataTrigger>
                                                 <DataTrigger Binding="{Binding State}" Value="Error">
                                                     <Setter Property="Background" Value="{StaticResource ErrorBgBrush}"/>
+                                                </DataTrigger>
+                                                <!-- Converting/Spooling = đang chạy → amber in-progress -->
+                                                <DataTrigger Binding="{Binding State}" Value="Converting">
+                                                    <Setter Property="Background" Value="{StaticResource WarnBgBrush}"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding State}" Value="Spooling">
+                                                    <Setter Property="Background" Value="{StaticResource WarnBgBrush}"/>
+                                                </DataTrigger>
+                                                <!-- AI job chờ duyệt → amber, cần người hành động -->
+                                                <DataTrigger Binding="{Binding State}" Value="AwaitingApproval">
+                                                    <Setter Property="Background" Value="{StaticResource WarnBgBrush}"/>
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
@@ -400,10 +463,22 @@
                                            Text="{Binding StateText}">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
-                                            <Setter Property="Foreground" Value="{StaticResource ReadyBrush}"/>
+                                            <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
                                             <Style.Triggers>
+                                                <DataTrigger Binding="{Binding State}" Value="Done">
+                                                    <Setter Property="Foreground" Value="{StaticResource ReadyBrush}"/>
+                                                </DataTrigger>
                                                 <DataTrigger Binding="{Binding State}" Value="Error">
                                                     <Setter Property="Foreground" Value="{StaticResource ErrorBrush}"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding State}" Value="Converting">
+                                                    <Setter Property="Foreground" Value="{StaticResource WarnBrush}"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding State}" Value="Spooling">
+                                                    <Setter Property="Foreground" Value="{StaticResource WarnBrush}"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding State}" Value="AwaitingApproval">
+                                                    <Setter Property="Foreground" Value="{StaticResource WarnBrush}"/>
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
@@ -419,6 +494,21 @@
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
+
+            <!-- Empty state: hướng dẫn khi hàng đợi trống (ẩn khi có file hoặc đang tìm kiếm) -->
+            <StackPanel x:Name="EmptyState" Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center"
+                        IsHitTestVisible="False">
+                <Border Width="64" Height="64" CornerRadius="16" Background="{StaticResource HeaderBgBrush}"
+                        HorizontalAlignment="Center">
+                    <TextBlock Text="&#xE8B7;" FontFamily="Segoe MDL2 Assets" FontSize="28"
+                               Foreground="{StaticResource FaintBrush}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <TextBlock Text="Kéo thả file vào đây để in" FontSize="14" FontWeight="SemiBold"
+                           Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" Margin="0,14,0,0"/>
+                <TextBlock Text="hoặc Ctrl+V dán đường dẫn · nút '+ Add files' bên trên" FontSize="12"
+                           Foreground="{StaticResource FaintBrush}" HorizontalAlignment="Center" Margin="0,5,0,0"/>
+            </StackPanel>
         </Grid>
 
         <!-- ===== Bulk bar (gọn — chỉ khi có selection): count + summary + mở bảng cấu hình đầy đủ ===== -->
@@ -476,6 +566,26 @@
                 <TextBlock x:Name="ToastText" FontSize="12.5" Foreground="{StaticResource TextBrush}"
                            VerticalAlignment="Center" TextWrapping="Wrap" MaxWidth="320"/>
             </DockPanel>
+        </Border>
+
+        <!-- ===== Drop highlight: overlay toàn cửa sổ khi kéo thả file (hiện qua DragEnter, ẩn qua DragLeave/Drop) ===== -->
+        <Border x:Name="DropHighlight" Grid.RowSpan="7" Panel.ZIndex="500" IsHitTestVisible="False"
+                Background="{StaticResource HeaderBgBrush}" Opacity="0.9" Visibility="Collapsed">
+            <Grid>
+                <Rectangle Margin="14" RadiusX="12" RadiusY="12" Stroke="{StaticResource AccentBrush}"
+                           StrokeThickness="2" StrokeDashArray="6 4" Opacity="0.5"/>
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Text="&#xE8B7;" FontFamily="Segoe MDL2 Assets" FontSize="36"
+                               Foreground="{StaticResource AccentBrush}" Opacity="0.3"
+                               HorizontalAlignment="Center"/>
+                    <TextBlock Text="Thả file để thêm vào hàng đợi" FontSize="16" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextBrush}" Margin="0,10,0,0"
+                               HorizontalAlignment="Center"/>
+                    <TextBlock Text="PDF · Office · ảnh · TXT — folder cũng được quét cả thư mục con"
+                               FontSize="12" Foreground="{StaticResource MutedBrush}" Margin="0,5,0,0"
+                               HorizontalAlignment="Center"/>
+                </StackPanel>
+            </Grid>
         </Border>
     </Grid>
 </Window>

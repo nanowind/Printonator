@@ -40,13 +40,18 @@ public sealed class OfficeComPrintEngine : IPrintEngine
                 Hint = "Chọn máy in (hoặc để 'mặc định').",
             }));
 
-        // COM Office bắt buộc chạy trên STA thread — chạy nền + timeout để không kẹt hàng đợi
+        // COM Office bắt buộc chạy trên STA thread — chạy nền + timeout để không kẹt hàng đợi.
+        // spawnedOfficePids: theo dõi PID của instance Office MÀ ENGINE TỰ TẠO (không phải của user
+        // đang mở). Nếu in bị timeout/abandon STA mà PrintOut chưa trả → app.Quit không kịp chạy,
+        // instance đó thành mồ côi (24 WINWORD/12 EXCEL đã thấy). Track PID để await-side kill ĐÚNG
+        // process do engine tạo khi bị bỏ rơi — không đụng Office thật của user.
+        var spawnedOfficePids = new List<int>();
         var tcs = new TaskCompletionSource<Result<bool>>(TaskCreationOptions.RunContinuationsAsynchronously);
         var worker = new Thread(() =>
         {
             try
             {
-                tcs.TrySetResult(PrintOnSta(job));
+                tcs.TrySetResult(PrintOnSta(job, spawnedOfficePids));
             }
             catch (OperationCanceledException)
             {
@@ -85,10 +90,11 @@ public sealed class OfficeComPrintEngine : IPrintEngine
         worker.SetApartmentState(ApartmentState.STA);
         worker.Start();
 
-        return WaitWithTimeoutAsync(tcs.Task, job, ct);
+        return WaitWithTimeoutAsync(tcs.Task, job, ct, spawnedOfficePids);
     }
 
-    private static async Task<Result<bool>> WaitWithTimeoutAsync(Task<Result<bool>> work, PrintJob job, CancellationToken ct)
+    private static async Task<Result<bool>> WaitWithTimeoutAsync(
+        Task<Result<bool>> work, PrintJob job, CancellationToken ct, IReadOnlyCollection<int> spawnedOfficePids)
     {
         try
         {
@@ -96,13 +102,26 @@ public sealed class OfficeComPrintEngine : IPrintEngine
         }
         catch (TimeoutException)
         {
-            // Không giết được STA thread đang mượn Office — trả lỗi rõ, thread tự kết thúc sau
+            // Không giết được STA thread đang mượn Office — TRẢ LỖI RÕ + DỌN instance mồ côi:
+            // vì PrintOut chưa trả nên app.Quit trong finally không chạy, instance Word/Excel
+            // (mà CHÍNH engine này tạo) sẽ treo vô hình. Kill ĐÚNG PID engine đã spawn — tuyệt
+            // đối không đụng Office người dùng đang mở (PID không nằm trong danh sách này).
+            foreach (var pid in spawnedOfficePids)
+            {
+                try
+                {
+                    var p = System.Diagnostics.Process.GetProcessById(pid);
+                    p.Kill(entireProcessTree: true);
+                    p.WaitForExit(5000);
+                }
+                catch { }
+            }
             return Result<bool>.Fail(new PrintError
             {
                 Code = ErrorCodes.EngineTimeout,
                 Category = PrintErrorCategory.System,
-                Message = $"Hết thời gian chờ {job.FileName} in qua app gốc ({TimeoutSeconds}s).",
-                Hint = "App văn phòng có thể bị kẹt (dialog chờ). Đóng thủ công nếu thấy cửa sổ lạ.",
+                Message = $"Hết thời gian chờ {job.FileName} in qua app gốc ({TimeoutSeconds}s). Đã dọn phiên in đang treo.",
+                Hint = "App văn phòng có thể bị kẹt (dialog chờ). Thử in lại.",
             });
         }
         catch (OperationCanceledException)
@@ -117,7 +136,7 @@ public sealed class OfficeComPrintEngine : IPrintEngine
         }
     }
 
-    private static Result<bool> PrintOnSta(PrintJob job)
+    private static Result<bool> PrintOnSta(PrintJob job, ICollection<int> spawnedOfficePids)
     {
         var kind = InstalledApps.AppForFormat(job.Format);
         if (kind == OfficeAppKind.None)
@@ -137,9 +156,9 @@ public sealed class OfficeComPrintEngine : IPrintEngine
 
         return kind switch
         {
-            OfficeAppKind.Word => PrintWithWord(job, printer),
-            OfficeAppKind.Excel => PrintWithExcel(job, printer),
-            OfficeAppKind.PowerPoint => PrintWithPowerPoint(job, printer),
+            OfficeAppKind.Word => PrintWithWord(job, printer, spawnedOfficePids),
+            OfficeAppKind.Excel => PrintWithExcel(job, printer, spawnedOfficePids),
+            OfficeAppKind.PowerPoint => PrintWithPowerPoint(job, printer, spawnedOfficePids),
             _ => Result<bool>.Fail(new PrintError
             {
                 Code = ErrorCodes.EngineNotFound,
@@ -150,10 +169,39 @@ public sealed class OfficeComPrintEngine : IPrintEngine
         };
     }
 
-    // ============ Word ============
-    private static Result<bool> PrintWithWord(PrintJob job, string? printer)
+    /// <summary>
+    /// Snapshot PID hiện có của process tên cho trước (vd WINWORD) TRƯỚC khi engine mở COM,
+    /// và sau khi mở, trả về PID mới do chính engine tạo (không nằm trong snapshot trước) —
+    /// để timeout có thể kill ĐÚNG process mình tạo, không đụng cái user đang mở sẵn.
+    /// Snapshot này phải lấy NGAY TRƯỚC CreateApp, và detect ngay SAU CreateApp.
+    /// </summary>
+    private static HashSet<int> SnapshotOfficePids(string processName)
     {
+        try
+        {
+            return new HashSet<int>(System.Diagnostics.Process.GetProcessesByName(processName).Select(p => p.Id));
+        }
+        catch { return new HashSet<int>(); }
+    }
+
+    /// <summary>Trả về PID process tên cho trước KHÔNG nằm trong snapshot (== engine vừa tạo), hoặc null.</summary>
+    private static int? NewOfficePid(string processName, HashSet<int> before)
+    {
+        try
+        {
+            foreach (var p in System.Diagnostics.Process.GetProcessesByName(processName))
+                if (!before.Contains(p.Id)) return p.Id;
+        }
+        catch { }
+        return null;
+    }
+
+    // ============ Word ============
+    private static Result<bool> PrintWithWord(PrintJob job, string? printer, ICollection<int> spawnedOfficePids)
+    {
+        var before = SnapshotOfficePids("WINWORD");
         var app = CreateApp("Word.Application");
+        Try(() => { if (NewOfficePid("WINWORD", before) is { } pid) spawnedOfficePids.Add(pid); });
         SetPrinter(app, printer);
         app.Visible = false;
         app.DisplayAlerts = 0; // wdAlertsNone
@@ -171,7 +219,10 @@ public sealed class OfficeComPrintEngine : IPrintEngine
             ApplyWordPaper(doc, job.Config.PaperSize, job.Config.Orientation);
 
             var (all, pages) = WordPrintArgs(job);
-            var copies = Math.Max(job.Config.Copies, 1);
+var copies = Math.Max(job.Config.Copies, 1);
+            // Ghi nhận trung thực: Word COM không phân biệt HƯỚNG lật cạnh (chỉ có ManualDuplexPrint bool) —
+            // ShortEdge qua shim Duplex (LongEdge|ShortEdge → true) cũng in 2 mặt theo driver-default.
+            // Không sửa logic; muốn chính xác hướng lật phải qua render/fallback có cờ riêng.
             if (all)
                 doc.PrintOut(Background: false, Range: 0 /* wdPrintAllDocument */,
                     Copies: copies, ManualDuplexPrint: job.Config.Duplex);
@@ -217,9 +268,11 @@ public sealed class OfficeComPrintEngine : IPrintEngine
     }
 
     // ============ Excel ============
-    private static Result<bool> PrintWithExcel(PrintJob job, string? printer)
+    private static Result<bool> PrintWithExcel(PrintJob job, string? printer, ICollection<int> spawnedOfficePids)
     {
+        var before = SnapshotOfficePids("EXCEL");
         var app = CreateApp("Excel.Application");
+        Try(() => { if (NewOfficePid("EXCEL", before) is { } pid) spawnedOfficePids.Add(pid); });
         SetPrinter(app, printer);
         app.Visible = false;
         app.DisplayAlerts = false;
@@ -269,9 +322,11 @@ public sealed class OfficeComPrintEngine : IPrintEngine
     }
 
     // ============ PowerPoint ============
-    private static Result<bool> PrintWithPowerPoint(PrintJob job, string? printer)
+    private static Result<bool> PrintWithPowerPoint(PrintJob job, string? printer, ICollection<int> spawnedOfficePids)
     {
+        var before = SnapshotOfficePids("POWERPNT");
         var app = CreateApp("PowerPoint.Application");
+        Try(() => { if (NewOfficePid("POWERPNT", before) is { } pid) spawnedOfficePids.Add(pid); });
         SetPrinter(app, printer);
         app.Visible = false; // msoFalse
         dynamic? pres = null;

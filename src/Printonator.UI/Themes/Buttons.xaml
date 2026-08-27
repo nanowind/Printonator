@@ -56,4 +56,18 @@
             </Trigger>
         </Style.Triggers>
     </Style>
+
+    <!-- Focus visual dùng chung cho các dòng list (job list + printer list): vòng ngoài mỏng
+         FaintBrush — KHÔNG x:Null như trước (a11y — người dùng phím Tab phải thấy vị trí focus).
+         Chạy qua FaintBrush token (định nghĩa trong Themes/Colors.xaml, merge TRƯỚC Buttons). -->
+    <Style x:Key="RowFocusVisual" TargetType="Control">
+        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Control">
+                    <Border BorderBrush="{StaticResource FaintBrush}" BorderThickness="1" CornerRadius="3" Margin="1"/>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
 </ResourceDictionary>

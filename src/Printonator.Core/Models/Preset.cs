@@ -12,6 +12,12 @@ public sealed record Preset
     public required string Name { get; init; }
     public int Copies { get; init; } = 1;
     public bool Duplex { get; init; }
+
+    /// <summary>
+    /// Chế độ 2 mặt (mới). Lưu JSON dạng số như PrintColorMode (enum) — preset cũ
+    /// chỉ có bool Duplex vẫn nạp được (khuyết → AsPrinter → map từ bool).
+    /// </summary>
+    public PrintDuplexMode DuplexMode { get; init; } = PrintDuplexMode.AsPrinter;
     public string PaperSize { get; init; } = "A4";
     public PrintColorMode ColorMode { get; init; } = PrintColorMode.AsPrinter;
     public string? PrinterName { get; init; }
@@ -29,7 +35,12 @@ public sealed record Preset
     public PrintConfig ToPrintConfig() => new()
     {
         Copies = Copies,
-        Duplex = Duplex,
+        // Preset mới có enum rõ → giữ nguyên; legacy JSON chỉ có bool Duplex → true = LongEdge;
+        // TRƯỜNG HỢP CÒN LẠI giữ AsPrinter ("theo máy in") — KHÔNG ép thành Simplex:
+        // nếu không làm vậy, profile "Theo máy in" mở lại sẽ bị đổi thành "1 mặt" (Major #1 fix).
+        DuplexMode = DuplexMode != PrintDuplexMode.AsPrinter
+            ? DuplexMode
+            : (Duplex ? PrintDuplexMode.LongEdge : DuplexMode),
         PaperSize = PaperSize,
         ColorMode = ColorMode,
         PrinterName = PrinterName,
@@ -53,7 +64,8 @@ public static class PresetExtensions
     {
         Name = name,
         Copies = cfg.Copies,
-        Duplex = cfg.Duplex,
+        Duplex = cfg.Duplex,           // giữ bool để app cũ đọc được JSON
+        DuplexMode = cfg.DuplexMode,   // lưu đủ enum cho app mới
         PaperSize = cfg.PaperSize,
         ColorMode = cfg.ColorMode,
         PrinterName = cfg.PrinterName,

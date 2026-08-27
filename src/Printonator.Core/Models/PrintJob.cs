@@ -45,6 +45,19 @@ public enum PrintColorMode
 }
 
 /// <summary>
+/// Chế độ 2 mặt (duplex) — theo Print Conductor: As in printer / Simplex / Long-edge / Short-edge.
+/// "As in printer" = để driver máy in quyết; LongEdge lật cạnh dài (in sách),
+/// ShortEdge lật cạnh ngắn (in lịch/bảng tháng).
+/// </summary>
+public enum PrintDuplexMode
+{
+    AsPrinter,   // dùng cài đặt hiện tại của driver máy in (Printing Preferences)
+    Simplex,     // in 1 mặt
+    LongEdge,    // in 2 mặt — lật cạnh dài
+    ShortEdge,   // in 2 mặt — lật cạnh ngắn
+}
+
+/// <summary>
 /// Cách scale trang khi in lên giấy — theo Print Conductor:
 /// Shrink (thu nhỏ trang lớn cho vừa vùng in) / Fit (co+giãn vừa vùng in) /
 /// Original (nguyên cỡ) / Fill (lấp đầy tờ) / Zoom (phần trăm tùy chỉnh).
@@ -89,7 +102,20 @@ public enum PrintQuality
 public sealed class PrintConfig
 {
     public int Copies { get; set; } = 1;
-    public bool Duplex { get; set; }
+
+    /// <summary>Chế độ 2 mặt — mặc định As in printer = driver máy in quyết.</summary>
+    public PrintDuplexMode DuplexMode { get; set; } = PrintDuplexMode.AsPrinter;
+
+    /// <summary>
+    /// Tương thích cũ: MCP/UI cũ gán bool Duplex. Đọc: true khi in 2 mặt (LongEdge/ShortEdge);
+    /// gán: true → LongEdge, false → Simplex (giữ hành vi cũ "mặc định 1 mặt").
+    /// </summary>
+    public bool Duplex
+    {
+        get => DuplexMode is PrintDuplexMode.LongEdge or PrintDuplexMode.ShortEdge;
+        set => DuplexMode = value ? PrintDuplexMode.LongEdge : PrintDuplexMode.Simplex;
+    }
+
     public string PaperSize { get; set; } = "A4";   // A4, A3, A5...
 
     /// <summary>Chế độ màu (mặc định As in printer = driver quyết).</summary>
@@ -147,7 +173,7 @@ public sealed class PrintConfig
     public void CopyInto(PrintConfig target)
     {
         target.Copies = Copies;
-        target.Duplex = Duplex;
+        target.DuplexMode = DuplexMode;   // copy thẳng enum (không qua shim bool — giữ được ShortEdge/AsPrinter)
         target.PaperSize = PaperSize;
         target.ColorMode = ColorMode;
         target.Orientation = Orientation;
@@ -171,7 +197,21 @@ public sealed class PrintConfig
         {
             var paper = PaperSize == PaperCatalog.AsDocument ? "khổ gốc" : PaperSize;
             var parts = new List<string> { $"{Math.Max(Copies, 1)}x", paper };
-            parts.Add(Duplex ? "2 mặt" : "1 mặt");
+            switch (DuplexMode)
+            {
+                case PrintDuplexMode.LongEdge:
+                    parts.Add("2 mặt");   // giữ nguyên chuỗi cũ — test SummaryText đang assert "2 mặt"
+                    break;
+                case PrintDuplexMode.ShortEdge:
+                    parts.Add("2 mặt — lật cạnh ngắn");
+                    break;
+                case PrintDuplexMode.Simplex:
+                    parts.Add("1 mặt");
+                    break;
+                case PrintDuplexMode.AsPrinter:
+                default:
+                    break; // theo driver → không hiện (không gây hiểu nhầm)
+            }
             if (ColorMode is PrintColorMode.Color or PrintColorMode.Grayscale)
                 parts.Add(ColorMode == PrintColorMode.Color ? "Màu" : "B&W");
             if (Parity == PageParityFilter.Odd) parts.Add("trang lẻ");

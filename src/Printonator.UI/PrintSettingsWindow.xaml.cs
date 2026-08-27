@@ -99,7 +99,7 @@ public partial class PrintSettingsWindow : Window
 
         SelectTag(ParityCombo, cfg.Parity.ToString(), "All");
         SelectTag(ColorModeCombo, cfg.ColorMode.ToString(), "AsPrinter");
-        SelectTag(DuplexCombo, cfg.Duplex ? "LongEdge" : "Simplex", "Simplex");
+        SelectTag(DuplexCombo, cfg.DuplexMode.ToString(), "AsPrinter");
         SelectTag(CollationCombo, cfg.Collation.ToString(), "AsPrinter");
 
         SelectTag(PaperCombo, cfg.PaperSize, "A4"); // không tìm thấy (rỗng) → giữ item "Theo máy in" index 0
@@ -138,6 +138,22 @@ public partial class PrintSettingsWindow : Window
         RangeBox.IsEnabled = RangeCustom.IsChecked == true;
         if (RangeCustom.IsChecked == true) RangeBox.Focus();
         RefreshRangePreview();
+        // Ẩn/hiện lỗi cú pháp theo nội dung đang gõ (không chờ đến lúc Áp dụng)
+        if (RangeErrText is not null)
+        {
+            var invalid = RangeCustom.IsChecked == true && !IsValidPageRangeSyntax(RangeBox.Text);
+            RangeErrText.Visibility = invalid ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
+
+    private void Copies_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (CopiesError is null) return;
+        // Lỗi CHỈ nháy khi đã có nội dung mà SAI (non-rỗng && (không parse được || ngoài 1..999)).
+        // Rỗng = đang gõ dở → ẨN lỗi; ValidateCopies lúc bấm Apply vẫn chặn + hiện lỗi nếu vẫn rỗng.
+        var t = CopiesBox.Text.Trim();
+        var invalid = t.Length > 0 && (!int.TryParse(t, out var n) || n is < 1 or > 999);
+        CopiesError.Visibility = invalid ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void RefreshRangePreview()
@@ -333,10 +349,78 @@ public partial class PrintSettingsWindow : Window
 
     private void Apply_Click(object sender, RoutedEventArgs e)
     {
+        // Chặn đóng khi copy hoặc page range sai — hiện đủ lỗi, KHÔNG âm thầm sửa
+        var copiesOk = ValidateCopies();
+        var rangeOk = ValidatePageRange();
+        if (!copiesOk || !rangeOk)
+        {
+            if (!copiesOk) CopiesBox.Focus();
+            else RangeBox.Focus();
+            return;
+        }
         var cfg = _source.Clone();
         WriteConfigInto(cfg);
         Result = cfg;
         DialogResult = true;
+    }
+
+    private bool ValidateCopies()
+    {
+        var valid = int.TryParse(CopiesBox.Text.Trim(), out var n) && n is >= 1 and <= 999;
+        CopiesError.Visibility = valid ? Visibility.Collapsed : Visibility.Visible;
+        return valid;
+    }
+
+    private bool ValidatePageRange()
+    {
+        // Chế độ "Tất cả" hoặc range trống = hợp lệ (ngầm hiểu All, giữ hành vi cũ)
+        var valid = RangeCustom.IsChecked != true
+            || string.IsNullOrWhiteSpace(RangeBox.Text)
+            || IsValidPageRangeSyntax(RangeBox.Text);
+        RangeErrText.Visibility = valid ? Visibility.Collapsed : Visibility.Visible;
+        return valid;
+    }
+
+    /// <summary>
+    /// Kiểm tra CÚ PHÁP page range — grammar khớp ParseRange/ResolvePhysicalPages trong
+    /// PrintJob.cs: "All" · 1,3 · 2-5 · 1-2,7 · S2:1-3 (s&gt;e được phép, Core tự đảo).
+    /// Không resolve trang vật lý ở đây: mỗi file page count khác nhau — bound check
+    /// là việc của engine lúc in (như PageRangeDialog).
+    /// </summary>
+    private static bool IsValidPageRangeSyntax(string? text)
+    {
+        var spec = text?.Trim() ?? "";
+        if (spec.Length == 0 || spec.Equals("All", StringComparison.OrdinalIgnoreCase)) return true;
+
+        // Section mode: "S2:1-3"
+        if (spec.StartsWith("S", StringComparison.OrdinalIgnoreCase) && spec.Contains(':'))
+        {
+            var parts = spec.Split(':');
+            if (!int.TryParse(parts[0].TrimStart('S', 's'), out _)) return false;
+            return IsValidPageList(parts.Length > 1 ? parts[1] : "");
+        }
+
+        return IsValidPageList(spec);
+    }
+
+    /// <summary>Danh sách trang "1,3" · "2-5" — tách phần tử như Core ParseRange (phần tử rỗng = sai).</summary>
+    private static bool IsValidPageList(string spec)
+    {
+        foreach (var part in spec.Split(',', StringSplitOptions.TrimEntries))
+        {
+            if (part.Length == 0) return false;
+            if (part.Contains('-'))
+            {
+                var b = part.Split('-');
+                if (b.Length != 2 || !int.TryParse(b[0], out _) || !int.TryParse(b[1], out _)) return false;
+                // s > e hợp lệ (Core tự swap) — đây chỉ là kiểm tra cú pháp
+            }
+            else if (!int.TryParse(part, out _))
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;
@@ -344,7 +428,7 @@ public partial class PrintSettingsWindow : Window
     /// <summary>Ghi toàn bộ giá trị form vào PrintConfig (dùng cho cả Áp dụng lẫn Lưu profile).</summary>
     private void WriteConfigInto(PrintConfig cfg)
     {
-        cfg.Copies = int.TryParse(CopiesBox.Text, out var copies) && copies >= 1 ? copies : 1;
+        cfg.Copies = int.TryParse(CopiesBox.Text, out var copies) && copies >= 1 ? Math.Min(copies, 999) : 1;
         cfg.PageRange = RangeAll.IsChecked == true ? "All" : NormalizeRange(RangeBox.Text);
 
         cfg.Parity = SelectedTag(ParityCombo) switch
@@ -362,8 +446,13 @@ public partial class PrintSettingsWindow : Window
             _ => PrintColorMode.AsPrinter,
         };
 
-        var duplex = SelectedTag(DuplexCombo);
-        cfg.Duplex = duplex is "LongEdge" or "ShortEdge";
+        cfg.DuplexMode = SelectedTag(DuplexCombo) switch
+        {
+            "Simplex" => PrintDuplexMode.Simplex,
+            "LongEdge" => PrintDuplexMode.LongEdge,
+            "ShortEdge" => PrintDuplexMode.ShortEdge,
+            _ => PrintDuplexMode.AsPrinter,
+        };
 
         cfg.Collation = SelectedTag(CollationCombo) switch
         {
