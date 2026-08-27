@@ -598,16 +598,11 @@ public partial class MainWindow : Window
     {
         var targets = GetTargetJobs(sender);
         if (targets.Count == 0) return;
-        ShowToast($"Đưa {targets.Count} file vào hàng đợi in.");   // tin tốt → toast xanh, không phải banner lỗi
+        // In nhanh qua context menu — KHÔNG xác nhận in-lại/pre-flight (thao tác trực tiếp),
+        // nhưng dùng CHUNG đường thực thi với nút Print (tránh DRY: sửa chỗ nọ quên chỗ kia).
+        ShowToast($"Đưa {targets.Count} file vào hàng đợi in.");
         ApplySelectedPrinter(targets);
-        foreach (var job in targets)
-            _queue.ProcessExisting(job);   // KHÔNG enqueue lại — tránh trùng dòng
-        JobList.Items.Refresh();
-        UpdateFooter();
-
-        // PHẢI fire completion khi in xong (popup "Đã in xong") — đường này trước đây bỏ qua
-        // WaitBatchDoneAsync nên popup không bao giờ hiện khi in qua context menu.
-        _ = WaitBatchDoneAsync(targets.ToList());
+        StartPrintBatch(targets.ToList(), $"in {targets.Count} file này");
     }
 
     private void CtxPageRange_Click(object sender, RoutedEventArgs e)
@@ -700,6 +695,16 @@ public partial class MainWindow : Window
             return; // người dùng hủy — KHÔNG in, không toast "bắt đầu"
         }
 
+        StartPrintBatch(ready, action);
+    }
+
+    /// <summary>Đường thực thi CHUNG cho mọi lệnh in (nút Print, In file này…) — ĐÚNG 1 nơi việc
+    /// đẩy job, refresh, và fire completion. Trước đây tách rời ở từng nút → sửa chỗ này quên chỗ
+    /// kia (vd completion chỉ chạy cho nút Print, không cho context menu).</summary>
+    private void StartPrintBatch(List<PrintJob> ready, string action)
+    {
+        if (ready.Count == 0) { ShowBanner(ErrorCodes.NoFilesSelected, "Không có file nào ở trạng thái chờ in.", ""); return; }
+
         // ProcessExisting: in job đã có, KHÔNG thêm dòng mới
         foreach (var j in ready)
             _queue.ProcessExisting(j);
@@ -708,8 +713,7 @@ public partial class MainWindow : Window
         UpdateFooter();
 
         // Batch-done: chờ MỌI job trong lô về trạng thái cuối (Done/Error/Cancelled) rồi fire
-        // OnAllCompleted MỘT lần. Đây là điểm quyết định chính xác — thay cho debounce trong
-        // Core (không đáng tin khi engine nhanh → popup nhảy theo từng file).
+        // OnAllCompleted MỘT lần. Không dùng timeout — chờ tự nhiên tới khi job xong.
         _ = WaitBatchDoneAsync(ready);
     }
 
