@@ -136,12 +136,16 @@ public partial class MainWindow : Window
         });
     }
 
-    /// <summary>Áp danh sách máy in lên combo (trên UI thread). list==null + err → giữ trạng thái cũ, báo nhẹ.</summary>
+    /// <summary>Áp danh sách máy in lên combo (trên UI thread).
+    /// Quan trọng: nếu scan thất bại / trả RỖNG (vd máy in mạng bị firewall chặn) →
+    /// GIỮ danh sách máy in đã có sẵn, KHÔNG làm trống dropdown (như trước).</summary>
     private void ApplyPrinterList(List<PrinterInfo>? printers, PrintError? err)
     {
-        if (printers is null)
+        if (printers is null || printers.Count == 0)
         {
-            if (err is not null) ShowBanner(err.Code, err.Message, err.Hint);
+            // Không scan được → giữ nguyên danh sách combo hiện tại; nếu có lỗi cụ thể thì báo nhẹ.
+            if (err is not null && PrinterCombo.Items.Count == 0)
+                ShowBanner(err.Code, err.Message, err.Hint);
             return;
         }
         PrinterCombo.ItemsSource = printers;
