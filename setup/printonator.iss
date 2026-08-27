@@ -35,7 +35,10 @@ ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0.17763
 
 [Languages]
-Name: "vietnamese"; MessagesFile: "compiler:Languages\Vietnamese.isl"
+; Vietnamese.isl copy vào repo (setup\Vietnamese.isl) — bản Inno Setup trên CI (choco 6.7.1) KHÔNG ship
+; Languages\Vietnamese.isl → tham chiếu `compiler:` fail build. Dùng relative cho hermetic (không phụ
+; thuộc thư mục compiler). Default.isl là compiler: (embedded trong ISCC — luôn có).
+Name: "vietnamese"; MessagesFile: "Vietnamese.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
