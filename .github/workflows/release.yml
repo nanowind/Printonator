@@ -15,6 +15,11 @@ on:
     tags:
       - 'v*'
 
+# GITHUB_TOKEN mặc định KHÔNG có quyền tạo GitHub Release → softprops fail "Resource not
+# accessible by integration". Khai báo contents: write để action-gh-release tạo draft release.
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
