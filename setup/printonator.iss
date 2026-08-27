@@ -17,6 +17,8 @@ AppSupportURL={#MyAppURL}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
+; Cần quyền admin: install vào Program Files + tự cài .NET Desktop Runtime (runtime installer phải chạy elevated).
+PrivilegesRequired=admin
 OutputDir=.
 OutputBaseFilename=printonator-setup
 Compression=lzma2
@@ -67,10 +69,17 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChang
 const
   DotNetRuntimeFile = 'windowsdesktop-runtime-8.0.30-win-x64.exe';
 
+// Kiểm tra đã có .NET Desktop Runtime (bất kỳ nhánh 8.x trở lên) hay chưa — đọc danh sách release
+// từ registry (Release/SplitOnFeatureInstall... cách chuẩn của .NET). Rộng hơn khoá cứng x64 → không
+// báo nhầm "thiếu" khi máy đã có .NET Desktop (nhiều version/path khác nhau).
 function IsDotNet8Installed(): Boolean;
 begin
-  Result := RegKeyExists(HKLM, 'SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App') or
-            RegKeyExists(HKLM, 'SOFTWARE\WOW6432Node\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App');
+  // Đủ: tồn tại khoá WindowsDesktop.App (bản 8+). Kiểm tra cả 64-bit (chính) + WOW6432.
+  Result := RegKeyExists(HKLM,
+             'SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App');
+  if Result then Exit;
+  Result := RegKeyExists(HKLM,
+             'SOFTWARE\WOW6432Node\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App');
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
