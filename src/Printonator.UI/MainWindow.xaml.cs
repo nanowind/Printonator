@@ -745,8 +745,11 @@ public partial class MainWindow : Window
         }
         catch (Exception) { /* dù lỗi vẫn cố báo completion */ }
 
-        // Không còn job nào trong lô đang chạy → completion 1 lần
-        try { await Dispatcher.BeginInvoke(new Action(() => OnAllCompleted())); }
+        // Không còn job nào trong lô đang chạy → completion 1 lần.
+        // Truyền số file THẬT ĐÃ in xong (đếm từ batch đã chờ), không đếm lại từ Jobs — vì Jobs có
+        // thể đã đổi (auto-remove) giữa lúc chờ → đếm lại sẽ ra 0 dù file đã in xong.
+        var doneCount = batch.Count(j => j.State == JobState.Done);
+        try { await Dispatcher.BeginInvoke(new Action(() => OnAllCompleted(doneCount))); }
         catch { }
     }
 
@@ -799,13 +802,11 @@ public partial class MainWindow : Window
         });
     }
 
-    private void OnAllCompleted()
+    private void OnAllCompleted(int done)
     {
-        // Dùng BeginInvoke (bất đồng bộ, KHÔNG block) — OnAllCompleted fire từ threadpool timer.
+        // Dùng BeginInvoke (bất đồng bộ, KHÔNG block) — completion fire từ threadpool/waiter.
         Dispatcher.BeginInvoke(new Action(() =>
         {
-            var done = Jobs.Count(j => j.State == JobState.Done);
-
             // Thông báo vào danh sách bell (KHÔNG còn card đơn bị ghi đè — mỗi lô một item).
             AddNotification(NotificationKind.Done,
                 $"Đã in xong {done} file",
@@ -913,17 +914,15 @@ public partial class MainWindow : Window
             catch { }
         }
 
-        // Chrome/Edge: chỉ giết headless mồ côi (CDP/printto), GIỮ trình duyệt user đang dùng.
-        foreach (var name in new[] { "chrome", "msedge" })
+        // Dọn MỒ CÔI chỉ do app này tạo: headless Chrome/Edge/msedgewebview2 mà engine in spawn
+        // (đăng ký PID vào BrowserPrintEngine.SpawnedBrowserPids). KHÔNG quét mù theo tên —
+        // tránh giết tab/browser THẬT của user. Dọn đúng PID → máy user không bị nặng vì orphan.
+        foreach (var pid in BrowserPrintEngine.SpawnedBrowserPids.ToList())
         {
-            try
-            {
-                foreach (var p in Process.GetProcessesByName(name))
-                    if (string.IsNullOrEmpty(p.MainWindowTitle))
-                        KillProcess(p);
-            }
+            try { KillProcess(Process.GetProcessById(pid)); }
             catch { }
         }
+        BrowserPrintEngine.SpawnedBrowserPids.Clear();
 
         static void KillProcess(Process p)
         {

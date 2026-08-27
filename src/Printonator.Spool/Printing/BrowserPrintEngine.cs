@@ -14,6 +14,12 @@ namespace Printonator.Spool.Printing;
 /// </summary>
 public sealed class BrowserPrintEngine : IPrintEngine
 {
+    /// <summary>
+    /// PID của các headless browser do engine này spawn (để dọn mồ côi đúng khi đóng app mà không
+    /// đụng browser THẬT của user). Thread-safe — chạy từ nhiều job song song.
+    /// </summary>
+    public static System.Collections.Concurrent.ConcurrentBag<int> SpawnedBrowserPids { get; } = new();
+
     private static readonly string[] BrowserFormats =
         ["PDF", "PNG", "JPG", "JPEG", "BMP", "GIF", "TIF", "TIFF", "WEBP", "ICO", "JFIF", "TXT", "CSV"];
 

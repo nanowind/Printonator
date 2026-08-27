@@ -88,6 +88,8 @@ public sealed class DevToolsPrintClient
             proc = Process.Start(psi);
             if (proc is null)
                 return new Session(null, null, 0, $"Không khởi động được {Path.GetFileName(browserPath)}.");
+            // Đăng ký PID headless để app có thể dọn mồ côi đúng lúc đóng — không đụng browser user.
+            try { BrowserPrintEngine.SpawnedBrowserPids.Add(proc.Id); } catch { }
 
             var (port, stderr) = await ReadDebugPortAsync(proc, cts.Token);
             if (port <= 0)
