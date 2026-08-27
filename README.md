@@ -1,10 +1,10 @@
+<img src="printonatorLogo.png" width="64" align="left" alt="Printonator" />
+
 # Printonator
 
 **In cả loạt tài liệu bằng một nút bấm.**
 
 Kéo thả N file vào (PDF, Word, Excel, PowerPoint, ảnh, TXT...), chọn máy in, bấm in một phát — Printonator lo phần còn lại. Chạy 100% trên máy bạn, dữ liệu không bao giờ rời máy.
-
-<p align="left"><img src="printonatorLogo.png" width="96" alt="Printonator" /></p>
 
 Windows 10/11 · Miễn phí · Mã nguồn mở (MIT)
 
