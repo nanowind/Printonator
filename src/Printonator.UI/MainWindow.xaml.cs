@@ -61,6 +61,23 @@ public partial class MainWindow : Window
         var grouped = CollectionViewSource.GetDefaultView(Jobs);
         grouped.GroupDescriptions.Add(new PropertyGroupDescription(nameof(PrintJob.FolderGroup)));
 
+        Loaded += (_, _) =>
+        {
+            // Khớp cửa sổ vào vùng làm việc (trừ taskbar) — tránh mở lệch/che taskbar/no thể kéo-đóng
+            // nhất là trên màn hình nhỏ (vd 1366x768) khi cửa sổ 1320x860 lớn hơn work-area.
+            var work = System.Windows.SystemParameters.WorkArea;
+            if (Height > work.Height) Height = work.Height;
+            if (Width > work.Width) Width = work.Width;
+
+            // Đảm bảo vị trí nằm TRONG vùng làm việc (phòng khi CenterScreen đặt ra ngoài do multi-monitor
+            // / DPI). Nếu lệch, ép lại giữa vùng làm việc.
+            if (Left < work.Left || Left + Width > work.Left + work.Width ||
+                Top < work.Top || Top + Height > work.Top + work.Height)
+            {
+                Left = work.Left + (work.Width - Width) / 2;
+                Top = work.Top + (work.Height - Height) / 2;
+            }
+        };
         Loaded += async (_, _) => await InitializeAsync();
     }
 

@@ -52,7 +52,8 @@ Source: "app\Printonator.UI.deps.json"; DestDir: "{app}"; Flags: ignoreversion
 ; Các dependency Windows/WinRT — Windows.Data.Pdf (PDF slicing) cần bộ SDK runtime này
 Source: "app\Microsoft.Windows.SDK.NET.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "app\WinRT.Runtime.dll"; DestDir: "{app}"; Flags: ignoreversion
-; Kiểm tra .NET 8 runtime — cài nếu thiếu (xem [Code])
+; .NET 8 Desktop Runtime — GÓI SẴN, self-extract vào {tmp} (dontcopy) để cài tự động nếu thiếu (xem [Code])
+Source: "runtime\windowsdesktop-runtime-8.0.30-win-x64.exe"; DestDir: "{tmp}"; Flags: dontcopy nocompression
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
@@ -62,26 +63,41 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [Code]
-// Kiểm tra .NET 8 Desktop Runtime đã cài chưa
+// .NET 8 Desktop Runtime (bản x64) được GÓI SẴN trong setup — cài tự động nếu thiếu.
+const
+  DotNetRuntimeFile = 'windowsdesktop-runtime-8.0.30-win-x64.exe';
+
 function IsDotNet8Installed(): Boolean;
-var
-  key: String;
 begin
-  key := 'SOFTWARE\Microsoft\NET Core Setup\NDP\v4\Full\';
-  // Đơn giản: kiểm tra registry .NET 8 runtime
   Result := RegKeyExists(HKLM, 'SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App') or
             RegKeyExists(HKLM, 'SOFTWARE\WOW6432Node\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App');
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
+var
+  RuntimeExe: String;
+  ResultCode: Integer;
 begin
-  if CurStep = ssPostInstall then
+  // Cài .NET Desktop Runtime TRƯỚC khi cài app nếu thiếu. Runtime đã được setup gói sẵn
+  // (xem [Files] dòng `dontcopy` → được giải nén vào {tmp}, không vào thư mục cài).
+  if (CurStep = ssInstall) and (not IsDotNet8Installed()) then
   begin
-    // Mở trang .NET 8 download nếu thiếu (user tự cài — đơn giản & an toàn)
-    if not IsDotNet8Installed() then
-      MsgBox('Printonator cần .NET 8 Desktop Runtime.' + #13#10 +
-             'Vui lòng cài từ: https://dotnet.microsoft.com/download/dotnet/8.0' + #13#10 +
-             '(chọn ".NET Desktop Runtime 8.x"), rồi chạy lại Printonator.',
-             mbInformation, MB_OK);
+    MsgBox('Printonator cần .NET 8 Desktop Runtime.' + #13#10 +
+           'Setup sẽ tự cài .NET 8 Desktop Runtime (gói sẵn ~60MB, không cần mạng).' + #13#10 +
+           'Bấm OK để tiếp tục.',
+           mbInformation, MB_OK);
+    RuntimeExe := ExpandConstant('{tmp}\' + DotNetRuntimeFile);
+    // /norestart để không khởi động lại máy giữa chừng. Bạn bấm It sẽ tự cài im lặng.
+    if Exec(RuntimeExe, '/install /quiet /norestart', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    begin
+      if ResultCode <> 0 then
+        MsgBox('Cài đặt .NET 8 Runtime gặp lỗi (mã ' + IntToStr(ResultCode) + ').' + #13#10 +
+               'Cài thủ công: https://dotnet.microsoft.com/download/dotnet/8.0 rồi chạy lại setup.',
+               mbError, MB_OK);
+    end
+    else
+      MsgBox('Không khởi động được trình cài đặt .NET 8 Runtime.' + #13#10 +
+             'Cài thủ công: https://dotnet.microsoft.com/download/dotnet/8.0 rồi chạy lại setup.',
+             mbError, MB_OK);
   end;
 end;
