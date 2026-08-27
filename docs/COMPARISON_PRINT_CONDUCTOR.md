@@ -1,9 +1,10 @@
 # Đối chiếu Printonator vs Print Conductor — Gap Analysis (cập nhật 2026-08-26)
 
-> Nguồn: crawl ĐẦY ĐỦ https://www.print-conductor.com/how-to (trang tổng + từng trang:
-> document-printing-settings, page-printing-settings, common-settings, manage-printer-settings,
-> print-multiple-pages-per-sheet, set-up-printer-properties, features) — ngày 2026-08-26.
+> Nguồn tham khảo: trang hướng dẫn công khai của Print Conductor (https://www.print-conductor.com/how-to
+> và các trang liên quan: document-printing-settings, page-printing-settings, common-settings,
+> manage-printer-settings, print-multiple-pages-per-sheet, set-up-printer-properties, features) — đối chiếu tính năng, ngày 2026-08-26.
 > Mục đích: tài liệu chuyển giao — AI khác đọc xong biết Printonator thiếu gì, làm gì tiếp theo theo thứ tự ưu tiên.
+> Lưu ý: chỉ liệt kê & đối chiếu TÊN TÍNH NĂNG (thông tin công khai) — không sao chép nội dung/thiết kế/văn bản của họ.
 > **Cập nhật lớn 2026-08-26**: bảng option in bổ sung đầy đủ (page range, color mode, paper source,
 > scale mode, pages-per-sheet, profile, native printer dialogs, odd/even, resolution, page-size-based)
 > + engine render DYNAMIC không bundle + mục "UI/UX gaps đã xử lý".
