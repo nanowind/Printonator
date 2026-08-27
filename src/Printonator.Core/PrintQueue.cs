@@ -16,7 +16,7 @@ public sealed class PrintQueue : IDisposable
     private Queue<PrintJob> _pending = new();
     private readonly List<Task> _workers = new();
     private int _activeWorkers;
-        
+
     /// <summary>Jobs đang hiển thị trên UI (bao gồm cả pending).</summary>
     public ObservableCollection<PrintJob> Jobs { get; } = new();
 

@@ -110,11 +110,11 @@ public static class PrinterDialogs
     // ===================== Printer Properties: shell verb "properties" =====================
 
     /// <summary>Mở "Printer Properties" (Thuộc tính máy in) — đích thị cửa sổ
-/// General/Sharing/Ports/Advanced/Color Mgmt/Security/Device Settings của máy in.
-/// Dùng run.dll printui.dll PrintUIEntry /p (đúng dialog Printer Properties), KHÔNG phải
-/// shell verb "properties" lên folder Devices-and-Printers — thứ đó mở PROPERTIES CỦA THIẾT BỊ
-/// (hardware) chung chung, KHÔNG phải thuộc tính máy in.
-/// </summary>
+    /// General/Sharing/Ports/Advanced/Color Mgmt/Security/Device Settings của máy in.
+    /// Dùng run.dll printui.dll PrintUIEntry /p (đúng dialog Printer Properties), KHÔNG phải
+    /// shell verb "properties" lên folder Devices-and-Printers — thứ đó mở PROPERTIES CỦA THIẾT BỊ
+    /// (hardware) chung chung, KHÔNG phải thuộc tính máy in.
+    /// </summary>
     public static Result<bool> OpenPrinterProperties(string printerName)
     {
         if (string.IsNullOrWhiteSpace(printerName))

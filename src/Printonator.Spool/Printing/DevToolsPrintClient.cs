@@ -117,9 +117,23 @@ public sealed class DevToolsPrintClient
     private static void Cleanup(Process? proc, ClientWebSocket? ws)
     {
         try { ws?.Dispose(); } catch { }
-        try { proc?.Kill(entireProcessTree: true); } catch { }
-        try { proc?.WaitForExit(5000); } catch { }   // chờ hẳn — tránh để process con sót sau khi app bị kill
-        try { proc?.Dispose(); } catch { }
+
+        // KHÔNG kill(entireProcessTree:true) — nó giết cả cây Chrome, có thể lan sang Chrome THẬT
+        // của user đang mở → tab bị "Aw Snap / RESULT CODE KILLED". Headless print dùng user-data-dir
+        // riêng nên chỉ cần đóng process con do MÌNH tạo, an toàn. Nếu nó chưa thoát thì sau đó
+        // force-kill đúng PID (không kéo theo tree), rồi chờ.
+        if (proc != null)
+        {
+            try
+            {
+                // Ưu tiên thoát nhẹ nhàng: gửi SIGTERM tương đương (CloseMainWindow chỉ hợp window) —
+                // headless không có window, nên chỉ Kill đúng PID này, KHÔNG entireProcessTree.
+                proc.Kill();
+                proc.WaitForExit(5000);
+            }
+            catch { }
+            try { proc.Dispose(); } catch { }
+        }
     }
 
     private static async Task<(int Port, string Stderr)> ReadDebugPortAsync(Process proc, CancellationToken ct)

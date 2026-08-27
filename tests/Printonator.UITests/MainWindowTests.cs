@@ -47,7 +47,7 @@ public class MainWindowTests
         var main = app.GetMainWindow(automation, TimeSpan.FromSeconds(20));
         Assert.NotNull(main);
         return (app, main);
-}
+    }
 
     [Fact]
     public void App_Launches_Empty_Shows_EmptyState()

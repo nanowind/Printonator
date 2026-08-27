@@ -219,7 +219,7 @@ public sealed class OfficeComPrintEngine : IPrintEngine
             ApplyWordPaper(doc, job.Config.PaperSize, job.Config.Orientation);
 
             var (all, pages) = WordPrintArgs(job);
-var copies = Math.Max(job.Config.Copies, 1);
+            var copies = Math.Max(job.Config.Copies, 1);
             // Ghi nhận trung thực: Word COM không phân biệt HƯỚNG lật cạnh (chỉ có ManualDuplexPrint bool) —
             // ShortEdge qua shim Duplex (LongEdge|ShortEdge → true) cũng in 2 mặt theo driver-default.
             // Không sửa logic; muốn chính xác hướng lật phải qua render/fallback có cờ riêng.
