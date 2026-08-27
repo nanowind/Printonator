@@ -89,6 +89,37 @@ jobs:
           HASH=$(sha256sum setup/printonator-setup.exe | cut -d' ' -f1)
           echo "HASH=$HASH" >> "$GITHUB_OUTPUT"
 
+      # Sinh changelog THẬT từ git log (từ tag trước → HEAD). Viết ra file để softprops dùng body_path
+      # (tránh lỗi YAML khi chèn chuỗi nhiều dòng qua ${{ }}). Release đầu (không có tag trước) → liệt kê 20 commit gần nhất.
+      - name: Build release notes
+        id: notes
+        shell: bash
+        run: |
+          VER="${{ steps.ver.outputs.VER }}"
+          HASH="${{ steps.sha.outputs.HASH }}"
+          PREV_TAG=$(git tag --sort=-creatordate | sed -n '2p')
+          if [ -n "$PREV_TAG" ] && [ "$PREV_TAG" != "v$VER" ]; then
+            RANGE="$PREV_TAG..HEAD"
+            LOG=$(git log --oneline --no-merges "$PREV_TAG"..HEAD | sed 's/^/- /')
+          else
+            RANGE="toàn bộ lịch sử (release đầu)"
+            LOG=$(git log --oneline --no-merges -20 | sed 's/^/- /')
+          fi
+          {
+            echo "## Printonator v$VER"
+            echo ""
+            echo "SHA256: $HASH"
+            echo ""
+            echo "### Thay đổi ($RANGE)"
+            echo "$LOG"
+            echo ""
+            echo "### Về Printonator"
+            echo "- In hàng loạt (PDF/DOCX/XLSX/PPTX/ảnh/TXT)"
+            echo "- AI in giùm qua MCP + guardrail an toàn"
+            echo "- 100% local, MIT"
+          } > release_body.md
+          echo "Release notes đã tạo ($RANGE)"
+
       # Minisign ký installer (public key nhúng trong app). Khi GitHub secret MINISIGN_SECRET_KEY
       # được đặt (nội dung file secret.key, dạng một dòng base64) + MINISIGN_PASSPHRASE → ký thật
       # tạo setup.exe.minisig. CHƯA đặt secret → bỏ qua im lặng (release vẫn có SHA-256).
@@ -120,14 +151,7 @@ jobs:
         with:
           tag_name: v${{ steps.ver.outputs.VER }}
           name: Printonator v${{ steps.ver.outputs.VER }}
-          body: |
-            ## Printonator v${{ steps.ver.outputs.VER }}
-
-            SHA256: ${{ steps.sha.outputs.HASH }}
-
-            - In hàng loạt (PDF/DOCX/XLSX/PPTX/ảnh/TXT)
-            - AI in giùm qua MCP + guardrail an toàn
-            - 100% local, MIT
+          body_path: release_body.md
           draft: true
           # Glob `*.exe*` → khớp installer + .minisig NẾU có (khi chưa đặt secret minisign thì file .minisig
           # không tồn tại — tham chiếu literal path sẽ làm step fail).
