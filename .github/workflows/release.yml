@@ -65,15 +65,20 @@ jobs:
           echo "HASH=$HASH" >> "$GITHUB_OUTPUT"
 
       # Minisign ký installer (public key nhúng trong app). Khi GitHub secret MINISIGN_SECRET_KEY
-      # được đặt (nội dung file secret.key, dạng một dòng base64) + MINISIGN_PASSPHRASE, bước này
-      # ký thật → tạo setup.exe.minisig. Chưa đặt secret → bỏ qua (release vẫn có SHA-256).
+      # được đặt (nội dung file secret.key, dạng một dòng base64) + MINISIGN_PASSPHRASE → ký thật
+      # tạo setup.exe.minisig. CHƯA đặt secret → bỏ qua im lặng (release vẫn có SHA-256).
+      # LƯU Ý: github không cho dùng `secrets` trong `if:` step — nên bước này luôn chạy và tự skip khi bỏ trống.
       - name: Minisign sign installer
-        if: ${{ secrets.MINISIGN_SECRET_KEY != '' }}
         env:
           MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
           MINISIGN_PASSPHRASE: ${{ secrets.MINISIGN_PASSPHRASE }}
         shell: bash
         run: |
+          # Nếu chưa cấu hình secret → không ký, thoát sạch (không làm fail build)
+          if [ -z "$MINISIGN_SECRET_KEY" ]; then
+            echo "MINISIGN_SECRET_KEY chưa đặt — bỏ qua ký (release chỉ có SHA-256)."
+            exit 0
+          fi
           # Cài minisign (tạm) và ký
           if command -v minisign >/dev/null 2>&1; then :; else
             curl -sL -o /tmp/minisign.zip https://github.com/jedisct1/minisign/releases/download/0.11/minisign-0.11-win64.zip
