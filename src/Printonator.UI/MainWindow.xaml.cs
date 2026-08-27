@@ -709,21 +709,23 @@ public partial class MainWindow : Window
         _ = WaitBatchDoneAsync(ready);
     }
 
-    /// <summary>Chờ toàn bộ job trong lô về trạng thái cuối, rồi fire completion 1 lần.</summary>
+    /// <summary>Chờ toàn bộ job trong lô về trạng thái cuối, rồi fire completion 1 lần.
+    /// Có thời gian chờ tối đa (30s) — khi in máy THẬT engine COM/spooler có thể lâu hoặc kẹt,
+    /// popup "Đã in xong" vẫn phải hiện (không chờ vô hạn).</summary>
     private async Task WaitBatchDoneAsync(List<PrintJob> batch)
     {
         var terminal = new[] { JobState.Done, JobState.Error, JobState.Cancelled };
         var toWait = new HashSet<PrintJob>(batch);
+        var deadline = DateTime.UtcNow.AddSeconds(30);
         try
         {
-            while (toWait.Count > 0)
+            while (toWait.Count > 0 && DateTime.UtcNow < deadline)
             {
-                // Chờ job tiếp theo chưa xong
                 var pending = toWait.Where(j => !terminal.Contains(j.State)).ToList();
                 if (pending.Count == 0) break;
 
                 var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-                Action<PrintJob> handler = _ => { };   // reassigned bên dưới
+                Action<PrintJob> handler = _ => { };
                 handler = j =>
                 {
                     if (pending.Contains(j))
@@ -733,21 +735,21 @@ public partial class MainWindow : Window
                     }
                 };
                 _queue.JobStateChanged += handler;
-                // Tránh race nếu job xong ngay trước khi đăng ký
                 if (pending.All(j => terminal.Contains(j.State)))
                 {
                     _queue.JobStateChanged -= handler;
                     tcs.TrySetResult(true);
                 }
-                await tcs.Task;
+                // Chờ có timeout để không treo vô hạn khi máy thật lâu/kẹt
+                var completed = await Task.WhenAny(tcs.Task, Task.Delay(2000));
+                _queue.JobStateChanged -= handler;   // dọn handler nếu timeout
+                if (completed != tcs.Task) continue; // hết 2s không có change → re-check lại
                 toWait.RemoveWhere(j => terminal.Contains(j.State));
             }
         }
         catch (Exception) { /* dù lỗi vẫn cố báo completion */ }
 
-        // Không còn job nào trong lô đang chạy → completion 1 lần.
-        // Truyền số file THẬT ĐÃ in xong (đếm từ batch đã chờ), không đếm lại từ Jobs — vì Jobs có
-        // thể đã đổi (auto-remove) giữa lúc chờ → đếm lại sẽ ra 0 dù file đã in xong.
+        // Truyền số file THẬT ĐÃ in xong (đếm từ batch đã chờ), không đếm lại từ Jobs.
         var doneCount = batch.Count(j => j.State == JobState.Done);
         try { await Dispatcher.BeginInvoke(new Action(() => OnAllCompleted(doneCount))); }
         catch { }
