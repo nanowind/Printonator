@@ -100,8 +100,9 @@ jobs:
           HASH=$(sha256sum setup/printonator-setup.exe | cut -d' ' -f1)
           echo "HASH=$HASH" >> "$GITHUB_OUTPUT"
 
-      # Sinh changelog THẬT từ git log (từ tag trước → HEAD). Viết ra file để softprops dùng body_path
-      # (tránh lỗi YAML khi chèn chuỗi nhiều dòng qua ${{ }}). Release đầu (không có tag trước) → liệt kê 20 commit gần nhất.
+      # Sinh changelog THẬT từ git log (từ tag trước → HEAD). Mỗi commit = subject + BODY (không chỉ
+      # --oneline): trước đây chỉ lấy --oneline → 1 commit gộp nhiều thay đổi ra đúng 1 dòng, release
+      # notes mất hết chi tiết. Release đầu (không có tag trước) → liệt kê 20 commit gần nhất.
       - name: Build release notes
         id: notes
         shell: bash
@@ -111,10 +112,10 @@ jobs:
           PREV_TAG=$(git tag --sort=-creatordate | sed -n '2p')
           if [ -n "$PREV_TAG" ] && [ "$PREV_TAG" != "v$VER" ]; then
             RANGE="$PREV_TAG..HEAD"
-            LOG=$(git log --oneline --no-merges "$PREV_TAG"..HEAD | sed 's/^/- /')
+            LOG=$(git log --no-merges --format='### %s%n%b' "$PREV_TAG"..HEAD | sed '/^Co-Authored-By:/d')
           else
             RANGE="toàn bộ lịch sử (release đầu)"
-            LOG=$(git log --oneline --no-merges -20 | sed 's/^/- /')
+            LOG=$(git log --no-merges --format='### %s%n%b' -20 | sed '/^Co-Authored-By:/d')
           fi
           {
             echo "## Printonator v$VER"
