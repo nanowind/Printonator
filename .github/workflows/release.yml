@@ -100,37 +100,21 @@ jobs:
           HASH=$(sha256sum setup/printonator-setup.exe | cut -d' ' -f1)
           echo "HASH=$HASH" >> "$GITHUB_OUTPUT"
 
-      # Sinh changelog THẬT từ git log (từ tag trước → HEAD). Mỗi commit = subject + BODY (không chỉ
-      # --oneline): trước đây chỉ lấy --oneline → 1 commit gộp nhiều thay đổi ra đúng 1 dòng, release
-      # notes mất hết chi tiết. Release đầu (không có tag trước) → liệt kê 20 commit gần nhất.
+      # Changelog VIẾT TAY (release_notes.template.md) — nói cho NGƯỜI DÙNG, không dump git log.
+      # Quy tắc viết + file template xem AGENTS.md mục "Release notes". CI chỉ điền {VER} + {HASH}.
       - name: Build release notes
         id: notes
         shell: bash
         run: |
           VER="${{ steps.ver.outputs.VER }}"
           HASH="${{ steps.sha.outputs.HASH }}"
-          PREV_TAG=$(git tag --sort=-creatordate | sed -n '2p')
-          if [ -n "$PREV_TAG" ] && [ "$PREV_TAG" != "v$VER" ]; then
-            RANGE="$PREV_TAG..HEAD"
-            LOG=$(git log --no-merges --format='### %s%n%b' "$PREV_TAG"..HEAD | sed '/^Co-Authored-By:/d')
-          else
-            RANGE="toàn bộ lịch sử (release đầu)"
-            LOG=$(git log --no-merges --format='### %s%n%b' -20 | sed '/^Co-Authored-By:/d')
+          TPL=".github/release_notes.template.md"
+          if [ ! -f "$TPL" ]; then
+            echo "::error::Thiếu $TPL — viết changelog cho NGƯỜI DÙNG (xem AGENTS.md 'Release notes')"
+            exit 1
           fi
-          {
-            echo "## Printonator v$VER"
-            echo ""
-            echo "SHA256: $HASH"
-            echo ""
-            echo "### Thay đổi ($RANGE)"
-            echo "$LOG"
-            echo ""
-            echo "### Về Printonator"
-            echo "- In hàng loạt (PDF/DOCX/XLSX/PPTX/ảnh/TXT)"
-            echo "- AI in giùm qua MCP + guardrail an toàn"
-            echo "- 100% local, MIT"
-          } > release_body.md
-          echo "Release notes đã tạo ($RANGE)"
+          sed -e "s/{VER}/$VER/g" -e "s/{HASH}/$HASH/g" "$TPL" > release_body.md
+          echo "Release notes lấy từ $TPL (đã điền version + SHA256)"
 
       # Minisign ký installer (public key nhúng trong app). Khi GitHub secret MINISIGN_SECRET_KEY
       # được đặt (nội dung file secret.key, dạng một dòng base64) + MINISIGN_PASSPHRASE → ký thật
