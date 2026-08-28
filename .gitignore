@@ -57,7 +57,7 @@ skills-lock.json
 Thumbs.db
 Desktop.ini
 .DS_Store
-
+tmp/
 # IDE
 .idea/
 *.swp

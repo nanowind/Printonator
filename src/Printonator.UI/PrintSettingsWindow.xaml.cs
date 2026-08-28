@@ -44,6 +44,46 @@ public partial class PrintSettingsWindow : Window
         LoadFromConfig(_source);
         RefreshRangePreview();
         LoadProfiles();
+        _ = LoadExcelSheetsAsync();   // file Excel → probe danh sách sheet cho dropdown
+    }
+
+    // ============ Sheet cần in (Excel) — probe danh sách sheet, áp cho cả lô file Excel ============
+
+    private static bool IsExcelFormat(string format)
+        => format is "XLS" or "XLSX" or "XLSM";
+
+    private async Task LoadExcelSheetsAsync()
+    {
+        try
+        {
+            var excel = _targets.FirstOrDefault(j => IsExcelFormat(j.Format));
+            if (excel is null) return;   // không phải file Excel → ẩn combo sheet
+
+            // LOADING STATE: hiện "Đang đọc sheet…" (disabled) NGAY — probe .xls lần đầu ~3s, không để
+            // combo trống khiến user tưởng lag / bấm liên tục.
+            SheetLabel.Visibility = Visibility.Visible;
+            SheetCombo.Visibility = Visibility.Visible;
+            SheetHint.Visibility = Visibility.Visible;
+            SheetCombo.IsEnabled = false;
+            SheetCombo.Items.Clear();
+            SheetCombo.Items.Add(Item("Đang đọc sheet…", "__loading__"));
+            SheetCombo.SelectedIndex = 0;
+
+            var sheets = await OfficeComPrintEngine.ListSheetsAsync(excel.FilePath);
+            if (sheets.Length == 0 || !IsLoaded)
+            {
+                SheetLabel.Visibility = Visibility.Collapsed;
+                SheetCombo.Visibility = Visibility.Collapsed;
+                SheetHint.Visibility = Visibility.Collapsed;
+                return;
+            }
+            SheetCombo.IsEnabled = true;
+            SheetCombo.Items.Clear();
+            SheetCombo.Items.Add(Item("Tất cả các sheet", ""));
+            foreach (var s in sheets) SheetCombo.Items.Add(Item(s, s));
+            SelectTag(SheetCombo, _source.SheetName, "");
+        }
+        catch { /* probe lỗi → ẩn combo (in toàn bộ sheet) */ }
     }
 
     // ============ Nạp danh sách phụ thuộc máy in (khổ giấy + khay) ============
@@ -105,6 +145,11 @@ public partial class PrintSettingsWindow : Window
         SelectTag(PaperCombo, cfg.PaperSize, "A4"); // không tìm thấy (rỗng) → giữ item "Theo máy in" index 0
         if (string.IsNullOrEmpty(cfg.PaperSize)) PaperCombo.SelectedIndex = 0;
         SelectTag(PaperSourceCombo, cfg.PaperSource ?? "", "");
+
+        SelectTag(SheetCombo, cfg.SheetName, "");
+
+        FitToPageWideCheck.IsChecked = cfg.FitToPageWide;
+        AutoOrientationCheck.IsChecked = cfg.AutoOrientation;
 
         SelectTag(OrientationCombo, cfg.Orientation.ToString(), "Portrait");
         SelectTag(QualityCombo, cfg.Quality.ToString(), "AsPrinter");
@@ -430,6 +475,13 @@ public partial class PrintSettingsWindow : Window
     {
         cfg.Copies = int.TryParse(CopiesBox.Text, out var copies) && copies >= 1 ? Math.Min(copies, 999) : 1;
         cfg.PageRange = RangeAll.IsChecked == true ? "All" : NormalizeRange(RangeBox.Text);
+
+        // Sheet cần in (Excel): rỗng/"Tất cả" → in toàn bộ; còn lại tên sheet cụ thể (áp cho cả lô Excel)
+        var sheet = SelectedTag(SheetCombo);
+        cfg.SheetName = string.IsNullOrEmpty(sheet) ? null : sheet;
+
+        cfg.FitToPageWide = FitToPageWideCheck.IsChecked == true;
+        cfg.AutoOrientation = AutoOrientationCheck.IsChecked == true;
 
         cfg.Parity = SelectedTag(ParityCombo) switch
         {

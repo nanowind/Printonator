@@ -75,6 +75,10 @@ dotnet run --project src/Printonator.Mcp    # chạy MCP server
 
 Cấu trúc: `Printonator.Core` (hàng đợi, state machine, preset, guard an toàn) → `Printonator.Spool` (máy in + engine) → `Printonator.UI` (WPF) và `Printonator.Mcp`. Chi tiết ở [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) và [docs/COMPARISON_PRINT_CONDUCTOR.md](docs/COMPARISON_PRINT_CONDUCTOR.md).
 
+## Từ tác giả
+
+Ngoài Printonator, tôi còn làm **phần mềm quản lý phòng thí nghiệm** — thử nghiệm, đo lường, hiệu chuẩn, kiểm định thiết bị đo — tại **[labm.io.vn](https://labm.io.vn)**. Hiện đang **alpha test**: doanh nghiệp đăng ký dùng thử miễn phí thời gian ngắn qua contact trên web.
+
 ## Liên hệ
 
 Email: phucnguyenqlcn@gmail.com

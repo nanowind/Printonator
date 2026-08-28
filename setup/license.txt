@@ -1,0 +1,61 @@
+﻿PRINTONATOR — ĐIỀU KHOẢN SỬ DỤNG / LICENSE AGREEMENT
+
+PHẦN MỀM MIỄN PHÍ — KHÔNG BẢO HÀNH
+FREE SOFTWARE — NO WARRANTY
+
+────────────────────────────────────
+TIẾNG VIỆT
+────────────────────────────────────
+
+1. CHẤP NHẬN ĐIỀU KHOẢN
+Bằng cách cài đặt hoặc sử dụng Printonator, bạn đồng ý với các điều khoản dưới đây.
+Nếu không đồng ý, hãy chọn "Không đồng ý" để hủy cài đặt.
+
+2. GIẤY PHÉP
+Printonator được cấp phép theo Giấy phép MIT (mã nguồn mở, miễn phí).
+Bạn được tự do sử dụng, sao chép, sửa đổi và phân phối phần mềm này.
+
+3. KHÔNG CÓ BẢO HÀNH
+Phần mềm này được cung cấp "nguyên trạng" (AS-IS), KHÔNG CÓ bất kỳ bảo hành nào,
+dù công khai hay ngầm định, bao gồm nhưng không giới hạn bảo hành về khả năng bán
+được hay sự phù hợp cho một mục đích cụ thể.
+
+4. GIỚI HẠN TRÁCH NHIỆM
+Trong mọi trường hợp, tác giả KHÔNG chịu trách nhiệm với bất kỳ khiếu nại, tổn thất,
+thiệt hại nào (bao gồm mất dữ liệu, thiệt hại gián tiếp hoặc hậu quả) phát sinh từ
+việc sử dụng hoặc không thể sử dụng phần mềm này, kể cả khi đã được thông báo về khả
+năng xảy ra thiệt hại đó.
+
+5. TRÁCH NHIỆM NGƯỜI DÙNG
+Bạn chịu trách nhiệm kiểm tra bản in, cấu hình máy in và kết quả trước khi sử dụng
+phần mềm cho các mục đích quan trọng (hợp đồng, hóa đơn, hồ sơ...).
+
+Toàn bộ nội dung giấy phép MIT: xem file LICENSE trong phần mềm.
+
+────────────────────────────────────
+ENGLISH
+────────────────────────────────────
+
+1. ACCEPTANCE OF TERMS
+By installing or using Printonator, you agree to the terms below.
+If you do not agree, click "I do not agree" to cancel the installation.
+
+2. LICENSE
+Printonator is licensed under the MIT License (open source, free of charge).
+You are free to use, copy, modify and distribute this software.
+
+3. NO WARRANTY
+This software is provided "AS IS", WITHOUT WARRANTY OF ANY KIND, express or implied,
+including but not limited to the warranties of merchantability or fitness for a
+particular purpose.
+
+4. LIMITATION OF LIABILITY
+In no event shall the author be liable for any claim, damages or other liability
+(including data loss, indirect or consequential damages) arising from the use or
+inability to use this software, even if advised of the possibility of such damage.
+
+5. USER RESPONSIBILITY
+You are responsible for verifying print output, printer configuration and results
+before using the software for important purposes (contracts, invoices, records...).
+
+Full MIT license text: see the LICENSE file inside the software.

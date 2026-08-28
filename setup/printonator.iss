@@ -2,7 +2,7 @@
 ; Build: ISCC.exe setup\printonator.iss
 
 #define MyAppName "Printonator"
-#define MyAppVersion "0.1.7"
+#define MyAppVersion "0.1.8"
 #define MyAppPublisher "Phuc Nguyen"
 #define MyAppExeName "Printonator.UI.exe"
 #define MyAppURL "https://github.com/nanowind/Printonator"
@@ -25,6 +25,8 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 SetupIconFile=..\src\Printonator.UI\app.ico
+; Trang "Điều khoản sử dụng" — user bắt buộc bấm "Đồng ý" mới được cài (bảo vệ tác giả khỏi kiện cáo)
+LicenseFile=license.txt
 UninstallDisplayIcon={app}\{#MyAppExeName}
 VersionInfoVersion={#MyAppVersion}
 ; Bản phân phối CHÍNH THỨC: x64 (Windows 10/11 64-bit — phổ biến; Windows 11 toàn 64-bit).

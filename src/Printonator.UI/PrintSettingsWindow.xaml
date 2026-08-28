@@ -170,6 +170,10 @@
                             <StackPanel Grid.Column="2">
                                 <TextBlock Text="Giấy &amp; màu" Style="{StaticResource GroupTitle}"/>
 
+                                <TextBlock x:Name="SheetLabel" Text="Sheet cần in (Excel)" Style="{StaticResource OptionLabel}" Visibility="Collapsed"/>
+                                <ComboBox x:Name="SheetCombo" Width="330" FontSize="12" HorizontalAlignment="Left" Visibility="Collapsed"/>
+                                <TextBlock x:Name="SheetHint" Text="Chọn 1 sheet để chỉ in sheet đó · 'Tất cả' = in toàn bộ file. Áp cho cả lô file Excel đang chọn." Style="{StaticResource HintText}" Visibility="Collapsed"/>
+
                                 <TextBlock Text="Khổ giấy (Paper size)" Style="{StaticResource OptionLabel}"/>
                                 <ComboBox x:Name="PaperCombo" Width="330" FontSize="12" HorizontalAlignment="Left"/>
                                 <TextBlock Text="'Theo tài liệu' = in đúng khổ gốc từng trang file · 'Theo máy in' = driver quyết." Style="{StaticResource HintText}"/>
@@ -191,6 +195,12 @@
                                     <ComboBoxItem Content="Đen trắng (Grayscale)" Tag="Grayscale"/>
                                 </ComboBox>
                                 <TextBlock Text="'Theo máy in' = driver quyết · 'Theo nội dung' = giữ màu trong file. Đen trắng tiết kiệm mực." Style="{StaticResource HintText}"/>
+
+                                <CheckBox x:Name="FitToPageWideCheck" Content="Fit tất cả cột vào 1 trang ngang" FontSize="12" Margin="0,10,0,0"/>
+                                <TextBlock Text="Bảng rộng (nhiều cột) không bị cắt cột — cột thu nhỏ cho vừa 1 trang ngang." Style="{StaticResource HintText}"/>
+
+                                <CheckBox x:Name="AutoOrientationCheck" Content="Tự động chiều giấy (rộng → ngang, cao → dọc)" FontSize="12" Margin="0,10,0,0"/>
+                                <TextBlock Text="Bảng ngang in landscape, bảng dọc in portrait — không cần chỉnh tay." Style="{StaticResource HintText}"/>
                             </StackPanel>
                         </Grid>
 

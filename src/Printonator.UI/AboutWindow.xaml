@@ -22,6 +22,12 @@
         <TextBlock Text="MIT License — miễn phí, mã nguồn mở. © 2026 Phuc Nguyen" FontSize="11.5"
                    Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
 
+        <TextBlock Text="Từ tác giả" FontSize="14" FontWeight="SemiBold"
+                   Foreground="{StaticResource TextBrush}" Margin="0,18,0,6"/>
+        <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="{StaticResource TextBrush}">
+            <Run Text="Tôi còn làm "/><Hyperlink NavigateUri="https://labm.io.vn" RequestNavigate="Hyperlink_Navigate">phần mềm quản lý phòng thí nghiệm</Hyperlink><Run Text=" (thử nghiệm + đo lường, hiệu chuẩn kiểm định thiết bị đo) tại labm.io.vn — đang alpha test miễn phí."/>
+        </TextBlock>
+
         <TextBlock Text="Liên hệ &amp; ủng hộ" FontSize="14" FontWeight="SemiBold"
                    Foreground="{StaticResource TextBrush}" Margin="0,18,0,6"/>
         <StackPanel>

@@ -54,6 +54,26 @@ public class E2ePrintTests
     }
 
     [Fact]
+    public void ClassifyVirtual_ByPort_KhongNhamMayVatLyCoTenPDF()
+    {
+        // Máy VẬT LÝ có tên chứa "pdf"/"fax" + port thật (USB/IP/WSD) → PHẢI là vật lý (không in ra PDF)
+        Assert.False(PrinterService.ClassifyVirtual("Kyocera ECOSYS M2545 PDF", "IP_192.168.1.50"));
+        Assert.False(PrinterService.ClassifyVirtual("Hóa đơn FAX phòng kế toán", "USB001"));
+        Assert.False(PrinterService.ClassifyVirtual("Canon LBP226", "WSD-632aba5a-b0bd-483f"));
+        Assert.False(PrinterService.ClassifyVirtual("Printer Ne03", "Ne03:"));
+
+        // Máy ẢO thật + port file → virtual (giữ tính năng xuất PDF)
+        Assert.True(PrinterService.ClassifyVirtual("Microsoft Print to PDF", "PORTPROMPT:"));
+        Assert.True(PrinterService.ClassifyVirtual("Send to OneNote", "napsport:"));
+        Assert.True(PrinterService.ClassifyVirtual("Adobe PDF", @"Documents\*.pdf"));
+        Assert.True(PrinterService.ClassifyVirtual("Microsoft Fax", "SHRFAX:"));
+
+        // Port lạ (PDF-XChange custom) / không đọc được → giữ heuristic tên (không ép physical)
+        Assert.True(PrinterService.ClassifyVirtual("PDF-XChange 5.0", "PDF-XChange5-ABBYY-FR15"));
+        Assert.True(PrinterService.ClassifyVirtual("Microsoft Print to PDF", null));
+    }
+
+    [Fact]
     public void PdfOutputPath_IsSameFolderSameName()
     {
         var job = new PrintJob

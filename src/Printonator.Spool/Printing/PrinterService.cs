@@ -121,6 +121,10 @@ public sealed class PrinterService
         var status = TryGetStatus(q);
         var available = string.IsNullOrEmpty(status);
         var trays = Trays(caps.InputBinCapability);
+        // Phân loại máy ảo/vật lý bằng PORT THẬT (q.QueuePort — metadata, không gọi driver) rồi CACHE
+        // lại: PdfOutputPath đọc cache khi in (chạy trên UI thread — gọi spooler lúc in = đơ UI/hang mạng).
+        var isVirtual = ClassifyVirtual(q.Name, SafePort(q));
+        VirtualByPort[q.Name] = isVirtual;
 
         return new PrinterInfo
         {
@@ -135,7 +139,7 @@ public sealed class PrinterService
             SupportedPaperSizes = PaperNames(caps.PageMediaSizeCapability),
             TrayInfo = trays.Length == 0 ? null : string.Join(", ", trays),
             Trays = trays,
-            IsVirtual = IsVirtualPrinter(q.Name),
+            IsVirtual = isVirtual,
         };
     }
 
@@ -233,12 +237,49 @@ public sealed class PrinterService
         _ => bin.ToString(),
     };
 
-    /// <summary>Máy in ảo (PDF/XPS/OneNote/Fax/Adobe) — dùng chung cho UI + engine in (PDF-output path).</summary>
+    // Cache phân loại máy ảo/vật lý theo PORT — điền lúc scan (Describe), đọc lúc in (PdfOutputPath).
+    // PdfOutputPath chạy trên UI THREAD (trước await đầu trong BrowserPrintEngine) → KHÔNG được gọi
+    // spooler ở đó (đơ UI / hang như lỗi Avast). Miss cache → heuristic tên (không gọi spooler).
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> VirtualByPort
+        = new(System.StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Máy in ảo (PDF/XPS/OneNote/Fax/Adobe)? — cache lúc scan (port thật) trước; miss → heuristic tên.</summary>
     internal static bool IsVirtualPrinter(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return false;
+        if (VirtualByPort.TryGetValue(name, out var v)) return v;
+        return NameLooksVirtual(name);
+    }
+
+    private static bool NameLooksVirtual(string name)
     {
         var n = name.ToLowerInvariant();
         return n.Contains("pdf") || n.Contains("xps") || n.Contains("onenote")
             || n.Contains("fax") || n.Contains("adobe");
+    }
+
+    private static string? SafePort(PrintQueue q)
+    {
+        try { return q.QueuePort?.Name; } catch { return null; }
+    }
+
+    /// <summary>Phân loại máy ảo/vật lý bằng PORT (lúc scan — PrintQueue đã mở, không tốn spooler thêm).
+    /// Port VẬT LÝ rõ (USB/IP/WSD/LPT/COM/UNC/JetDirect Ne) → false dù tên chứa "pdf"/"fax" (tránh
+    /// false-positive → máy vật lý bị in ra PDF — bug chính). Port ẢO rõ (PORTPROMPT/FILE/SHRFAX/NAPSPORT/
+    /// nul/Documents) → true. Port lạ/không đọc được → giữ heuristic tên (KHÔNG ép physical — tránh làm
+    /// OneNote/Adobe/PDF-XChange thành máy vật lý → mất tính năng xuất PDF).</summary>
+    internal static bool ClassifyVirtual(string name, string? port)
+    {
+        if (string.IsNullOrWhiteSpace(port)) return NameLooksVirtual(name);
+        var p = port.ToLowerInvariant();
+        if (p.StartsWith("usb") || p.StartsWith("ip_") || p.StartsWith("wsd-")
+            || p.StartsWith("lpt") || p.StartsWith("com") || p.StartsWith("\\\\")
+            || (p.StartsWith("ne") && p.Length <= 7))
+            return false; // port máy VẬT LÝ (JetDirect Ne0x:, USB, IP_, WSD, LPT, COM, UNC)
+        if (p.StartsWith("portprompt") || p.StartsWith("file:") || p.StartsWith("shrfax")
+            || p.StartsWith("napsport") || p.StartsWith("nul:") || p.StartsWith("documents\\"))
+            return true; // port in-ra-FILE (PDF/XPS/Fax/OneNote/Adobe)
+        return NameLooksVirtual(name); // port lạ (PDF-XChange/AnyDesk custom) → giữ heuristic tên
     }
 
     /// <summary>

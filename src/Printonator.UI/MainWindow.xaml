@@ -268,7 +268,7 @@
                                               ToolTip="Bảng cấu hình in đầy đủ: page range, màu, khay giấy, scale, N-up, profile + dialog native của driver"/>
                                      <Button Content="Printers" Style="{StaticResource GhostBtn}"
                                               Click="Printers_Click" Padding="12,6" Margin="0,0,8,0"/>
-                                     <!-- Một nút print DUY NHẤT (ngữ cảnh): có chọn → "Print (N)", không chọn → "Print all (N)" -->
+                                     <!-- Nút print DUY NHẤT, 3 trạng thái: rảnh = "Print all (N)" · đang in = "⏸ Pause" (đỏ, dừng lô) · tạm dừng = "▶ Resume" (xanh lá) -->
                                      <Button Content="Print all" x:Name="PrintMainBtn" Style="{StaticResource RoundedBtn}"
                                               Padding="18,7" Click="PrintMain_Click" AutomationProperties.AutomationId="PrintMainBtn"/>
                                  </StackPanel>
@@ -479,7 +479,7 @@
                                                                     </StackPanel>
                                                                 </Border>
                                                                 <Popup x:Name="PagesPopup" PlacementTarget="{Binding ElementName=PagesCell}" Placement="Bottom"
-                                                                       StaysOpen="False" AllowsTransparency="True">
+                                                                       StaysOpen="True" AllowsTransparency="True">
                                                                     <Border Background="White" BorderBrush="#EAEAEA" BorderThickness="1" CornerRadius="10"
                                                                             Padding="14,12" Width="270" Margin="0,4,0,0">
                                                                         <Border.Effect>
@@ -501,7 +501,13 @@
                                                                             </StackPanel>
                                                                             <TextBlock Text="Cú pháp: 1,3 · 2-5 · 1-2,7 · S2:1-3. Trang trùng tự bỏ qua."
                                                                                        FontSize="10.5" Foreground="#8A8A8A" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                                                                            <TextBlock x:Name="PSheetLabel" Text="Sheet cần in (Excel)" FontSize="12.5" FontWeight="SemiBold"
+                                                                                       Foreground="#1F1F1F" Margin="0,12,0,0" Visibility="Collapsed"/>
+                                                                            <ComboBox x:Name="PSheetCombo" FontSize="12" Margin="0,6,0,0" Visibility="Collapsed"
+                                                                                      ToolTip="Chọn 1 sheet để chỉ in sheet đó · 'Tất cả' = in toàn bộ file"/>
                                                                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+                                                                                <Button Content="✕ Đóng" Style="{StaticResource GhostBtn}" Padding="10,6"
+                                                                                        Margin="0,0,8,0" Click="PagesClose_Click"/>
                                                                                 <Button Content="Áp dụng" Style="{StaticResource RoundedBtn}" Padding="14,6"
                                                                                         Click="PagesApply_Click"/>
                                                                             </StackPanel>

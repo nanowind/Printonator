@@ -142,6 +142,16 @@ public sealed class PrintConfig
     /// </summary>
     public string PageRange { get; set; } = "All";
 
+    /// <summary>Tên sheet Excel cần in (null/rỗng = in TẤT CẢ sheet). Dùng cho file Excel nhiều sheet —
+    /// user chọn sheet qua dropdown trong Print Settings; range áp cho sheet đã chọn.</summary>
+    public string? SheetName { get; set; }
+
+    /// <summary>Excel: fit tất cả cột vào 1 trang ngang (PageSetup.FitToPagesWide=1) — bảng rộng không bị cắt cột.</summary>
+    public bool FitToPageWide { get; set; }
+
+    /// <summary>Excel: tự chọn chiều giấy theo nội dung (vùng dữ liệu rộng hơn cao → landscape, ngược lại portrait).</summary>
+    public bool AutoOrientation { get; set; }
+
     /// <summary>Nguồn giấy (khay) — null/"" = As in printer (driver tự chọn khay). Tên khay lấy từ máy in.</summary>
     public string? PaperSource { get; set; }
 
@@ -190,6 +200,9 @@ public sealed class PrintConfig
         target.Parity = Parity;
         target.Quality = Quality;
         target.ProfileName = ProfileName;
+        target.SheetName = SheetName;
+        target.FitToPageWide = FitToPageWide;
+        target.AutoOrientation = AutoOrientation;
     }
 
     /// <summary>Chuỗi ngắn gọn mô tả cấu hình khác biệt so với mặc định (cho cột Settings).</summary>
@@ -365,6 +378,17 @@ public sealed class PrintJob
 
         // Plain pages: 2,5 | 3-4 | 1-2,7
         return ParseRange(raw, 1, Math.Max(PageCount, 1), $"File có {PageCount} trang.");
+    }
+
+    /// <summary>Parse page range "All | 2,5 | 3-4 | 1-2,7" KHÔNG cần PageCount — cho engine in theo
+    /// From/To per sheet (Excel/PowerPoint in theo TỪ-TỚI của từng sheet; app không đếm trang Excel/PowerPoint
+    /// đáng tin — GET.DOCUMENT trả sai khi đổi sheet, queue mặc định PageCount=1 → ResolvePhysicalPages fail
+    /// → range LUÔN bị bỏ qua in all). Lỗi định dạng → Fail.</summary>
+    public static Result<int[]> ParsePageRange(string? spec)
+    {
+        var raw = string.IsNullOrWhiteSpace(spec) ? "All" : spec.Trim();
+        if (raw.Equals("All", StringComparison.OrdinalIgnoreCase)) return Result<int[]>.Ok([]);
+        return ParseRange(raw, 1, 10000, "Nhiều nhất 10000 trang.");
     }
 
     private static Result<int[]> ParseRange(string spec, int minPage, int maxPage, string boundHint)
