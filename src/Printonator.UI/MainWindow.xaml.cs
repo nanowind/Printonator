@@ -544,11 +544,14 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>Khổ giấy mặc định theo loại file (Penpot gap): bản vẽ A3, văn bản/hóa đơn A4/A5, ảnh A4.</summary>
+    /// <summary>Khổ giấy mặc định theo loại file (Penpot gap): bản vẽ A3, hóa đơn A5; còn lại theo file.</summary>
     private static string DefaultPaperFor(string format) => format switch
     {
         "DWG" or "DXF" or "PLT" or "DWT" => "A3",
         "TXT" or "CSV" => "A5", // hóa đơn/biên nhận dạng ngắn
+        // Office (Excel/Word/PPT) có CẤU HÌNH IN SẴN trong file (khổ giấy/chiều/print area) → GIỮ NGUYÊN
+        // (AsDocument = "theo tài liệu"). Ép A4/portrait làm PDF/in ra sai so với file (bug v0.1.6).
+        "XLS" or "XLSX" or "XLSM" or "DOC" or "DOCX" or "RTF" or "PPT" or "PPTX" or "PPS" or "PPSX" => PaperCatalog.AsDocument,
         _ => "A4",
     };
 

@@ -113,7 +113,7 @@ public class PrintConfigTests
         Assert.Equal(PrintCollation.ByPages, target.Collation);
         Assert.Equal("1-3", target.PageRange);
         Assert.Equal(1, target.Copies); // CopyInto ghi đè TOÀN BỘ — Copies của src (1)
-        Assert.Equal("A4", target.PaperSize); // PaperSize của src (mặc định A4)
+        Assert.Equal(PaperCatalog.AsDocument, target.PaperSize); // default giờ là "theo tài liệu" (không ép A4)
     }
 
     [Fact]

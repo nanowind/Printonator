@@ -335,11 +335,22 @@ public sealed class OfficeComPrintEngine : IPrintEngine
                 });
 
             if (printToFile)
+            {
                 wb.ExportAsFixedFormat(0 /* xlTypePDF */, outputPath);
-            else if (hasRange)
-                wb.PrintOut(From: from, To: to, Copies: copies, Collate: true);
+            }
             else
-                wb.PrintOut(Copies: copies, Collate: true);
+            {
+                // Máy VẬT LÝ → in TỪNG sheet (sheet trống đã ẩn — bỏ qua). wb.PrintOut() chỉ in ACTIVE
+                // sheet → trước đây chỉ ra sheet đầu x N bản. Mỗi sheet 1 lần PrintOut → ra đủ các sheet.
+                foreach (var sheet in wb.Worksheets)
+                {
+                    if (IsSheetBlank(sheet)) continue;
+                    if (hasRange)
+                        sheet.PrintOut(From: from, To: to, Copies: copies, Collate: true);
+                    else
+                        sheet.PrintOut(Copies: copies, Collate: true);
+                }
+            }
             return Result<bool>.Ok(true);
         }
         finally

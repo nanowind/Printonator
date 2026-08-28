@@ -116,7 +116,9 @@ public sealed class PrintConfig
         set => DuplexMode = value ? PrintDuplexMode.LongEdge : PrintDuplexMode.Simplex;
     }
 
-    public string PaperSize { get; set; } = "A4";   // A4, A3, A5...
+    // Mặc định "theo tài liệu" (AsDocument) = giữ khổ giấy SẴN CÓ trong file — KHÔNG ép A4.
+    // (ApplyExcelSetup/ApplyWordPaper bỏ qua AsDocument; ép A4 đè cấu hình in của file — v0.1.6 bug)
+    public string PaperSize { get; set; } = PaperCatalog.AsDocument;
 
     /// <summary>Chế độ màu (mặc định As in printer = driver quyết).</summary>
     public PrintColorMode ColorMode { get; set; } = PrintColorMode.AsPrinter;
@@ -131,7 +133,7 @@ public sealed class PrintConfig
         set => ColorMode = value ? PrintColorMode.Color : PrintColorMode.Grayscale;
     }
 
-    public PrintOrientation Orientation { get; set; } = PrintOrientation.Portrait;
+    public PrintOrientation Orientation { get; set; } = PrintOrientation.AsDocument;   // giữ chiều theo file
     public string? PrinterName { get; set; }         // null = dùng máy in mặc định
 
     /// <summary>

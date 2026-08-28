@@ -45,6 +45,8 @@ SOUL.md
 
 # Local AI instruction memory (never commit)
 .github/instructions/
+# Local handoff docs (private planning — never commit/push)
+docs/HANDOFF_KE_TOAN_2026-08-28.md
 # Impeccable design skill scaffolding (local tooling — CI workflow .github/workflows/ci.yml vẫn commit)
 .github/agents/
 .github/hooks/
