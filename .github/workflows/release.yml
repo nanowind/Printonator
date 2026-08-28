@@ -25,6 +25,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Mặc định fetch-depth=1 → không fetch tag/history → changelog range sai ("release đầu").
+          # fetch-depth=0: đủ lịch sử + tag để git log PREV_TAG..HEAD sinh changelog đúng.
+          fetch-depth: 0
 
       - uses: actions/setup-dotnet@v4
         with:
