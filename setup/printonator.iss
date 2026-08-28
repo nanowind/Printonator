@@ -2,7 +2,7 @@
 ; Build: ISCC.exe setup\printonator.iss
 
 #define MyAppName "Printonator"
-#define MyAppVersion "0.1.4"
+#define MyAppVersion "0.1.5"
 #define MyAppPublisher "Phuc Nguyen"
 #define MyAppExeName "Printonator.UI.exe"
 #define MyAppURL "https://github.com/nanowind/Printonator"

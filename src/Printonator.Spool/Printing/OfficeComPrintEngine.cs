@@ -279,7 +279,10 @@ public sealed class OfficeComPrintEngine : IPrintEngine
         dynamic? wb = null;
         try
         {
-            wb = app.Workbooks.Open(job.FilePath, ReadOnly: true, AddToRecentFiles: false, UpdateLinks: 0);
+            // AddToMru (KHÔNG phải AddToRecentFiles — cái đó là của Word Documents.Open): Excel Workbooks.Open
+            // dùng AddToMru. Tên sai → COM binder DISP_E_UNKNOWNNAME (0x80020006) → MỌI file Excel báo
+            // "App gốc lỗi khi in" (đã xác minh COM thật: sai lỗi đúng, AddToMru mở OK).
+            wb = app.Workbooks.Open(job.FilePath, ReadOnly: true, AddToMru: false, UpdateLinks: 0);
             ApplyExcelSetup(wb.ActiveSheet, job.Config.PaperSize, job.Config.Orientation);
 
             var all = true;
