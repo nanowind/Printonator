@@ -233,10 +233,25 @@ public sealed class PrinterService
         _ => bin.ToString(),
     };
 
-    private static bool IsVirtualPrinter(string name)
+    /// <summary>Máy in ảo (PDF/XPS/OneNote/Fax/Adobe) — dùng chung cho UI + engine in (PDF-output path).</summary>
+    internal static bool IsVirtualPrinter(string name)
     {
         var n = name.ToLowerInvariant();
         return n.Contains("pdf") || n.Contains("xps") || n.Contains("onenote")
             || n.Contains("fax") || n.Contains("adobe");
+    }
+
+    /// <summary>
+    /// Máy in ẢO (PDF/XPS...) → đường dẫn xuất PDF cạnh file gốc (cùng tên, đổi .pdf), để engine
+    /// KHÔNG đẩy vào spooler PDF printer (mở hộp "Save As" vô hình → "báo xong không ra file") mà
+    /// lưu thẳng file xuất. Máy vật lý → null (in bình thường).
+    /// </summary>
+    internal static string? PdfOutputPath(PrintJob job)
+    {
+        var printer = job.Config.PrinterName;
+        if (string.IsNullOrWhiteSpace(printer) || !IsVirtualPrinter(printer)) return null;
+        var dir = System.IO.Path.GetDirectoryName(job.FilePath) ?? System.IO.Path.GetTempPath();
+        var name = System.IO.Path.GetFileNameWithoutExtension(job.FilePath) ?? "printonator";
+        return System.IO.Path.Combine(dir, name + ".pdf");
     }
 }

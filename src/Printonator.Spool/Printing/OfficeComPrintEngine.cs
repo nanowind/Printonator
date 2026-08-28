@@ -223,6 +223,14 @@ public sealed class OfficeComPrintEngine : IPrintEngine
             // Ghi nhận trung thực: Word COM không phân biệt HƯỚNG lật cạnh (chỉ có ManualDuplexPrint bool) —
             // ShortEdge qua shim Duplex (LongEdge|ShortEdge → true) cũng in 2 mặt theo driver-default.
             // Không sửa logic; muốn chính xác hướng lật phải qua render/fallback có cờ riêng.
+            // Máy in ảo (PDF/XPS) → export PDF TRỰC TIẾP bằng Word (không qua driver PDF — hết lỗi
+            // "báo xong không ra file" vì ActivePrinter của PDF printer bị Word/Excel từ chối set).
+            var (printToFile, outputPath) = PdfOutputArgs(job);
+            if (printToFile)
+            {
+                doc.ExportAsFixedFormat(OutputFileName: outputPath, ExportFormat: 17 /* wdExportFormatPDF */);
+                return Result<bool>.Ok(true);
+            }
             if (all)
                 doc.PrintOut(Background: false, Range: 0 /* wdPrintAllDocument */,
                     Copies: copies, ManualDuplexPrint: job.Config.Duplex);
@@ -277,33 +285,66 @@ public sealed class OfficeComPrintEngine : IPrintEngine
         app.Visible = false;
         app.DisplayAlerts = false;
         dynamic? wb = null;
+        List<dynamic> hidden = new(); // sheet trống bị ẩn tạm (không in trang trắng) — trả lại khi xong
         try
         {
             // AddToMru (KHÔNG phải AddToRecentFiles — cái đó là của Word Documents.Open): Excel Workbooks.Open
             // dùng AddToMru. Tên sai → COM binder DISP_E_UNKNOWNNAME (0x80020006) → MỌI file Excel báo
             // "App gốc lỗi khi in" (đã xác minh COM thật: sai lỗi đúng, AddToMru mở OK).
             wb = app.Workbooks.Open(job.FilePath, ReadOnly: true, AddToMru: false, UpdateLinks: 0);
-            ApplyExcelSetup(wb.ActiveSheet, job.Config.PaperSize, job.Config.Orientation);
+            var copies = Math.Max(job.Config.Copies, 1);
 
-            var all = true;
+            // Page range (từ-tới) nếu user chỉ định — áp cho từng sheet (máy vật lý)
+            bool hasRange = false;
             object from = Missing.Value;
             object to = Missing.Value;
             var r = job.ResolvePhysicalPages();
             if (r.IsSuccess && r.Value!.Length > 0)
             {
-                // Excel in theo dãy trang (sheet), từ-tới đủ dùng
-                all = false;
+                hasRange = true;
                 from = r.Value[0];
                 to = r.Value[^1];
             }
-            if (all)
-                wb.PrintOut(Copies: Math.Max(job.Config.Copies, 1), Collate: true);
+
+            // Máy in ảo (Microsoft Print to PDF/XPS...) → export PDF TRỰC TIẾP bằng Excel. In qua driver
+            // PDF bị lỗi "báo xong không ra file": ActivePrinter của Microsoft Print to PDF (port PORTPROMPT)
+            // bị Excel TỪ CHỐI set → in lộn sang default/ẩn hộp Save As. ExportAsFixedFormat không cần máy in.
+            var (printToFile, outputPath) = PdfOutputArgs(job);
+
+            // Áp cấu hình cho MỌI sheet + ẨN sheet trống (không in trang trắng). wb.PrintOut() mặc định
+            // chỉ in ACTIVE sheet → trước đây chỉ ra sheet đầu. ExportAsFixedFormat xuất CẢ workbook,
+            // sheet ẨN (trống) bỏ qua → 1 file đủ các sheet có dữ liệu (đã xác minh COM thật: 2 trang).
+            foreach (var sheet in wb.Worksheets)
+            {
+                ApplyExcelSetup(sheet, job.Config.PaperSize, job.Config.Orientation);
+                if (IsSheetBlank(sheet))
+                {
+                    try { sheet.Visible = 2 /* xlSheetHidden */; hidden.Add(sheet); } catch { }
+                }
+            }
+            var hasAnyData = false;
+            foreach (var sheet in wb.Worksheets)
+                if (!IsSheetBlank(sheet)) { hasAnyData = true; break; }
+            if (!hasAnyData)
+                return Result<bool>.Fail(new PrintError
+                {
+                    Code = ErrorCodes.FileCorrupted,
+                    Category = PrintErrorCategory.App,
+                    Message = "File Excel không có sheet nào có dữ liệu để in.",
+                    Hint = "Kiểm tra lại file — mọi sheet đều trống.",
+                });
+
+            if (printToFile)
+                wb.ExportAsFixedFormat(0 /* xlTypePDF */, outputPath);
+            else if (hasRange)
+                wb.PrintOut(From: from, To: to, Copies: copies, Collate: true);
             else
-                wb.PrintOut(From: from, To: to, Copies: Math.Max(job.Config.Copies, 1), Collate: true);
+                wb.PrintOut(Copies: copies, Collate: true);
             return Result<bool>.Ok(true);
         }
         finally
         {
+            foreach (var s in hidden) Try(() => s.Visible = -1 /* xlSheetVisible */);
             Try(() => wb?.Close(SaveChanges: false));
             Try(() => app.Quit());
             Try(() => Marshal.FinalReleaseComObject(app));
@@ -322,6 +363,35 @@ public sealed class OfficeComPrintEngine : IPrintEngine
             else if (orientation == PrintOrientation.Landscape)
                 sheet.PageSetup.Orientation = 2; // xlLandscape
         });
+    }
+
+    /// <summary>Sheet trống = UsedRange không có ô dữ liệu (chỉ A1 rỗng). File xuất từ thiết bị hay
+    /// kèm sheet template rỗng — bỏ qua để không in trang trắng. Lỗi đọc → coi là CÓ dữ liệu (an toàn).</summary>
+    private static bool IsSheetBlank(dynamic sheet)
+    {
+        try
+        {
+            var used = sheet.UsedRange;
+            if (used is null) return true;
+            int rows = (int)used.Rows.Count;
+            int cols = (int)used.Columns.Count;
+            if (rows > 1 || cols > 1) return false;
+            var v = used.Cells.Item(1, 1).Value2;
+            return v is null || (v is string s && s.Length == 0);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Máy in ẢO (PDF/XPS/OneNote/Adobe…) → trả PrintToFile=true + đường dẫn PDF cạnh file gốc
+    /// (dùng chung PrinterService.PdfOutputPath), để engine lưu thẳng file xuất — không đẩy vào spooler
+    /// PDF printer (mở hộp "Save As" vô hình → "báo xong không ra file"). Máy vật lý → (false, null).</summary>
+    private static (bool printToFile, string? outputPath) PdfOutputArgs(PrintJob job)
+    {
+        var p = PrinterService.PdfOutputPath(job);
+        return p is null ? (false, null) : (true, p);
     }
 
     // ============ PowerPoint ============
@@ -346,6 +416,13 @@ public sealed class OfficeComPrintEngine : IPrintEngine
                 all = false;
                 from = r.Value[0];
                 to = r.Value[^1];
+            }
+            // Máy in ảo (PDF) → export PDF TRỰC TIẾP bằng PowerPoint (không qua driver PDF).
+            var (printToFile, outputPath) = PdfOutputArgs(job);
+            if (printToFile)
+            {
+                pres.ExportAsFixedFormat(Path: outputPath, FixedFormatType: 2 /* ppFixedFormatTypePDF */);
+                return Result<bool>.Ok(true);
             }
             if (all)
                 pres.PrintOut(Copies: Math.Max(job.Config.Copies, 1), Collate: true);

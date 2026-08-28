@@ -48,6 +48,13 @@ jobs:
       - name: Build Release
         run: dotnet build Printonator.sln -c Release
 
+      # GATE TRƯỚC KHI RELEASE: Core + Spool E2E phải XANH — lỗi là không publish được.
+      # (UI FlaUI có 2 test flaky pre-existing → không gate để không chặn release; ci.yml chạy đủ.)
+      - name: Run Core + Spool tests (gate)
+        run: |
+          dotnet test tests/Printonator.Core.Tests/Printonator.Core.Tests.csproj -c Release --no-build
+          dotnet test tests/Printonator.Spool.Tests/Printonator.Spool.Tests.csproj -c Release --no-build
+
       # Build installer bằng Inno Setup (ISCC). Stage Release binaries + download .NET runtime
       # (chỉ để VERIFY SHA đồng bộ với hằng số trong printonator.iss — runtime KHÔNG gói vào installer,
       # download on-demand lúc cài khi máy thiếu .NET).

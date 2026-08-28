@@ -56,10 +56,15 @@ public sealed class BrowserPrintEngine : IPrintEngine
                 Hint = "File bị xóa hoặc di chuyển — kiểm tra lại đường dẫn.",
             });
 
+        // Máy in ẢO (PDF/XPS...) → luôn render rồi LƯU PDF cạnh file gốc, KHÔNG đẩy spooler
+        // (shell printto tới PDF printer mở hộp "Save As" vô hình → "báo xong không ra file").
+        var pdfOut = PrinterService.PdfOutputPath(job);
+
         // FAST-PATH: cấu hình "như default" (in toàn bộ, scale/chỉnh theo file, A4, dọc) thì
         // KHÔNG cần render browser — đi thẳng shell printto (nhanh, không mọc Chrome).
         // Chỉ render khi user đặt option mà shell không làm được: cắt trang, scale, ngang, khổ lạ.
-        if (!NeedsBrowserRender(job))
+        // (Máy ảo → không fast-path: phải render để ra file PDF.)
+        if (pdfOut is null && !NeedsBrowserRender(job))
             return await _fallback.PrintAsync(job, ct);
 
         var tempDir = Path.Combine(Path.GetTempPath(), $"printonator-browser-{Guid.NewGuid():N}");
@@ -117,6 +122,14 @@ public sealed class BrowserPrintEngine : IPrintEngine
 
             var outPdf = Path.Combine(tempDir, "out.pdf");
             await File.WriteAllBytesAsync(outPdf, Convert.FromBase64String(base64), ct);
+
+            // Máy in ảo → lưu thẳng PDF ra cạnh file gốc (đúng ý "xuất PDF"), không đụng spooler.
+            if (pdfOut is not null)
+            {
+                File.Copy(outPdf, pdfOut, overwrite: true);
+                if (job.PageCount <= 0) job.PageCount = ResolveCount(job);
+                return Result<bool>.Ok(true);
+            }
 
             // In PDF tạm N bản qua shell printto (in đúng máy đã chọn; bỏ qua page range vì đã cắt trong PDF)
             var copies = Math.Max(job.Config.Copies, 1);
