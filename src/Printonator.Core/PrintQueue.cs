@@ -11,6 +11,9 @@ namespace Printonator.Core;
 public sealed class PrintQueue : IDisposable
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private volatile bool _isPaused;   // Pause/Resume — user lỡ bấm in thì dừng lô, không lấy job mới
+    private bool _drainRunning;         // CHỈ 1 vòng drain duy nhất — in tuần tự từng file + dừng-đúng-chỗ khi lỗi
+    private volatile bool _stoppedByError; // lô bị dừng do 1 file lỗi (các file sau giữ Queued chờ Resume)
     private readonly CancellationTokenSource _cts = new();
     private readonly object _sync = new();
     private Queue<PrintJob> _pending = new();
@@ -45,7 +48,7 @@ public sealed class PrintQueue : IDisposable
                 Jobs.Add(j);
             }
         }
-        _ = DrainAsync();
+        KickDrain();
     }
 
     public void Enqueue(PrintJob job) => Enqueue(new[] { job });
@@ -76,16 +79,50 @@ public sealed class PrintQueue : IDisposable
         }
     }
 
-    /// <summary>Chạy vòng lặp chính — lấy job từ hàng đợi, chạy, retry nếu cần, chuyển trạng thái.</summary>
-    private async Task DrainAsync()
+    /// <summary>Đang tạm dừng lô in? (bấm Pause — dừng giữa các job; job chờ giữ Queued, job đang in chạy nốt)</summary>
+    public bool IsPaused => _isPaused;
+
+    /// <summary>Lô in bị DỪNG do 1 file lỗi (các file sau giữ Queued chờ Resume)? UI dùng để báo
+    /// "lô bị dừng" thay vì popup "in xong" — không treo khi còn file chưa in.</summary>
+    public bool StoppedByError => _stoppedByError;
+
+    public void Pause() => _isPaused = true;
+    public void Resume()
+    {
+        _isPaused = false;
+        _stoppedByError = false;   // user tiếp tục lô — xóa dấu "dừng do lỗi"
+    }
+
+    /// <summary>Yêu cầu có đúng MỘT vòng drain chạy cho mọi job đang chờ. In TUẦN TỰ (MaxConcurrency=1
+    /// + gate) và DỪNG-ĐÚNG-CHỖ khi 1 file lỗi — nếu nhiều vòng chạy song song thì mỗi vòng dequeue
+    /// riêng → lỗi không dừng được lô, Pause cũng vô nghĩa.</summary>
+    private void KickDrain()
+    {
+        lock (_sync)
+        {
+            if (_drainRunning) return;   // vòng đang chạy sẽ tự nhặt job vừa thêm
+            _drainRunning = true;
+        }
+        _ = DrainLoopAsync();
+    }
+
+    /// <summary>Vòng lặp chính — 1 vòng duy nhất cho cả lô: lấy job từng cái, chạy, retry nếu cần,
+    /// chuyển trạng thái. Pause dừng giữa các file; 1 file lỗi → DỪNG cả lô (không đốt giấy cho
+    /// phần còn lại). Enqueue (MCP) và ProcessBatch (UI) đi chung vòng này → in tuần tự như nhau.</summary>
+    private async Task DrainLoopAsync()
     {
         while (true)
         {
+            // Pause: KHÔNG lấy job mới (job chờ giữ Queued) — chờ tới khi Resume. Job đang in chạy nốt.
+            while (_isPaused)
+                await Task.Delay(200);
+
             PrintJob? job;
             lock (_sync)
             {
                 if (_pending.Count == 0)
                 {
+                    _drainRunning = false;   // ra ngoài lock nhả cờ — Enqueue/ProcessBatch sau sẽ mở vòng mới
                     if (_activeWorkers == 0) AllJobsCompleted?.Invoke();
                     return;
                 }
@@ -111,6 +148,17 @@ public sealed class PrintQueue : IDisposable
             {
                 _gate.Release();
                 lock (_sync) _activeWorkers--;
+            }
+
+            // Stop-on-error: 1 file lỗi (hết retry) → DỪNG cả lô, các file sau giữ Queued chờ Resume.
+            // Lỡ máy in lỗi giữa lô thì không tự in tiếp phần còn lại (in nhầm mất giấy/mực).
+            if (job.State == JobState.Error)
+            {
+                lock (_sync)
+                {
+                    _isPaused = true;
+                    _stoppedByError = true;
+                }
             }
         }
     }
@@ -248,7 +296,7 @@ public sealed class PrintQueue : IDisposable
             _pending.Enqueue(job);
             JobStateChanged?.Invoke(job);
         }
-        _ = DrainAsync();
+        KickDrain();
         return true;
     }
 
@@ -294,53 +342,35 @@ public sealed class PrintQueue : IDisposable
     internal const int UnknownPageBudget = 50;
 
     /// <summary>
-    /// In job ĐÃ CÓ trong hàng đợi (không thêm dòng mới) — dùng khi user bấm "Print all/selected".
-    /// Đảo ngược trạng thái về Queued rồi cho engine chạy.
+    /// In một LÔ job ĐÃ CÓ trong hàng đợi (nút Print All / In file này / MCP in lô) — TUẦN TỰ từng
+    /// file qua MỘT vòng drain duy nhất (MaxConcurrency=1). Khác Enqueue: KHÔNG thêm dòng mới;
+    /// job Done/Error/Cancelled được reset về Queued (cho in lại). Pause dừng giữa các file; 1 file
+    /// lỗi → DỪNG cả lô (các file sau giữ Queued chờ Resume). MỌI lệnh in từ UI đi qua đây → nút
+    /// Print All và context menu "In file này" cùng logic.
     /// </summary>
-    public void ProcessExisting(PrintJob job)
+    public void ProcessBatch(IEnumerable<PrintJob> jobs)
     {
-        if (job is null) return;
+        if (jobs is null) return;
         lock (_sync)
         {
-            if (!Jobs.Contains(job)) return;
-            if (job.State is JobState.Converting or JobState.Spooling) return; // đang in — không in kép
-            if (job.State is JobState.Done or JobState.Error or JobState.Cancelled)
+            foreach (var job in jobs)
             {
-                // Cho in lại job đã xong/lỗi: reset trạng thái về Queued
-                job.State = JobState.Queued;
+                if (job is null || !Jobs.Contains(job)) continue;
+                if (job.State is JobState.Converting or JobState.Spooling) continue; // đang in — không in kép
+                if (_pending.Contains(job)) continue;   // đã chờ trong hàng đợi (double-click Print) — không in kép
+                job.State = JobState.Queued;   // giữ Queued tới lượt — không "Converting" ồ ạt cả lô
                 job.Error = null;
                 job.FinishedAt = null;
+                _pending.Enqueue(job);
                 JobStateChanged?.Invoke(job);
             }
-            // Claim ngay TRONG lock — đối thủ (ProcessExisting/cancel) không đọc-ghi lệch được
-            job.State = JobState.Converting;
         }
-        _ = DrainOnceAsync(job);
+        KickDrain();
     }
 
-    private async Task DrainOnceAsync(PrintJob job)
-    {
-        try
-        {
-            SetState(job, JobState.Converting);
-            await ProcessWithRetryAsync(job);
-        }
-        catch (OperationCanceledException)
-        {
-            SetState(job, JobState.Cancelled);
-        }
-        catch (Exception ex)
-        {
-            SetState(job, JobState.Error, WrapError(job, ex));
-        }
-        finally
-        {
-            // KHÔNG fire AllJobsCompleted ở đây nữa: đường in THẬT (UI PrintJobs) tự chờ cả lô
-            // batch xong và gọi completion 1 lần (WaitBatchDoneAsync). Trước đây debounce trong
-            // Core fire theo từng drain → popup "In xong" nhảy theo từng file (bug). Đường Enqueue
-            // (DrainAsync) vẫn fire bình thường qua vòng lặp chính.
-        }
-    }
+    /// <summary>In lại 1 job đã có trong hàng đợi (giữ API cũ) — đi chung vòng drain tuần tự.</summary>
+    public void ProcessExisting(PrintJob job)
+        => ProcessBatch(job is null ? Array.Empty<PrintJob>() : new[] { job });
 
     /// <summary>Bọc exception thành PrintError đầy đủ — dùng chung cho cả 2 đường drain.</summary>
     private static PrintError WrapError(PrintJob job, Exception ex) => new()

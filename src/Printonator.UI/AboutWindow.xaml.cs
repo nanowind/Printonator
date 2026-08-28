@@ -32,7 +32,7 @@ public partial class AboutWindow : Window
         string? fallbackMessage = "Bạn đang dùng bản mới nhất.";   // mặc định nếu không có release/dữ liệu
         try
         {
-            var url = "https://api.github.com/repos/nanowind/Printonator/releases?per_page=10";
+            var url = "https://api.github.com/repos/nanowind/Printonator/releases?per_page=1";
             using var req = new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Get, url);
             req.Headers.Add("User-Agent", "Printonator");
             req.Headers.Add("Accept", "application/vnd.github+json");
@@ -47,15 +47,16 @@ public partial class AboutWindow : Window
 
             using var doc = System.Text.Json.JsonDocument.Parse(json);
             var lines = new List<string>();
-            foreach (var rel in doc.RootElement.EnumerateArray())
+            // Chỉ hiện changelog BẢN MỚI NHẤT (release đầu tiên) — nhiều phiên bản gộp lại dài ngoằng
+            var latest = doc.RootElement.EnumerateArray().FirstOrDefault();
+            if (latest.ValueKind == System.Text.Json.JsonValueKind.Object)
             {
-                var tag = rel.TryGetProperty("tag_name", out var t) ? t.GetString() : "";
-                var body = rel.TryGetProperty("body", out var b) ? b.GetString() : "";
+                var tag = latest.TryGetProperty("tag_name", out var t) ? t.GetString() : "";
+                var body = latest.TryGetProperty("body", out var b) ? b.GetString() : "";
                 lines.Add($"◆ {tag}");
                 if (!string.IsNullOrWhiteSpace(body))
                     foreach (var l in body.Split('\n').Where(x => !string.IsNullOrWhiteSpace(x)))
                         lines.Add($"   {l.Trim()}");
-                lines.Add("");
             }
 
             if (lines.Count == 0)

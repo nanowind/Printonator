@@ -24,6 +24,7 @@ public partial class MainWindow : Window
     private string? _sortColumn;
     private bool _sortDescending;
     private int _printerScanGeneration;   // scan cũ về sau không được ghi đè kết quả scan mới
+    private Popup? _openPagePopup;        // popup Pages đang mở — đóng bằng field (không duyệt container grouped)
 
     /// <summary>Danh sách thông báo hiển thị trong bell. Badge = số thông báo chưa đọc.</summary>
     public ObservableCollection<AppNotification> Notifications { get; } = new();
@@ -50,6 +51,10 @@ public partial class MainWindow : Window
             FadeToast(0);
         };
         PrinterCombo.SelectionChanged += (_, _) => UpdatePrinterDot();
+        PreviewMouseLeftButtonDown += Window_PreviewMouseLeftButtonDown;   // bấm ngoài → đóng popup Pages
+        // Chuyển sang app KHÁC (main window mất focus) → đóng popup (Popup là cửa sổ riêng, LUÔN nổi trên
+        // mọi app nếu không đóng — user chuyển app vẫn thấy panel, khó chịu).
+        Deactivated += (_, _) => { if (_openPagePopup is { IsOpen: true }) _openPagePopup.IsOpen = false; };
         Closed += (_, _) =>
         {
             _queue.Dispose();
@@ -196,10 +201,30 @@ public partial class MainWindow : Window
                 $"{unresponsive} máy in không phản hồi (có thể bị firewall chặn).",
                 "Bấm Retry connection để quét lại.");
 
-        SelectedPrinter = printers.FirstOrDefault(p => p.IsDefault && p.IsAvailable)
-                          ?? printers.FirstOrDefault(p => p.IsDefault)
-                          ?? printers.FirstOrDefault(p => p.IsAvailable)
-                          ?? printers.FirstOrDefault();
+        // GIỮ máy in user đã chọn (theo TÊN, dùng record MỚI trong list mới) — KHÔNG tự đổi máy khi rescan.
+        // Lỗi cũ: rescan tự reset về máy default → thường là "Microsoft Print to PDF" → mọi job in ra PDF.
+        var prevName = SelectedPrinter?.Name;
+        var kept = prevName is null ? null
+            : printers.FirstOrDefault(p => p.Name.Equals(prevName, StringComparison.OrdinalIgnoreCase));
+        if (kept is not null)
+        {
+            SelectedPrinter = kept;
+            PrinterCombo.SelectedItem = kept;
+            UpdatePrinterDot();
+            ShowPrinterReminder();
+            return;
+        }
+
+        // Auto-pick ưu tiên máy VẬT LÝ (tránh tự chọn "Microsoft Print to PDF" khi default offline).
+        // Hệ toàn máy ảo vẫn chọn được nhờ fallback cuối.
+        SelectedPrinter = printers.FirstOrDefault(p => p.IsDefault && p.IsAvailable && !p.IsVirtual)
+                      ?? printers.FirstOrDefault(p => p.IsDefault && p.IsAvailable)
+                      ?? printers.FirstOrDefault(p => p.IsDefault && !p.IsVirtual)
+                      ?? printers.FirstOrDefault(p => p.IsDefault)
+                      ?? printers.FirstOrDefault(p => p.IsAvailable && !p.IsVirtual)
+                      ?? printers.FirstOrDefault(p => p.IsAvailable)
+                      ?? printers.FirstOrDefault(p => !p.IsVirtual)
+                      ?? printers.FirstOrDefault();
         if (SelectedPrinter is not null) PrinterCombo.SelectedItem = SelectedPrinter;
         UpdatePrinterDot();
         ShowPrinterReminder();
@@ -285,7 +310,112 @@ public partial class MainWindow : Window
         if (cell.FindName("PRangeBox") is TextBox box)
             box.Text = isAll ? "" : job.Config.PageRange.Trim();
 
+        // Đóng popup Pages đang mở (nếu khác) — track bằng FIELD, không duyệt container (ListBox grouped không đáng tin)
+        if (_openPagePopup is not null && _openPagePopup != pop) _openPagePopup.IsOpen = false;
+        _openPagePopup = pop;
+
+        // Sheet cần in (Excel): probe danh sách sheet của file → hiện combo (ẩn nếu không phải Excel)
+        _ = PopulateSheetComboAsync(cell, job);
+
         pop.IsOpen = true;
+    }
+
+    /// <summary>Đổi màu nút Print chính: null = style mặc định (RoundedBtn); hex = nền màu (Pause đỏ / Resume xanh lá).</summary>
+    private void SetPrintButtonColor(string? hex)
+    {
+        if (hex is null)
+        {
+            PrintMainBtn.ClearValue(Control.BackgroundProperty);
+            PrintMainBtn.ClearValue(Control.BorderBrushProperty);
+            PrintMainBtn.ClearValue(Control.ForegroundProperty);
+            return;
+        }
+        var brush = new System.Windows.Media.SolidColorBrush(
+            (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(hex));
+        PrintMainBtn.Background = brush;
+        PrintMainBtn.BorderBrush = brush;
+        PrintMainBtn.Foreground = System.Windows.Media.Brushes.White;
+    }
+
+    /// <summary>✕ Đóng popup Pages của dòng hiện tại.</summary>
+    private void PagesClose_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.FindName("PagesPopup") is Popup pop)
+        {
+            pop.IsOpen = false;
+            if (_openPagePopup == pop) _openPagePopup = null;
+        }
+    }
+
+    /// <summary>Bấm chuột trái → CHỈ đóng popup Pages khi click vào phần tử THUỘC main window (row, toolbar…).
+    /// Popup panel + dropdown của ComboBox sheet là CỬA SỔ RIÊNG — không nằm trong visual tree của main
+    /// window → KHÔNG đóng (bấm combo sheet chọn được, không bị tắt).</summary>
+    private void Window_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (_openPagePopup is not { IsOpen: true }) return;
+        if (e.OriginalSource is DependencyObject src && IsVisualDescendantOf(src, this))
+            _openPagePopup.IsOpen = false;
+    }
+
+    private static bool IsVisualDescendantOf(DependencyObject node, DependencyObject ancestor)
+    {
+        while (node is not null)
+        {
+            if (node == ancestor) return true;
+            node = System.Windows.Media.VisualTreeHelper.GetParent(node);
+        }
+        return false;
+    }
+
+    /// <summary>Probe danh sách sheet của file Excel để hiện combo "Sheet cần in" trong popup ô Pages.</summary>
+    private async Task PopulateSheetComboAsync(FrameworkElement cell, PrintJob job)
+    {
+        try
+        {
+            if (cell.FindName("PSheetLabel") is not System.Windows.Controls.TextBlock label
+                || cell.FindName("PSheetCombo") is not ComboBox combo)
+                return;
+
+            var isExcel = job.Format is "XLS" or "XLSX" or "XLSM";
+            if (!isExcel)
+            {
+                label.Visibility = Visibility.Collapsed;
+                combo.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            // LOADING STATE: hiện "Đang đọc sheet…" (disabled) ngay — probe .xls lần đầu ~3s
+            label.Visibility = Visibility.Visible;
+            combo.Visibility = Visibility.Visible;
+            combo.IsEnabled = false;
+            combo.Items.Clear();
+            combo.Items.Add(new ComboBoxItem { Content = "Đang đọc sheet…", Tag = "__loading__" });
+            combo.SelectedIndex = 0;
+
+            var sheets = await OfficeComPrintEngine.ListSheetsAsync(job.FilePath);
+            if (sheets.Length == 0)
+            {
+                label.Visibility = Visibility.Collapsed;
+                combo.Visibility = Visibility.Collapsed;
+                return;
+            }
+            combo.IsEnabled = true;
+            combo.Items.Clear();
+            combo.Items.Add(new ComboBoxItem { Content = "Tất cả các sheet", Tag = "" });
+            foreach (var s in sheets)
+                combo.Items.Add(new ComboBoxItem { Content = s, Tag = s });
+
+            // Giữ lựa chọn đã lưu nếu còn trong danh sách
+            var cur = job.Config.SheetName;
+            var selected = string.IsNullOrEmpty(cur)
+                ? combo.Items.OfType<ComboBoxItem>().FirstOrDefault()
+                : combo.Items.OfType<ComboBoxItem>().FirstOrDefault(i => string.Equals((string)i.Tag, cur, StringComparison.OrdinalIgnoreCase));
+            if (selected is not null) combo.SelectedItem = selected;
+
+            label.Visibility = Visibility.Visible;
+            combo.Visibility = Visibility.Visible;
+        }
+        catch { }
     }
 
     /// <summary>Radio All/Khoảng-trang đổi → bật/tắt ô nhập tương ứng.</summary>
@@ -312,12 +442,19 @@ public partial class MainWindow : Window
         var targets = JobList.SelectedItems.Contains(job)
             ? JobList.SelectedItems.OfType<PrintJob>().ToList()
             : new List<PrintJob> { job };
+        // Sheet cần in (Excel): "Tất cả" (rỗng) → in toàn bộ; còn lại tên sheet cụ thể
+        var sheet = (fe.FindName("PSheetCombo") as ComboBox)?.SelectedItem is ComboBoxItem sci ? (string)sci.Tag : null;
         foreach (var j in targets)
+        {
             j.Config.PageRange = range;
+            j.Config.SheetName = string.IsNullOrEmpty(sheet) ? null : sheet;
+        }
 
         pop.IsOpen = false;
+        if (_openPagePopup == pop) _openPagePopup = null;
         JobList.Items.Refresh();
-        ShowToast($"Áp trang \"{(range == "All" ? "tất cả" : range)}\" cho {targets.Count} file.");
+        var sheetTxt = string.IsNullOrEmpty(sheet) ? "" : $", sheet \"{sheet}\"";
+        ShowToast($"Áp trang \"{(range == "All" ? "tất cả" : range)}\"{sheetTxt} cho {targets.Count} file.");
     }
 
     // ===== Add files (button + drag-drop) =====
@@ -571,11 +708,14 @@ public partial class MainWindow : Window
     private void AddFiles(IEnumerable<string> paths, string? toast = null)
     {
         var added = 0;
+        var dup = 0;
         foreach (var p in paths)
         {
             try
             {
                 if (!File.Exists(p)) { ShowBanner(ErrorCodes.FileNotFound, $"Không tìm thấy file: {p}", ""); continue; }
+                // Dedup: cùng file (path không phân biệt hoa thường) đã có trong danh sách → KHÔNG tạo row 2
+                if (_queue.Jobs.Any(j => j.FilePath.Equals(p, StringComparison.OrdinalIgnoreCase))) { dup++; continue; }
                 var fmt = Path.GetExtension(p).TrimStart('.').ToUpperInvariant();
                 _queue.AddOnly(new PrintJob
                 {
@@ -592,7 +732,16 @@ public partial class MainWindow : Window
             }
         }
         UpdateFooter();
-        if (added > 0) ShowToast(toast ?? $"Đã thêm {added} file vào hàng đợi.");
+        if (added > 0)
+        {
+            var msg = toast ?? $"Đã thêm {added} file vào hàng đợi.";
+            if (dup > 0) msg += $" · bỏ qua {dup} file đã có trong danh sách";
+            ShowToast(msg);
+        }
+        else if (dup > 0)
+        {
+            ShowToast($"Không thêm file trùng — {dup} file đã có trong danh sách.");
+        }
     }
 
     // ===== Multi-select helpers =====
@@ -633,7 +782,7 @@ public partial class MainWindow : Window
 
         var selected = JobList.SelectedItems.OfType<PrintJob>().ToList();
         if (selected.Contains(clicked) && selected.Count > 0)
-            return selected;   // click phải vào file trong nhóm → cả nhóm
+            return OrderByDisplay(selected).ToList();   // click phải vào file trong nhóm → cả nhóm, theo thứ tự hiển thị
         return new List<PrintJob> { clicked }; // click phải file lẻ → chỉ file đó
     }
 
@@ -705,7 +854,24 @@ public partial class MainWindow : Window
     // Nút print duy nhất (ngữ cảch): có chọn → in các file Selected đang Queued; không chọn → in tất cả Queued.
     private void PrintMain_Click(object sender, RoutedEventArgs e)
     {
-        var selected = JobList.SelectedItems.OfType<PrintJob>()
+        // Nút 3 trạng thái: đang tạm dừng → Resume; đang in → Pause (lỡ bấm in thì dừng ngay); rảnh → in
+        if (_queue.IsPaused)
+        {
+            _queue.Resume();
+            UpdateFooter();
+            ShowToast("Đã tiếp tục in (Resume).");
+            return;
+        }
+        if (Jobs.Any(j => j.State is JobState.Converting or JobState.Spooling))
+        {
+            _queue.Pause();
+            UpdateFooter();
+            ShowToast("Đã tạm dừng lô in — job đang in chạy nốt, các file còn lại chờ.");
+            return;
+        }
+
+        // In theo thứ tự đang HIỂN THỊ (sort + nhóm thư mục) — không theo thứ tự chèn vào Jobs.
+        var selected = OrderByDisplay(JobList.SelectedItems.OfType<PrintJob>())
             .Where(j => j.State == JobState.Queued).ToList();
         if (selected.Count > 0)
         {
@@ -715,7 +881,7 @@ public partial class MainWindow : Window
 
         // Không chọn → in tất cả job ĐÁNG IN (Queued + Done/Error/Cancelled — để print all có thể
         // in lại file đã in khi user đồng ý qua confirm). PrintJobs sẽ hỏi nếu có file Done.
-        var ready = Jobs.Where(j => j.State is JobState.Queued or JobState.Done or JobState.Error or JobState.Cancelled).ToList();
+        var ready = OrderByDisplay(Jobs.Where(j => j.State is JobState.Queued or JobState.Done or JobState.Error or JobState.Cancelled)).ToList();
         if (ready.Count == 0)
         {
             ShowBanner(ErrorCodes.NoFilesSelected, "Không có file nào ở trạng thái chờ in.", "Thêm file hoặc chọn file đã in để in lại.");
@@ -771,6 +937,34 @@ public partial class MainWindow : Window
         StartPrintBatch(ready, action);
     }
 
+    /// <summary>Sắp xếp lại batch theo thứ tự đang HIỂN THỊ (sort + nhóm thư mục của user), không theo
+    /// thứ tự chèn vào Jobs — WPF sort/group nằm ở View, Jobs giữ thứ tự chèn ban đầu → nếu không ép,
+    /// in tuần tự chạy sai thứ tự mắt thấy ("file dưới cùng in trước"). Quét đệ quy qua các nhóm:
+    /// top-to-bottom đúng như list đang hiện.</summary>
+    private IEnumerable<PrintJob> OrderByDisplay(IEnumerable<PrintJob> jobs)
+    {
+        var view = CollectionViewSource.GetDefaultView(Jobs);
+        var order = new Dictionary<PrintJob, int>();
+        var idx = 0;
+        foreach (var j in view.Groups.Count > 0 ? FlattenDisplayGroups(view.Groups) : view.Cast<PrintJob>())
+            order.TryAdd(j, idx++);
+        return jobs.OrderBy(j => order.TryGetValue(j, out var i) ? i : int.MaxValue);
+    }
+
+    /// <summary>Duyệt nhóm đệ quy — nhóm thư mục (GroupDescriptions) nằm ở view; nhóm con chứa item.</summary>
+    private static IEnumerable<PrintJob> FlattenDisplayGroups(System.Collections.IEnumerable groups)
+    {
+        foreach (var o in groups)
+        {
+            if (o is System.Windows.Data.CollectionViewGroup g)
+            {
+                foreach (var sub in FlattenDisplayGroups(g.Items)) yield return sub;
+            }
+            else if (o is PrintJob j)
+                yield return j;
+        }
+    }
+
     /// <summary>Đường thực thi CHUNG cho mọi lệnh in (nút Print, In file này…) — ĐÚNG 1 nơi việc
     /// đẩy job, refresh, và fire completion. Trước đây tách rời ở từng nút → sửa chỗ này quên chỗ
     /// kia (vd completion chỉ chạy cho nút Print, không cho context menu).</summary>
@@ -778,9 +972,9 @@ public partial class MainWindow : Window
     {
         if (ready.Count == 0) { ShowBanner(ErrorCodes.NoFilesSelected, "Không có file nào ở trạng thái chờ in.", ""); return; }
 
-        // ProcessExisting: in job đã có, KHÔNG thêm dòng mới
-        foreach (var j in ready)
-            _queue.ProcessExisting(j);
+        // ProcessBatch: in TUẦN TỰ từng file qua 1 vòng drain duy nhất (nút Print All và context menu
+        // "In file này" đi chung đường này). KHÔNG thêm dòng mới; job giữ Queued tới lượt của nó.
+        _queue.ProcessBatch(ready);
         ShowToast($"Bắt đầu {action}...");
         JobList.Items.Refresh();
         UpdateFooter();
@@ -792,17 +986,27 @@ public partial class MainWindow : Window
 
     /// <summary>Chờ toàn bộ job trong lô về trạng thái cuối, rồi fire completion 1 lần.
     /// Không dùng timeout — chờ tự nhiên đến khi mọi job trong lô về trạng thái cuối
-    /// (Done/Error/Cancelled); in xong là khi nào job xong, không chặt 30s.</summary>
+    /// (Done/Error/Cancelled); in xong là khi nào job xong, không chặt 30s.
+    /// NGOẠI LỆ: lô bị queue TỰ DỪNG do 1 file lỗi (Stop-on-error) — các file sau vẫn Queued chờ
+    /// Resume, KHÔNG phải trạng thái cuối → phải coi là "bị dừng" ngay, không chờ vô hạn.</summary>
     private async Task WaitBatchDoneAsync(List<PrintJob> batch)
     {
         var terminal = new[] { JobState.Done, JobState.Error, JobState.Cancelled };
         var toWait = new HashSet<PrintJob>(batch);
+        var interrupted = false;
         try
         {
             while (toWait.Count > 0)
             {
                 var pending = toWait.Where(j => !terminal.Contains(j.State)).ToList();
                 if (pending.Count == 0) break;
+
+                // Queue tự pause do 1 file lỗi → lô này kết thúc tại đây (không phải "in xong").
+                if (_queue.IsPaused && _queue.StoppedByError)
+                {
+                    interrupted = true;
+                    break;
+                }
 
                 var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
                 Action<PrintJob> handler = _ => { };
@@ -825,6 +1029,16 @@ public partial class MainWindow : Window
             }
         }
         catch (Exception) { /* dù lỗi vẫn cố báo completion */ }
+
+        if (interrupted)
+        {
+            // Lô bị DỪNG do lỗi: KHÔNG popup "in xong" — báo rõ file lỗi + còn bao nhiêu file chờ Resume.
+            var done = batch.Count(j => j.State == JobState.Done);
+            var failed = batch.FirstOrDefault(j => j.State == JobState.Error);
+            try { await Dispatcher.BeginInvoke(new Action(() => OnBatchStopped(done, failed))); }
+            catch { }
+            return;
+        }
 
         // Truyền số file THẬT ĐÃ in xong (đếm từ batch đã chờ), không đếm lại từ Jobs.
         var doneCount = batch.Count(j => j.State == JobState.Done);
@@ -901,6 +1115,22 @@ public partial class MainWindow : Window
                 JobList.Items.Refresh();
             }
 
+            UpdateFooter();
+        }));
+    }
+
+    /// <summary>Lô in bị DỪNG do 1 file lỗi (stop-on-error): các file sau giữ Queued chờ Resume.
+    /// Báo rõ file lỗi + còn bao nhiêu file chờ — KHÔNG báo "in xong" (không đúng), KHÔNG treo chờ.</summary>
+    private void OnBatchStopped(int done, PrintJob? failed)
+    {
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            var waiting = Jobs.Count(j => j.State == JobState.Queued);
+            var name = failed?.FileName ?? "file";
+            AddNotification(NotificationKind.Warning,
+                $"Lô in bị dừng do lỗi \"{name}\"",
+                $"{done} file đã in, {waiting} file chờ — sửa xong bấm Resume.");
+            ShowToast($"Dừng lô in: \"{name}\" lỗi — {done} file đã in, {waiting} file chờ. Bấm Resume để in tiếp.");
             UpdateFooter();
         }));
     }
@@ -1031,12 +1261,28 @@ public partial class MainWindow : Window
                 ? System.Windows.Shell.TaskbarItemProgressState.Normal
                 : (total > 0 ? System.Windows.Shell.TaskbarItemProgressState.None : System.Windows.Shell.TaskbarItemProgressState.None);
 
-        // Nút print duy nhất — ngữ cảnh: có chọn → "Print (N)", không chọn → "Print all (N)" theo số Queued
-        var queued = Jobs.Count(j => j.State == JobState.Queued);
-        var selQueued = JobList.SelectedItems.OfType<PrintJob>().Count(j => j.State == JobState.Queued);
-        PrintMainBtn.Content = selQueued > 0
-            ? $"Print ({selQueued})"
-            : (queued > 0 ? $"Print all ({queued})" : "Print all");
+        // Nút print duy nhất — 3 trạng thái: rảnh = "Print (N)/Print all (N)" · đang in = "⏸ Pause" (đỏ, để
+        // dừng lô nếu lỡ bấm in) · tạm dừng = "▶ Resume" (xanh lá).
+        var printing = Jobs.Any(j => j.State is JobState.Converting or JobState.Spooling);
+        if (_queue.IsPaused)
+        {
+            PrintMainBtn.Content = "▶ Resume";
+            SetPrintButtonColor("#16A34A");   // xanh lá
+        }
+        else if (printing)
+        {
+            PrintMainBtn.Content = "⏸ Pause";
+            SetPrintButtonColor("#DC2626");   // đỏ — nổi bật để người dùng bấm dừng
+        }
+        else
+        {
+            var queued = Jobs.Count(j => j.State == JobState.Queued);
+            var selQueued = JobList.SelectedItems.OfType<PrintJob>().Count(j => j.State == JobState.Queued);
+            PrintMainBtn.Content = selQueued > 0
+                ? $"Print ({selQueued})"
+                : (queued > 0 ? $"Print all ({queued})" : "Print all");
+            SetPrintButtonColor(null);
+        }
 
         // Checkbox chọn-tất-cả trên header sync theo selection hiện tại
         SyncSelectAllState();
