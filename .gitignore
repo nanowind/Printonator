@@ -42,6 +42,13 @@ AGENTS.md
 CLAUDE.md
 SOUL.md
 .mcp.json
+# Skill printonator-mcp đi cùng repo — mở .claude để git duyệt vào, rồi chặn phần còn lại, chỉ mở đúng nhánh printonator-mcp
+!.claude/
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/printonator-mcp/
+!.claude/skills/printonator-mcp/**
 
 # Local AI instruction memory (never commit)
 .github/instructions/

@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="clr-namespace:Printonator.UI"
         xmlns:models="clr-namespace:Printonator.Core.Models;assembly=Printonator.Core"
+        xmlns:l10n="clr-namespace:Printonator.UI.Localization"
         Title="Printonator" Height="860" Width="1320"
         WindowStartupLocation="CenterScreen" Icon="app.ico"
         Background="#FFFFFF"
@@ -119,7 +120,7 @@
                                    VerticalAlignment="Center" HorizontalAlignment="Left"/>
                         <TextBox x:Name="SearchBox" Background="Transparent" BorderThickness="0" FontSize="12"
                                  Padding="16,0,0,0" Width="190" VerticalContentAlignment="Center"
-                                 ToolTip="Tìm theo tên file" TextChanged="SearchBox_TextChanged"
+                                 ToolTip="{l10n:Loc Main.SearchTooltip}" TextChanged="SearchBox_TextChanged"
                                  AllowDrop="False"/>
                     </Grid>
                 </Border>
@@ -146,12 +147,12 @@
                                                 Width="380" Padding="0,0,0,4" Margin="0,6,0,0">
                                             <StackPanel>
                                                 <DockPanel Margin="16,12,14,8">
-                                                    <TextBlock Text="Thông báo" FontSize="14" FontWeight="SemiBold" Foreground="#1F1F1F" VerticalAlignment="Center"/>
+                                                    <TextBlock Text="{l10n:Loc Main.NotifTitle}" FontSize="14" FontWeight="SemiBold" Foreground="#1F1F1F" VerticalAlignment="Center"/>
                                                     <!-- Nút kiểm tra bản mới — kiểu link nhỏ gọn, không đè chữ "Thông báo" -->
-                                                    <Button DockPanel.Dock="Right" Content="Kiểm tra bản mới"
+                                                    <Button DockPanel.Dock="Right" Content="{l10n:Loc Main.NotifCheckUpdate}"
                                                             Background="Transparent" BorderThickness="0" Foreground="{StaticResource MutedBrush}"
                                                             FontSize="11" Padding="6,3" Cursor="Hand" Click="BellCheckUpdate_Click"
-                                                            ToolTip="Kiểm tra xem có phiên bản mới của Printonator không"
+                                                            ToolTip="{l10n:Loc Main.NotifCheckUpdateTooltip}"
                                                             HorizontalAlignment="Right"/>
                                                 </DockPanel>
                                                 <!-- Danh sách thông báo (thay thế card đơn cũ) — dùng DataTrigger theo Kind để chọn màu, không cần converter -->
@@ -205,15 +206,15 @@
                                                                             <TextBlock FontSize="9" FontWeight="SemiBold" TextAlignment="Center">
                                                                                 <TextBlock.Style>
                                                                                     <Style TargetType="TextBlock">
-                                                                                        <Setter Property="Text" Value="Done"/>
+                                                                                        <Setter Property="Text" Value="{l10n:Loc Main.NotifBadgeDone}"/>
                                                                                         <Setter Property="Foreground" Value="#16A34A"/>
                                                                                         <Style.Triggers>
                                                                                             <DataTrigger Binding="{Binding Kind}" Value="Update">
-                                                                                                <Setter Property="Text" Value="Update"/>
+                                                                                                <Setter Property="Text" Value="{l10n:Loc Main.NotifBadgeUpdate}"/>
                                                                                                 <Setter Property="Foreground" Value="#B45309"/>
                                                                                             </DataTrigger>
                                                                                             <DataTrigger Binding="{Binding Kind}" Value="Warning">
-                                                                                                <Setter Property="Text" Value="Lỗi"/>
+                                                                                                <Setter Property="Text" Value="{l10n:Loc Main.NotifBadgeError}"/>
                                                                                                 <Setter Property="Foreground" Value="#B91C1C"/>
                                                                                             </DataTrigger>
                                                                                         </Style.Triggers>
@@ -235,7 +236,7 @@
                                                     </ItemsControl.ItemTemplate>
                                                 </ItemsControl>
                                                 <!-- Vùng trống khi chưa có thông báo nào -->
-                                                <TextBlock x:Name="NotifEmptyText" Text="Không có thông báo mới" FontSize="11"
+                                                <TextBlock x:Name="NotifEmptyText" Text="{l10n:Loc Main.NotifEmpty}" FontSize="11"
                                                            Foreground="{StaticResource FaintBrush}" Margin="16,6,0,14"
                                                            Visibility="Collapsed"/>
                                             </StackPanel>
@@ -248,28 +249,28 @@
 <!-- ===== Toolbar ===== -->
         <Border Grid.Row="1" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Background="#FFFFFF">
             <DockPanel Margin="16,8">
-                <Button Content="+ Add files" Style="{StaticResource RoundedBtn}" Padding="16,7" Click="AddFiles_Click"/>
+                <Button Content="{l10n:Loc Main.AddFilesButton}" Style="{StaticResource RoundedBtn}" Padding="16,7" Click="AddFiles_Click"/>
                 <ComboBox x:Name="PrinterCombo" Width="240" Margin="16,0,0,0" VerticalAlignment="Center"
                           DisplayMemberPath="Name"
                           SelectedItem="{Binding SelectedPrinter, Mode=TwoWay}"/>
                 <!-- Status dot: dot màu + padding đều 2 bên (status chi tiết ở tooltip) -->
                 <Ellipse x:Name="PrinterStatusDot" Width="10" Height="10" Fill="{StaticResource ReadyBrush}"
                          VerticalAlignment="Center" Margin="12,0,12,0" Stroke="#FFFFFF" StrokeThickness="1.5"
-                         ToolTip="Trạng thái máy in" RenderOptions.EdgeMode="Aliased"/>
+                         ToolTip="{l10n:Loc Main.PrinterStatusTooltip}" RenderOptions.EdgeMode="Aliased"/>
                 <!-- Nhắc khi khởi động: xác nhận đã chọn đúng máy in (tránh in lộn máy) — tự ẩn sau vài giây -->
                 <Border x:Name="PrinterReminder" Background="#FFF9ED" BorderBrush="#EAB308" BorderThickness="1"
                         CornerRadius="6" Padding="8,4" Margin="0,0,8,0" VerticalAlignment="Center" Visibility="Collapsed"
-                        ToolTip="Kiểm tra máy in bên cạnh đã đúng máy bạn muốn in chưa">
-                    <TextBlock Text="Kiểm tra máy in ✓" FontSize="11" Foreground="#92400E" FontWeight="SemiBold"/>
+                        ToolTip="{l10n:Loc Main.PrinterReminderTooltip}">
+                    <TextBlock Text="{l10n:Loc Main.PrinterReminderText}" FontSize="11" Foreground="#92400E" FontWeight="SemiBold"/>
                 </Border>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-<Button Content="Print settings" Style="{StaticResource GhostBtn}" Click="PrintSettings_Click"
+<Button Content="{l10n:Loc Main.PrintSettingsButton}" Style="{StaticResource GhostBtn}" Click="PrintSettings_Click"
                                               Padding="14,6" Margin="0,0,8,0" AutomationProperties.AutomationId="PrintSettingsBtn"
-                                              ToolTip="Bảng cấu hình in đầy đủ: page range, màu, khay giấy, scale, N-up, profile + dialog native của driver"/>
-                                     <Button Content="Printers" Style="{StaticResource GhostBtn}"
+                                              ToolTip="{l10n:Loc Main.PrintSettingsTooltip}"/>
+                                     <Button Content="{l10n:Loc Main.PrintersButton}" Style="{StaticResource GhostBtn}"
                                               Click="Printers_Click" Padding="12,6" Margin="0,0,8,0"/>
                                      <!-- Nút print DUY NHẤT, 3 trạng thái: rảnh = "Print all (N)" · đang in = "⏸ Pause" (đỏ, dừng lô) · tạm dừng = "▶ Resume" (xanh lá) -->
-                                     <Button Content="Print all" x:Name="PrintMainBtn" Style="{StaticResource RoundedBtn}"
+                                     <Button Content="{l10n:Loc Main.PrintMainButton}" x:Name="PrintMainBtn" Style="{StaticResource RoundedBtn}"
                                               Padding="18,7" Click="PrintMain_Click" AutomationProperties.AutomationId="PrintMainBtn"/>
                                  </StackPanel>
             </DockPanel>
@@ -286,8 +287,8 @@
                 <!-- ✕ đóng banner — luôn hiện, bất kể lỗi có retry được hay không -->
                 <Button Content="✕" DockPanel.Dock="Right" Style="{StaticResource GhostBtn}" Padding="8,2"
                         Margin="0,0,4,0" VerticalAlignment="Center" Click="BannerClose_Click"
-                        ToolTip="Đóng thông báo"/>
-                <Button Content="Retry connection" x:Name="RetryBtn" DockPanel.Dock="Right" Margin="0,0,10,0"
+                        ToolTip="{l10n:Loc Main.BannerCloseTooltip}"/>
+                <Button Content="{l10n:Loc Main.BannerRetryButton}" x:Name="RetryBtn" DockPanel.Dock="Right" Margin="0,0,10,0"
                         Background="Transparent" BorderThickness="0" Foreground="{StaticResource WarnBrush}"
                         FontWeight="SemiBold" Cursor="Hand" Click="RetryConnection_Click"/>
             </DockPanel>
@@ -320,21 +321,21 @@
                                         <!-- Chọn tất cả / bỏ chọn (header của cột checkbox) — click: chưa chọn hết → chọn hết; đã chọn hết → bỏ hết -->
                                         <CheckBox Grid.Column="0" Grid.ColumnSpan="2" x:Name="SelectAllChk"
                                                   HorizontalAlignment="Left" VerticalAlignment="Center" Cursor="Hand"
-                                                  ToolTip="Chọn tất cả / bỏ chọn tất cả" Click="SelectAllChk_Click"/>
-                                        <TextBlock Grid.Column="3" Text="Name" x:Name="SortName" Tag="Name" Cursor="Hand"
+                                                  ToolTip="{l10n:Loc Main.SelectAllTooltip}" Click="SelectAllChk_Click"/>
+                                        <TextBlock Grid.Column="3" Text="{l10n:Loc Main.ColName}" x:Name="SortName" Tag="Name" Cursor="Hand"
                                                Foreground="{StaticResource MutedBrush}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"
-                                               ToolTip="Bấm để sắp xếp" PreviewMouseLeftButtonDown="Sort_Column"/>
-                                        <TextBlock Grid.Column="5" Text="Pages to print" x:Name="SortPages" Tag="Pages" Cursor="Hand"
+                                               ToolTip="{l10n:Loc Main.ColNameTooltip}" PreviewMouseLeftButtonDown="Sort_Column"/>
+                                        <TextBlock Grid.Column="5" Text="{l10n:Loc Main.ColPages}" x:Name="SortPages" Tag="Pages" Cursor="Hand"
                                                Foreground="{StaticResource MutedBrush}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" TextAlignment="Center"
-                                               ToolTip="Bấm để sắp xếp" PreviewMouseLeftButtonDown="Sort_Column"/>
-                                        <TextBlock Grid.Column="7" Text="Settings" x:Name="SortSettings" Tag="Settings" Cursor="Hand"
+                                               ToolTip="{l10n:Loc Main.ColPagesTooltip}" PreviewMouseLeftButtonDown="Sort_Column"/>
+                                        <TextBlock Grid.Column="7" Text="{l10n:Loc Main.ColSettings}" x:Name="SortSettings" Tag="Settings" Cursor="Hand"
                                                Foreground="{StaticResource MutedBrush}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"
-                                               ToolTip="Cấu hình in của file: Nx (số bản) · khổ giấy · 2 mặt / 2 mặt theo máy · màu / màu theo máy · gom/rời bản · N-tr/tờ (số trang trên tờ). Nhấn để sắp xếp·Bấm vào ô để chỉnh"
+                                               ToolTip="{l10n:Loc Main.ColSettingsTooltip}"
                                                PreviewMouseLeftButtonDown="Sort_Column"/>
-                                        <TextBlock Grid.Column="9" Text="Status" x:Name="SortStatus" Tag="Status" Cursor="Hand"
+                                        <TextBlock Grid.Column="9" Text="{l10n:Loc Main.ColStatus}" x:Name="SortStatus" Tag="Status" Cursor="Hand"
                                                Foreground="{StaticResource MutedBrush}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"
-                                               ToolTip="Bấm để sắp xếp" PreviewMouseLeftButtonDown="Sort_Column"/>
-                                        <TextBlock Grid.Column="11" Text="Error" Foreground="{StaticResource MutedBrush}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                               ToolTip="{l10n:Loc Main.ColStatusTooltip}" PreviewMouseLeftButtonDown="Sort_Column"/>
+                                        <TextBlock Grid.Column="11" Text="{l10n:Loc Main.ColError}" Foreground="{StaticResource MutedBrush}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 </Grid>
             </Border>
 
@@ -387,16 +388,16 @@
                         <Border x:Name="RowBg" Background="Transparent" BorderThickness="0" Padding="8,2" Height="38">
                             <Border.ContextMenu>
                                                             <ContextMenu Opened="RowContextMenu_Opening">
-                                                                <MenuItem x:Name="CtxOpen" Header="Mở file" Click="CtxOpen_Click" Tag="&#xE8A5;"/>
-                                                                <MenuItem x:Name="CtxEdit" Header="Mở &amp; sửa…" Click="CtxEdit_Click" Tag="&#xE70F;"
-                                                                          ToolTip="Sửa xong tự nạp bản mới (↻ Reloaded)"/>
+                                                                <MenuItem x:Name="CtxOpen" Header="{l10n:Loc Main.CtxOpen}" Click="CtxOpen_Click" Tag="&#xE8A5;"/>
+                                                                <MenuItem x:Name="CtxEdit" Header="{l10n:Loc Main.CtxEdit}" Click="CtxEdit_Click" Tag="&#xE70F;"
+                                                                          ToolTip="{l10n:Loc Main.CtxEditTooltip}"/>
                                                                 <Separator/>
-                                                                <MenuItem x:Name="CtxPrint" Header="In file này" Click="CtxPrint_Click" Tag="&#xE749;"/>
-                                                                <MenuItem x:Name="CtxItemSettings" Header="Cấu hình in (Item settings)…" Click="CtxItemSettings_Click" Tag="&#xE713;"
-                                                                          ToolTip="Mở bảng cấu hình đầy đủ cho file đang chọn"/>
-                                                                <MenuItem x:Name="CtxPageRange" Header="Chọn trang cụ thể…" Click="CtxPageRange_Click" Tag="&#xE7C3;"/>
+                                                                <MenuItem x:Name="CtxPrint" Header="{l10n:Loc Main.CtxPrint}" Click="CtxPrint_Click" Tag="&#xE749;"/>
+                                                                <MenuItem x:Name="CtxItemSettings" Header="{l10n:Loc Main.CtxItemSettings}" Click="CtxItemSettings_Click" Tag="&#xE713;"
+                                                                          ToolTip="{l10n:Loc Main.CtxItemSettingsTooltip}"/>
+                                                                <MenuItem x:Name="CtxPageRange" Header="{l10n:Loc Main.CtxPageRange}" Click="CtxPageRange_Click" Tag="&#xE7C3;"/>
                                                                 <Separator/>
-                                                                <MenuItem x:Name="CtxRemove" Header="Xóa khỏi hàng đợi" Click="CtxRemove_Click" Tag="&#xE74D;"
+                                                                <MenuItem x:Name="CtxRemove" Header="{l10n:Loc Main.CtxRemove}" Click="CtxRemove_Click" Tag="&#xE74D;"
                                                                           Style="{StaticResource DangerMenuItem}"/>
                                                             </ContextMenu>
                                                         </Border.ContextMenu>
@@ -445,7 +446,7 @@
                                                                                 </Style.Triggers>
                                                                             </Style>
                                                                         </Border.Style>
-                                                                        <TextBlock Text="↻ Reloaded" FontSize="9" FontWeight="SemiBold" Foreground="#CA8A04"/>
+                                                                        <TextBlock Text="{l10n:Loc Main.ReloadedBadge}" FontSize="9" FontWeight="SemiBold" Foreground="#CA8A04"/>
                                                                     </Border>
                                                                 </WrapPanel>
                                                                 <!-- pages to print — bấm mở popup chọn Tất cả / khoảng trang -->
@@ -453,7 +454,7 @@
                                                                         BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
                                                                         CornerRadius="4" Padding="6,2" Cursor="Hand" VerticalAlignment="Center"
                                                                         MouseLeftButtonUp="PagesCell_Click"
-                                                                        ToolTip="Bấm để chọn trang cần in: tất cả hoặc khoảng trang (vd 1-5, 8)">
+                                                                        ToolTip="{l10n:Loc Main.PagesCellTooltip}">
                                                                     <StackPanel Orientation="Horizontal">
                                                                         <!-- Hiển thị: "Tất cả" khi trống/All, còn lại hiện range đã nhập -->
                                                                         <TextBlock FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis">
@@ -463,11 +464,11 @@
                                                                                     <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
                                                                                     <Style.Triggers>
                                                                                         <DataTrigger Binding="{Binding Config.PageRange}" Value="">
-                                                                                            <Setter Property="Text" Value="Tất cả"/>
+                                                                                            <Setter Property="Text" Value="{l10n:Loc Main.PagesAll}"/>
                                                                                             <Setter Property="Foreground" Value="{StaticResource FaintBrush}"/>
                                                                                         </DataTrigger>
                                                                                         <DataTrigger Binding="{Binding Config.PageRange}" Value="All">
-                                                                                            <Setter Property="Text" Value="Tất cả"/>
+                                                                                            <Setter Property="Text" Value="{l10n:Loc Main.PagesAll}"/>
                                                                                             <Setter Property="Foreground" Value="{StaticResource FaintBrush}"/>
                                                                                         </DataTrigger>
                                                                                     </Style.Triggers>
@@ -486,29 +487,29 @@
                                                                             <DropShadowEffect BlurRadius="20" ShadowDepth="3" Direction="270" Opacity="0.16" Color="#000000"/>
                                                                         </Border.Effect>
                                                                         <StackPanel>
-                                                                            <TextBlock Text="Trang cần in" FontSize="12.5" FontWeight="SemiBold" Foreground="#1F1F1F"/>
+                                                                            <TextBlock Text="{l10n:Loc Main.PagesPopupTitle}" FontSize="12.5" FontWeight="SemiBold" Foreground="#1F1F1F"/>
                                                                             <!-- GroupName theo FilePath: 2 radio nằm trong 2 StackPanel khác nhau nên KHÔNG
                                                                                  tự loại nhau — phải gán nhóm tường minh, duy nhất theo từng dòng (job) -->
-                                                                            <RadioButton x:Name="PRangeAll" Content="Tất cả các trang" FontSize="12" Margin="0,8,0,0"
+                                                                            <RadioButton x:Name="PRangeAll" Content="{l10n:Loc Main.PagesAllRadio}" FontSize="12" Margin="0,8,0,0"
                                                                                          GroupName="{Binding FilePath}" Checked="PRangeMode_Changed"/>
                                                                             <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                                                                <RadioButton x:Name="PRangeCustom" Content="Khoảng trang:" FontSize="12"
+                                                                                <RadioButton x:Name="PRangeCustom" Content="{l10n:Loc Main.PagesCustomRadio}" FontSize="12"
                                                                                              GroupName="{Binding FilePath}"
                                                                                              VerticalAlignment="Center" Checked="PRangeMode_Changed"/>
                                                                                 <TextBox x:Name="PRangeBox" Width="110" FontSize="12" Padding="3,2" Margin="8,0,0,0"
                                                                                          IsEnabled="False" VerticalContentAlignment="Center"
-                                                                                         ToolTip="Ví dụ: 1,3 · 2-5 · 1-2,7 · S2:1-3 (section 2)"/>
+                                                                                         ToolTip="{l10n:Loc Main.PagesCustomTooltip}"/>
                                                                             </StackPanel>
-                                                                            <TextBlock Text="Cú pháp: 1,3 · 2-5 · 1-2,7 · S2:1-3. Trang trùng tự bỏ qua."
+                                                                            <TextBlock Text="{l10n:Loc Main.PagesSyntax}"
                                                                                        FontSize="10.5" Foreground="#8A8A8A" TextWrapping="Wrap" Margin="0,6,0,0"/>
-                                                                            <TextBlock x:Name="PSheetLabel" Text="Sheet cần in (Excel)" FontSize="12.5" FontWeight="SemiBold"
+                                                                            <TextBlock x:Name="PSheetLabel" Text="{l10n:Loc Main.SheetLabel}" FontSize="12.5" FontWeight="SemiBold"
                                                                                        Foreground="#1F1F1F" Margin="0,12,0,0" Visibility="Collapsed"/>
                                                                             <ComboBox x:Name="PSheetCombo" FontSize="12" Margin="0,6,0,0" Visibility="Collapsed"
-                                                                                      ToolTip="Chọn 1 sheet để chỉ in sheet đó · 'Tất cả' = in toàn bộ file"/>
+                                                                                      ToolTip="{l10n:Loc Main.SheetComboTooltip}"/>
                                                                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
-                                                                                <Button Content="✕ Đóng" Style="{StaticResource GhostBtn}" Padding="10,6"
+                                                                                <Button Content="{l10n:Loc Main.PagesCloseButton}" Style="{StaticResource GhostBtn}" Padding="10,6"
                                                                                         Margin="0,0,8,0" Click="PagesClose_Click"/>
-                                                                                <Button Content="Áp dụng" Style="{StaticResource RoundedBtn}" Padding="14,6"
+                                                                                <Button Content="{l10n:Loc Common.ApplyButton}" Style="{StaticResource RoundedBtn}" Padding="14,6"
                                                                                         Click="PagesApply_Click"/>
                                                                             </StackPanel>
                                                                         </StackPanel>
@@ -519,7 +520,7 @@
                                                                                                            Text="{Binding Config.SummaryText, Mode=OneWay}"
                                                                                                            TextWrapping="Wrap" TextTrimming="CharacterEllipsis" Cursor="Hand"
                                                                                                            MouseLeftButtonUp="SettingsCell_Click"
-                                                                                                           ToolTip="Bấm để mở cấu hình in của file này"/>
+                                                                                                           ToolTip="{l10n:Loc Main.SettingsCellTooltip}"/>
                                                                 <!-- status pill -->
                                                                 <Border Grid.Column="9" CornerRadius="10" Padding="6,1" VerticalAlignment="Center" HorizontalAlignment="Left">
                                     <Border.Style>
@@ -592,9 +593,9 @@
                                Foreground="{StaticResource FaintBrush}"
                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Border>
-                <TextBlock Text="Kéo thả file vào đây để in" FontSize="14" FontWeight="SemiBold"
+                <TextBlock Text="{l10n:Loc Main.EmptyStateTitle}" FontSize="14" FontWeight="SemiBold"
                            Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" Margin="0,14,0,0"/>
-                <TextBlock Text="hoặc Ctrl+V dán đường dẫn · nút '+ Add files' bên trên" FontSize="12"
+                <TextBlock Text="{l10n:Loc Main.EmptyStateHint}" FontSize="12"
                            Foreground="{StaticResource FaintBrush}" HorizontalAlignment="Center" Margin="0,5,0,0"/>
             </StackPanel>
         </Grid>
@@ -604,18 +605,19 @@
                 CornerRadius="8" Margin="16,8" Padding="14,8" Visibility="Collapsed">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center">
-                    <TextBlock x:Name="BulkCountText" Text="0 files selected" FontSize="13" FontWeight="SemiBold"
+                    <TextBlock x:Name="BulkCountText" Text="{l10n:Loc Main.BulkCountFormat}" FontSize="13" FontWeight="SemiBold"
                                Foreground="{StaticResource TextBrush}"/>
                     <TextBlock x:Name="BulkSummaryText" Text="" FontSize="11" Foreground="{StaticResource FaintBrush}"
                                TextTrimming="CharacterEllipsis" MaxWidth="640"
-                               ToolTip="Cấu hình của file đầu tiên trong danh sách chọn (các file khác có thể khác nhau)"/>
+                               ToolTip="{l10n:Loc Main.BulkSummaryTooltip}"/>
                 </StackPanel>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="Mở bảng đầy đủ để chỉnh page range, màu, khay, scale, N-up…"
-                               FontSize="11" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
-                    <Button Content="Cấu hình in…" Style="{StaticResource RoundedBtn}"
+                    <TextBlock Text="{l10n:Loc Main.BulkFullText}"
+                               FontSize="11" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"/>
+                    <Button Content="{l10n:Loc Main.BulkSettingsButton}" Style="{StaticResource RoundedBtn}"
                             Padding="14,7" Margin="10,0,0,0" Click="BulkSettings_Click"
-                            ToolTip="Mở bảng cấu hình in đầy đủ cho các file đang chọn"/>
+                            ToolTip="{l10n:Loc Main.BulkSettingsTooltip}"/>
                 </StackPanel>
             </DockPanel>
         </Border>
@@ -623,8 +625,9 @@
         <!-- ===== Footer ===== -->
         <Border Grid.Row="6" Background="{StaticResource HeaderBgBrush}" CornerRadius="4" Margin="16,6">
             <DockPanel>
-                <TextBlock x:Name="FooterStats" Text="0 files | 0 printed | 0 error" FontSize="12"
-                           Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="10,0"/>
+                <TextBlock x:Name="FooterStats" Text="{l10n:Loc Main.FooterStatsFormat}" FontSize="12"
+                           Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center" Margin="10,0"
+                           TextTrimming="CharacterEllipsis"/>
                 <!-- Progress bar (Penpot gap) -->
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0,0,0">
                     <TextBlock x:Name="ProgressText" Text="0%" FontSize="11" Foreground="{StaticResource MutedBrush}"
@@ -634,11 +637,12 @@
                 </StackPanel>
                 <!-- (Xóa file đã in khỏi hàng đợi giờ nằm TRONG popup 'In xong' — không có tick ở footer nữa) -->
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="24,0,12,0">
-                                    <TextBlock x:Name="FooterHint" Text="Nhấp = mở · đúp = sửa &amp; reload · Ctrl/Shift = chọn · chuột phải = menu"
-                                               FontSize="11" Foreground="{StaticResource FaintBrush}" VerticalAlignment="Center" Margin="0,0,14,0"/>
+                                    <TextBlock x:Name="FooterHint" Text="{l10n:Loc Main.FooterHintDefault}"
+                                               FontSize="11" Foreground="{StaticResource FaintBrush}" VerticalAlignment="Center" Margin="0,0,14,0"
+                                               TextTrimming="CharacterEllipsis" MaxWidth="640"/>
                                     <!-- Nút Info — mở changelog + about + contact + license -->
-                                    <Button Content="ℹ️ Info" Style="{StaticResource GhostBtn}" Padding="10,4" FontSize="10.5"
-                                            Click="Info_Click" ToolTip="Thông tin, thay đổi phiên bản, liên hệ và giấy phép"/>
+                                    <Button Content="{l10n:Loc Main.InfoButton}" Style="{StaticResource GhostBtn}" Padding="10,4" FontSize="10.5"
+                                            Click="Info_Click" ToolTip="{l10n:Loc Main.InfoTooltip}"/>
                                 </StackPanel>
             </DockPanel>
         </Border>
@@ -664,10 +668,10 @@
                     <TextBlock Text="&#xE8B7;" FontFamily="Segoe MDL2 Assets" FontSize="36"
                                Foreground="{StaticResource AccentBrush}" Opacity="0.3"
                                HorizontalAlignment="Center"/>
-                    <TextBlock Text="Thả file để thêm vào hàng đợi" FontSize="16" FontWeight="SemiBold"
+                    <TextBlock Text="{l10n:Loc Main.DropHighlightTitle}" FontSize="16" FontWeight="SemiBold"
                                Foreground="{StaticResource TextBrush}" Margin="0,10,0,0"
                                HorizontalAlignment="Center"/>
-                    <TextBlock Text="PDF · Office · ảnh · TXT — folder cũng được quét cả thư mục con"
+                    <TextBlock Text="{l10n:Loc Main.DropHighlightHint}"
                                FontSize="12" Foreground="{StaticResource MutedBrush}" Margin="0,5,0,0"
                                HorizontalAlignment="Center"/>
                 </StackPanel>

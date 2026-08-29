@@ -49,4 +49,22 @@ public static class TestHelpers
                 Hint = "Hint",
             }));
     }
+
+    /// <summary>Engine ném PrintErrorException (lỗi đã phân loại cụ thể) — test routing giữ nguyên mã lỗi.</summary>
+    public sealed class ThrowingPrintErrorEngine : IPrintEngine
+    {
+        private readonly PrintError _error;
+        public ThrowingPrintErrorEngine(PrintError error) => _error = error;
+        public bool CanHandle(string format) => true;
+        public Task<Result<bool>> PrintAsync(PrintJob job, CancellationToken ct)
+            => throw new PrintErrorException(_error);
+    }
+
+    /// <summary>Engine ném Exception TRẦN (không kèm PrintError) — test vẫn bọc SPOOLER_FAILED.</summary>
+    public sealed class ThrowingRawEngine : IPrintEngine
+    {
+        public bool CanHandle(string format) => true;
+        public Task<Result<bool>> PrintAsync(PrintJob job, CancellationToken ct)
+            => throw new InvalidOperationException("raw boom");
+    }
 }

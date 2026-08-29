@@ -2,7 +2,7 @@
 ; Build: ISCC.exe setup\printonator.iss
 
 #define MyAppName "Printonator"
-#define MyAppVersion "0.1.8"
+#define MyAppVersion "0.1.9"
 #define MyAppPublisher "Phuc Nguyen"
 #define MyAppExeName "Printonator.UI.exe"
 #define MyAppURL "https://github.com/nanowind/Printonator"
@@ -40,8 +40,20 @@ MinVersion=10.0.17763
 ; Vietnamese.isl copy vào repo (setup\Vietnamese.isl) — bản Inno Setup trên CI (choco 6.7.1) KHÔNG ship
 ; Languages\Vietnamese.isl → tham chiếu `compiler:` fail build. Dùng relative cho hermetic (không phụ
 ; thuộc thư mục compiler). Default.isl là compiler: (embedded trong ISCC — luôn có).
+; ChineseSimplified/Russian/Japanese.isl copy vào repo để hermetic (CI Inno Setup có đủ nhưng không
+; phụ thuộc). Name là INTERNAL (tự đặt, không nhất thiết trùng file) — {language} trả về name này,
+; nên dùng tên riêng để [Code] GetLangTag map sang culture tag chuẩn.
 Name: "vietnamese"; MessagesFile: "Vietnamese.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
+Name: "chinesesimp"; MessagesFile: "ChineseSimplified.isl"
+Name: "russian"; MessagesFile: "Russian.isl"
+Name: "japanese"; MessagesFile: "Japanese.isl"
+
+[Registry]
+; Ghi ngôn ngữ người dùng chọn lúc cài để app đọc khi khởi động (HKCU — sở thích user).
+; {code:GetLangTag} = hàm [Code] map tên ngôn ngữ Inno → culture tag chuẩn (vi-VN/en-US/zh-CN/ru-RU/ja-JP).
+; uninsdeletevalue: gỡ cài KHÔNG để lại value cũ ảnh hưởng lần cài sau.
+Root: HKCU; Subkey: "Software\Printonator"; ValueType: string; ValueName: "Language"; ValueData: "{code:GetLangTag}"; Flags: uninsdeletevalue
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -69,7 +81,58 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
+[CustomMessages]
+; Custom message cho 5 ngôn ngữ (mặc định Tiếng Việt — fallback cho các ngôn ngữ không có entry).
+; Dùng trong [Code] MsgBox .NET runtime. Các thông báo khác của setup (Next/Browse/Install...) do .isl lo.
+DotNetMissing=Không tìm thấy .NET 8 Desktop Runtime
+DotNetDownloadQuestion=Máy này chưa có .NET 8 Desktop Runtime
+DotNetDownloadDetail=Setup sẽ tải và cài .NET 8 Desktop Runtime (~55MB, cần mạng)
+DotNetContinuePrompt=Bấm OK để tiếp tục.
+DotNetInstallError=Cài đặt .NET 8 Runtime gặp lỗi (mã %1). Cài thủ công: https://dotnet.microsoft.com/download/dotnet/8.0 rồi chạy lại setup.
+DotNetLaunchError=Không khởi động được trình cài đặt .NET 8 Runtime. Cài thủ công: https://dotnet.microsoft.com/download/dotnet/8.0 rồi chạy lại setup.
+DotNetDownloadError=Không tải được .NET 8 Desktop Runtime (lỗi mạng hoặc SHA không khớp). Cài thủ công: https://dotnet.microsoft.com/download/dotnet/8.0 rồi chạy lại setup.
+
+; ==== Bản dịch theo ngôn ngữ (prefix = internal Name trong [Languages]: english/chinesesimp/russian/japanese).
+;      Vi = mặc định ở trên. Inno tự chọn entry đúng ngôn ngữ khi hiển thị CustomMessage. ====
+english.DotNetDownloadQuestion=This computer doesn't have .NET 8 Desktop Runtime installed.
+english.DotNetDownloadDetail=Setup will download and install .NET 8 Desktop Runtime (~55MB, requires internet).
+english.DotNetContinuePrompt=Press OK to continue.
+english.DotNetInstallError=Failed to install .NET 8 Runtime (code %1). Install manually: https://dotnet.microsoft.com/download/dotnet/8.0 then run setup again.
+english.DotNetLaunchError=Could not launch the .NET 8 Runtime installer. Install manually: https://dotnet.microsoft.com/download/dotnet/8.0 then run setup again.
+english.DotNetDownloadError=Failed to download .NET 8 Desktop Runtime (network error or SHA mismatch). Install manually: https://dotnet.microsoft.com/download/dotnet/8.0 then run setup again.
+chinesesimp.DotNetDownloadQuestion=此电脑尚未安装 .NET 8 桌面运行时。
+chinesesimp.DotNetDownloadDetail=安装程序将下载并安装 .NET 8 桌面运行时（约 55MB，需要联网）。
+chinesesimp.DotNetContinuePrompt=点击“确定”继续。
+chinesesimp.DotNetInstallError=安装 .NET 8 运行时失败（代码 %1）。请手动安装：https://dotnet.microsoft.com/download/dotnet/8.0 然后重新运行安装程序。
+chinesesimp.DotNetLaunchError=无法启动 .NET 8 运行时安装程序。请手动安装：https://dotnet.microsoft.com/download/dotnet/8.0 然后重新运行安装程序。
+chinesesimp.DotNetDownloadError=无法下载 .NET 8 桌面运行时（网络错误或校验不一致）。请手动安装：https://dotnet.microsoft.com/download/dotnet/8.0 然后重新运行安装程序。
+russian.DotNetDownloadQuestion=На этом компьютере не установлена среда выполнения .NET 8 Desktop Runtime.
+russian.DotNetDownloadDetail=Программа установки загрузит и установит .NET 8 Desktop Runtime (~55 МБ, требуется интернет).
+russian.DotNetContinuePrompt=Нажмите OK для продолжения.
+russian.DotNetInstallError=Не удалось установить .NET 8 Runtime (код %1). Установите вручную: https://dotnet.microsoft.com/download/dotnet/8.0 и запустите установку заново.
+russian.DotNetLaunchError=Не удалось запустить установщик .NET 8 Runtime. Установите вручную: https://dotnet.microsoft.com/download/dotnet/8.0 и запустите установку заново.
+russian.DotNetDownloadError=Не удалось загрузить .NET 8 Desktop Runtime (ошибка сети или несоответствие SHA). Установите вручную: https://dotnet.microsoft.com/download/dotnet/8.0 и запустите установку заново.
+japanese.DotNetDownloadQuestion=.NET 8 デスクトップ ランタイムがインストールされていません。
+japanese.DotNetDownloadDetail=セットアップが .NET 8 デスクトップ ランタイム（約55MB、インターネット接続が必要）をダウンロードしてインストールします。
+japanese.DotNetContinuePrompt=続行するには [OK] を押してください。
+japanese.DotNetInstallError=.NET 8 ランタイムのインストールに失敗しました（コード %1）。手動でインストールしてください：https://dotnet.microsoft.com/download/dotnet/8.0 の後、セットアップを再実行してください。
+japanese.DotNetLaunchError=.NET 8 ランタイムのインストーラーを起動できませんでした。手動でインストールしてください：https://dotnet.microsoft.com/download/dotnet/8.0 の後、セットアップを再実行してください。
+japanese.DotNetDownloadError=.NET 8 デスクトップ ランタイムをダウンロードできませんでした（ネットワークエラーまたは SHA 不一致）。手動でインストールしてください：https://dotnet.microsoft.com/download/dotnet/8.0 の後、セットアップを再実行してください。
+
 [Code]
+
+[Code]
+// === Map tên ngôn ngữ Inno (Name trong [Languages]) → culture tag chuẩn .NET để app đọc registry.
+//     {language} constant trả về Name tự đặt (vd "vietnamese"), KHÔNG phải culture tag → map thủ công. ===
+function GetLangTag(Param: String): String;
+begin
+  if ActiveLanguage = 'vietnamese' then Result := 'vi-VN'
+  else if ActiveLanguage = 'chinesesimp' then Result := 'zh-CN'
+  else if ActiveLanguage = 'russian' then Result := 'ru-RU'
+  else if ActiveLanguage = 'japanese' then Result := 'ja-JP'
+  else Result := 'en-US';  // english + fallback
+end;
+
 // .NET Desktop Runtime (bản x64) KHÔNG gói trong installer — download on-demand từ dot.net lúc cài,
 // chỉ khi máy CHƯA có runtime. Máy đã có .NET Desktop 8/9/10 (app có RollForward=Major) → cài thẳng.
 const
@@ -105,9 +168,9 @@ begin
       Exit;
     end;
 
-    if MsgBox('Máy này chưa có .NET 8 Desktop Runtime.' + #13#10 +
-              'Setup sẽ tải và cài .NET 8 Desktop Runtime (~55MB, cần mạng).' + #13#10 +
-              'Bấm OK để tiếp tục.',
+    if MsgBox(CustomMessage('DotNetDownloadQuestion') + #13#10 +
+              CustomMessage('DotNetDownloadDetail') + #13#10 +
+              CustomMessage('DotNetContinuePrompt'),
               mbInformation, MB_OKCANCEL) <> IDOK then
       Abort();
 
@@ -119,18 +182,13 @@ begin
       if Exec(RuntimeExe, '/install /quiet /norestart', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
       begin
         if ResultCode <> 0 then
-          MsgBox('Cài đặt .NET 8 Runtime gặp lỗi (mã ' + IntToStr(ResultCode) + ').' + #13#10 +
-                 'Cài thủ công: https://dotnet.microsoft.com/download/dotnet/8.0 rồi chạy lại setup.',
+          MsgBox(FmtMessage(CustomMessage('DotNetInstallError'), [IntToStr(ResultCode)]),
                  mbError, MB_OK);
       end
       else
-        MsgBox('Không khởi động được trình cài đặt .NET 8 Runtime.' + #13#10 +
-               'Cài thủ công: https://dotnet.microsoft.com/download/dotnet/8.0 rồi chạy lại setup.',
-               mbError, MB_OK);
+        MsgBox(CustomMessage('DotNetLaunchError'), mbError, MB_OK);
     except
-      MsgBox('Không tải được .NET 8 Desktop Runtime (lỗi mạng hoặc SHA không khớp).' + #13#10 +
-             'Cài thủ công: https://dotnet.microsoft.com/download/dotnet/8.0 rồi chạy lại setup.',
-             mbError, MB_OK);
+      MsgBox(CustomMessage('DotNetDownloadError'), mbError, MB_OK);
       Abort();
     end;
   end;

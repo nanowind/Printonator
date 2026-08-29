@@ -14,6 +14,7 @@ using System.Text.Json;
 using Printonator.Core;
 using Printonator.Core.Models;
 using Printonator.Spool.Printing;
+using Printonator.UI.Localization;
 
 namespace Printonator.UI;
 
@@ -112,7 +113,7 @@ public partial class MainWindow : Window
                 if (info is null) return; // không có bản mới — im lặng
                 _ = Dispatcher.BeginInvoke(new Action(() =>
                 {
-                    AddNotification(NotificationKind.Update, $"Có bản mới {info.Version}",
+                    AddNotification(NotificationKind.Update, L10n.F(Keys.Notify.UpdateAvailable, info.Version),
                         info.Name, act: () => PromptAndInstallUpdate(info));
                 }));
             }
@@ -173,8 +174,8 @@ public partial class MainWindow : Window
     {
         Code = ErrorCodes.SpoolerFailed,
         Category = PrintErrorCategory.Printer,
-        Message = "Không quét được danh sách máy in (máy in mạng có thể bị firewall chặn).",
-        Hint = "Bấm Retry connection để thử lại.",
+        Message = L10n.S(Keys.Banner.PrinterScanError),
+        Hint = L10n.S(Keys.Banner.PrinterScanHint),
         Detail = ex?.Message ?? "",
     };
 
@@ -198,8 +199,8 @@ public partial class MainWindow : Window
             !p.IsAvailable && p.StatusDetail?.StartsWith("Không phản hồi", StringComparison.Ordinal) == true);
         if (unresponsive > 0)
             ShowBanner(ErrorCodes.SpoolerFailed,
-                $"{unresponsive} máy in không phản hồi (có thể bị firewall chặn).",
-                "Bấm Retry connection để quét lại.");
+                L10n.F(Keys.Banner.PrinterUnresponsive, unresponsive),
+                L10n.S(Keys.Banner.PrinterUnresponsiveHint));
 
         // GIỮ máy in user đã chọn (theo TÊN, dùng record MỚI trong list mới) — KHÔNG tự đổi máy khi rescan.
         // Lỗi cũ: rescan tự reset về máy default → thường là "Microsoft Print to PDF" → mọi job in ra PDF.
@@ -255,13 +256,13 @@ public partial class MainWindow : Window
         if (p is null)
         {
             PrinterStatusDot.Fill = Brushes.Red;
-            PrinterStatusDot.ToolTip = "Chưa có máy in khả dụng";
+            PrinterStatusDot.ToolTip = L10n.S(Keys.Main.PrinterStatusDotNoPrinter);
             return;
         }
         PrinterStatusDot.Fill = p.IsAvailable ? Brushes.Green : Brushes.Red;
         PrinterStatusDot.ToolTip = p.StatusDetail is null
-            ? $"{p.Name} — sẵn sàng"
-            : $"{p.Name} — {p.StatusDetail}";
+            ? L10n.F(Keys.Main.PrinterStatusReady, p.Name)
+            : L10n.F(Keys.Main.PrinterStatusWithDetail, p.Name, p.StatusDetail);
     }
 
     /// <summary>Phím Delete (phím tắt, không có nút UI) — xóa các file đang chọn khỏi hàng đợi.</summary>
@@ -272,7 +273,7 @@ public partial class MainWindow : Window
         foreach (var job in targets)
             _queue.RemoveJob(job);
         UpdateFooter();
-        ShowToast($"Đã xóa {targets.Count} file khỏi hàng đợi.");
+        ShowToast(L10n.F(Keys.Toast.DeletedFiles, targets.Count));
     }
 
     // ===== Select all (header cột checkbox) + popup trang in trên cột Pages =====
@@ -389,7 +390,7 @@ public partial class MainWindow : Window
             combo.Visibility = Visibility.Visible;
             combo.IsEnabled = false;
             combo.Items.Clear();
-            combo.Items.Add(new ComboBoxItem { Content = "Đang đọc sheet…", Tag = "__loading__" });
+            combo.Items.Add(new ComboBoxItem { Content = L10n.S(Keys.Common.SheetLoading), Tag = "__loading__" });
             combo.SelectedIndex = 0;
 
             var sheets = await OfficeComPrintEngine.ListSheetsAsync(job.FilePath);
@@ -401,7 +402,7 @@ public partial class MainWindow : Window
             }
             combo.IsEnabled = true;
             combo.Items.Clear();
-            combo.Items.Add(new ComboBoxItem { Content = "Tất cả các sheet", Tag = "" });
+            combo.Items.Add(new ComboBoxItem { Content = L10n.S(Keys.Common.SheetAll), Tag = "" });
             foreach (var s in sheets)
                 combo.Items.Add(new ComboBoxItem { Content = s, Tag = s });
 
@@ -453,8 +454,8 @@ public partial class MainWindow : Window
         pop.IsOpen = false;
         if (_openPagePopup == pop) _openPagePopup = null;
         JobList.Items.Refresh();
-        var sheetTxt = string.IsNullOrEmpty(sheet) ? "" : $", sheet \"{sheet}\"";
-        ShowToast($"Áp trang \"{(range == "All" ? "tất cả" : range)}\"{sheetTxt} cho {targets.Count} file.");
+        var sheetTxt = string.IsNullOrEmpty(sheet) ? "" : L10n.F(Keys.Toast.AppliedPagesPopupSheet, sheet);
+        ShowToast(L10n.F(Keys.Toast.AppliedPagesPopup, (range == "All" ? L10n.S(Keys.Main.PagesAllLower) : range), sheetTxt, targets.Count));
     }
 
     // ===== Add files (button + drag-drop) =====
@@ -474,10 +475,10 @@ public partial class MainWindow : Window
         var skipped = dlg.FileNames.Length - supported.Count;
         if (supported.Count > 0)
             AddFiles(supported, skipped > 0
-                ? $"Đã thêm {supported.Count} file, bỏ qua {skipped} file không hỗ trợ định dạng."
+                ? L10n.F(Keys.Toast.AddedWithSkip, supported.Count, skipped)
                 : null);
         else if (skipped > 0)
-            ShowToast($"Đã bỏ qua {skipped} file không hỗ trợ định dạng (chỉ nhận PDF, Office, ảnh, TXT).");
+            ShowToast(L10n.F(Keys.Toast.SkippedFormat, skipped));
     }
 
     // ===== Copy-paste từ Explorer (Ctrl+V) — file HOẶC folder (tự quét toàn bộ + thư mục con) =====
@@ -501,7 +502,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            ShowBanner(ErrorCodes.FileNotFound, "Không dán được file/folder từ clipboard.", ex.Message);
+            ShowBanner(ErrorCodes.FileNotFound, L10n.S(Keys.Banner.PasteError), ex.Message);
         }
     }
 
@@ -535,13 +536,13 @@ public partial class MainWindow : Window
         if (toAdd.Count > 0)
         {
             var baseText = folderCount > 0
-                ? $"Đã thêm {toAdd.Count} file từ {folderCount} thư mục (gồm cả thư mục con)"
-                : $"Đã thêm {toAdd.Count} file vào hàng đợi";
+                ? L10n.F(Keys.Toast.FilesAddedFromFolder, toAdd.Count, folderCount).TrimEnd('.')
+                : L10n.F(Keys.Toast.FilesAdded, toAdd.Count).TrimEnd('.');
             AddFiles(toAdd, baseText + SkipSummary(unsupported, missing));
         }
         else if (unsupported > 0 || missing > 0)
         {
-            ShowToast($"Đã bỏ qua {SkippedList(unsupported, missing)}.");
+            ShowToast(L10n.F(Keys.Toast.SkippedOnly, SkippedList(unsupported, missing)));
         }
         return (toAdd.Count, unsupported, missing, folderCount);
     }
@@ -550,16 +551,16 @@ public partial class MainWindow : Window
     private static string SkipSummary(int unsupported, int missing)
     {
         if (unsupported <= 0 && missing <= 0) return ".";
-        return $", bỏ qua {SkippedList(unsupported, missing)}.";
+        return L10n.F(Keys.Toast.SkipSummarySome, SkippedList(unsupported, missing));
     }
 
     /// <summary>Ghép cụm "N file không hỗ trợ định dạng và M đường dẫn không tồn tại".</summary>
     private static string SkippedList(int unsupported, int missing)
     {
         var parts = new List<string>();
-        if (unsupported > 0) parts.Add($"{unsupported} file không hỗ trợ định dạng");
-        if (missing > 0) parts.Add($"{missing} đường dẫn không tồn tại");
-        return string.Join(" và ", parts);
+        if (unsupported > 0) parts.Add(L10n.F(Keys.Toast.SkippedUnsupported, unsupported));
+        if (missing > 0) parts.Add(L10n.F(Keys.Toast.SkippedMissing, missing));
+        return string.Join(L10n.S(Keys.Toast.SkippedListJoin), parts);
     }
 
     // ===== Drag & drop từ Explorer: kéo file/folder thả vào cửa sổ =====
@@ -672,12 +673,12 @@ public partial class MainWindow : Window
             foreach (var job in targets)
                 dlg.Result.CopyInto(job.Config);
             JobList.Items.Refresh();
-            ShowToast($"Đã áp cấu hình cho {targets.Count} file.");
+            ShowToast(L10n.F(Keys.Toast.AppliedConfig, targets.Count));
         }
         else
         {
             dlg.Result.CopyInto(_defaultConfig);
-            ShowToast("Đã đặt cấu hình mặc định cho file mới. (Số bản/khổ giấy chỉ áp khi thêm file.)");
+            ShowToast(L10n.S(Keys.Toast.DefaultConfig));
         }
     }
 
@@ -713,7 +714,7 @@ public partial class MainWindow : Window
         {
             try
             {
-                if (!File.Exists(p)) { ShowBanner(ErrorCodes.FileNotFound, $"Không tìm thấy file: {p}", ""); continue; }
+                if (!File.Exists(p)) { ShowBanner(ErrorCodes.FileNotFound, L10n.F(Keys.Banner.FileNotFound, p), ""); continue; }
                 // Dedup: cùng file (path không phân biệt hoa thường) đã có trong danh sách → KHÔNG tạo row 2
                 if (_queue.Jobs.Any(j => j.FilePath.Equals(p, StringComparison.OrdinalIgnoreCase))) { dup++; continue; }
                 var fmt = Path.GetExtension(p).TrimStart('.').ToUpperInvariant();
@@ -728,19 +729,19 @@ public partial class MainWindow : Window
             }
             catch (Exception ex)
             {
-                ShowBanner(ErrorCodes.FileCorrupted, $"Không thêm được file: {Path.GetFileName(p)}", ex.Message);
+                ShowBanner(ErrorCodes.FileCorrupted, L10n.F(Keys.Banner.FileAddError, Path.GetFileName(p)), ex.Message);
             }
         }
         UpdateFooter();
         if (added > 0)
         {
-            var msg = toast ?? $"Đã thêm {added} file vào hàng đợi.";
-            if (dup > 0) msg += $" · bỏ qua {dup} file đã có trong danh sách";
+            var msg = toast ?? L10n.F(Keys.Toast.FilesAdded, added);
+            if (dup > 0) msg += L10n.F(Keys.Toast.DedupSuffix, dup);
             ShowToast(msg);
         }
         else if (dup > 0)
         {
-            ShowToast($"Không thêm file trùng — {dup} file đã có trong danh sách.");
+            ShowToast(L10n.F(Keys.Toast.NoDuplicates, dup));
         }
     }
 
@@ -748,17 +749,17 @@ public partial class MainWindow : Window
     private void OnSelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
         var count = JobList.SelectedItems.Count;
-        BulkCountText.Text = $"{count} files selected";
+        BulkCountText.Text = L10n.F(Keys.Main.BulkCountFormat, count);
         BulkBar.Visibility = count > 0 ? Visibility.Visible : Visibility.Collapsed;
         SyncSelectAllState();
         UpdateFooter(); // in-ngữ-cảnh: nút Print (N) cập nhật theo selection
         if (count > 0)
         {
-            FooterHint.Text = $"Gợi ý: Ctrl+Click chọn rời · Shift+Click chọn dải · Ctrl+A chọn hết · Delete = xóa · Chuột phải = menu thao tác";
+            FooterHint.Text = L10n.S(Keys.Main.FooterHintSelection);
             var first = JobList.SelectedItems.OfType<PrintJob>().FirstOrDefault();
             BulkSummaryText.Text = first is null
                 ? ""
-                : $"Cấu hình file đầu tiên: {first.Config.SummaryText}";
+                : L10n.F(Keys.Main.BulkSummaryFormat, first.Config.SummaryText);
         }
     }
 
@@ -793,15 +794,15 @@ public partial class MainWindow : Window
         var n = GetTargetJobs(fe).Count;
 
         if (menu.Items.OfType<MenuItem>().FirstOrDefault(m => m.Name == "CtxOpen") is { } open)
-            open.Header = n > 1 ? $"Mở {n} files" : "Mở file";
+            open.Header = n > 1 ? L10n.F(Keys.Main.CtxOpenPlural, n) : L10n.S(Keys.Main.CtxOpen);
         if (menu.Items.OfType<MenuItem>().FirstOrDefault(m => m.Name == "CtxEdit") is { } edit)
-            edit.Header = n > 1 ? $"Mở & sửa {n} files (tự nạp bản mới)" : "Mở & sửa file";
+            edit.Header = n > 1 ? L10n.F(Keys.Main.CtxEditPlural, n) : L10n.S(Keys.Main.CtxEdit);
         if (menu.Items.OfType<MenuItem>().FirstOrDefault(m => m.Name == "CtxPrint") is { } print)
-            print.Header = n > 1 ? $"In {n} files" : "In file này";
+            print.Header = n > 1 ? L10n.F(Keys.Main.CtxPrintPlural, n) : L10n.S(Keys.Main.CtxPrint);
         if (menu.Items.OfType<MenuItem>().FirstOrDefault(m => m.Name == "CtxItemSettings") is { } itemSettings)
-            itemSettings.Header = n > 1 ? $"Cấu hình in cho {n} files…" : "Cấu hình in (Item settings)…";
+            itemSettings.Header = n > 1 ? L10n.F(Keys.Main.CtxItemSettingsPlural, n) : L10n.S(Keys.Main.CtxItemSettings);
         if (menu.Items.OfType<MenuItem>().FirstOrDefault(m => m.Name == "CtxRemove") is { } remove)
-            remove.Header = n > 1 ? $"Xóa {n} files khỏi hàng đợi" : "Xóa khỏi hàng đợi";
+            remove.Header = n > 1 ? L10n.F(Keys.Main.CtxRemovePlural, n) : L10n.S(Keys.Main.CtxRemove);
     }
 
     private void CtxOpen_Click(object sender, RoutedEventArgs e)
@@ -822,9 +823,9 @@ public partial class MainWindow : Window
         if (targets.Count == 0) return;
         // In nhanh qua context menu — KHÔNG xác nhận in-lại/pre-flight (thao tác trực tiếp),
         // nhưng dùng CHUNG đường thực thi với nút Print (tránh DRY: sửa chỗ nọ quên chỗ kia).
-        ShowToast($"Đưa {targets.Count} file vào hàng đợi in.");
+        ShowToast(L10n.F(Keys.Toast.CtxPrintQueued, targets.Count));
         ApplySelectedPrinter(targets);
-        StartPrintBatch(targets.ToList(), $"in {targets.Count} file này");
+        StartPrintBatch(targets.ToList(), L10n.F(Keys.Main.ActionThisBatch, targets.Count));
     }
 
     private void CtxPageRange_Click(object sender, RoutedEventArgs e)
@@ -839,7 +840,7 @@ public partial class MainWindow : Window
             foreach (var job in targets)
                 job.Config.PageRange = dlg.PageRange;
             JobList.Items.Refresh();
-            ShowToast($"Áp page range \"{dlg.PageRange}\" cho {targets.Count} file.");
+            ShowToast(L10n.F(Keys.Toast.AppliedPageRangeCtx, dlg.PageRange, targets.Count));
         }
     }
 
@@ -859,14 +860,14 @@ public partial class MainWindow : Window
         {
             _queue.Resume();
             UpdateFooter();
-            ShowToast("Đã tiếp tục in (Resume).");
+            ShowToast(L10n.S(Keys.Toast.Resumed));
             return;
         }
         if (Jobs.Any(j => j.State is JobState.Converting or JobState.Spooling))
         {
             _queue.Pause();
             UpdateFooter();
-            ShowToast("Đã tạm dừng lô in — job đang in chạy nốt, các file còn lại chờ.");
+            ShowToast(L10n.S(Keys.Toast.Paused));
             return;
         }
 
@@ -875,7 +876,7 @@ public partial class MainWindow : Window
             .Where(j => j.State == JobState.Queued).ToList();
         if (selected.Count > 0)
         {
-            PrintJobs(selected, $"in {selected.Count} file đã chọn");
+            PrintJobs(selected, L10n.F(Keys.Main.ActionSelectedFiles, selected.Count));
             return;
         }
 
@@ -884,16 +885,16 @@ public partial class MainWindow : Window
         var ready = OrderByDisplay(Jobs.Where(j => j.State is JobState.Queued or JobState.Done or JobState.Error or JobState.Cancelled)).ToList();
         if (ready.Count == 0)
         {
-            ShowBanner(ErrorCodes.NoFilesSelected, "Không có file nào ở trạng thái chờ in.", "Thêm file hoặc chọn file đã in để in lại.");
+            ShowBanner(ErrorCodes.NoFilesSelected, L10n.S(Keys.Banner.NoFilesSelected), L10n.S(Keys.Banner.PrintAllHint));
             return;
         }
-        PrintJobs(ready, $"in tất cả ({ready.Count} file)");
+        PrintJobs(ready, L10n.F(Keys.Main.ActionAllFiles, ready.Count));
     }
 
     private void PrintJobs(List<PrintJob> jobs, string action)
     {
         var ready = jobs.Where(j => j.State is JobState.Queued or JobState.Done or JobState.Error or JobState.Cancelled).ToList();
-        if (ready.Count == 0) { ShowBanner(ErrorCodes.NoFilesSelected, "Không có file nào ở trạng thái chờ in.", ""); return; }
+        if (ready.Count == 0) { ShowBanner(ErrorCodes.NoFilesSelected, L10n.S(Keys.Banner.NoFilesSelected), ""); return; }
 
         // ===== Xác nhận IN LẠI file đã in trước đó =====
         // Nếu user KHÔNG xóa file đã in (Done) khỏi hàng đợi, bấm in tiếp sẽ gộp luôn các file Done
@@ -902,18 +903,15 @@ public partial class MainWindow : Window
         if (alreadyPrinted.Count > 0)
         {
             var ask = MessageBox.Show(
-                $"Có {alreadyPrinted.Count} file đã in xong trước đó trong hàng đợi.\n\n" +
-                "Chọn Có = in lại TẤT CẢ (kể cả file đã in).\n" +
-                "Chọn Không = chỉ in các file chưa in (bỏ qua file đã in).\n" +
-                "Chọn Hủy = không in gì cả.",
-                "Printonator — In lại file đã in?", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
+                L10n.F(Keys.Banner.ConfirmRePrint, alreadyPrinted.Count),
+                L10n.S(Keys.Banner.ConfirmRePrintTitle), MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
             if (ask == MessageBoxResult.Cancel) return;
             if (ask == MessageBoxResult.No)
                 ready = ready.Where(j => j.State != JobState.Done).ToList();
             // Yes → giữ nguyên ready (in lại tất cả kể cả Done)
             if (ready.Count == 0)
             {
-                ShowBanner(ErrorCodes.NoFilesSelected, "Không còn file nào để in (đã bỏ qua file đã in).", "");
+                ShowBanner(ErrorCodes.NoFilesSelected, L10n.S(Keys.Banner.NoFilesAfterSkip), "");
                 return;
             }
         }
@@ -929,7 +927,7 @@ public partial class MainWindow : Window
         const int ConfirmSheetThreshold = 100;
         var sheets = PrintConfirmWindow.EstimateSheets(ready);
         if (sheets > ConfirmSheetThreshold
-            && !PrintConfirmWindow.Show(this, SelectedPrinter?.Name ?? "mặc định", ready, sheets))
+            && !PrintConfirmWindow.Show(this, SelectedPrinter?.Name ?? L10n.S(Keys.Main.PrinterDefaultName), ready, sheets))
         {
             return; // người dùng hủy — KHÔNG in, không toast "bắt đầu"
         }
@@ -970,12 +968,12 @@ public partial class MainWindow : Window
     /// kia (vd completion chỉ chạy cho nút Print, không cho context menu).</summary>
     private void StartPrintBatch(List<PrintJob> ready, string action)
     {
-        if (ready.Count == 0) { ShowBanner(ErrorCodes.NoFilesSelected, "Không có file nào ở trạng thái chờ in.", ""); return; }
+        if (ready.Count == 0) { ShowBanner(ErrorCodes.NoFilesSelected, L10n.S(Keys.Banner.NoFilesSelected), ""); return; }
 
         // ProcessBatch: in TUẦN TỰ từng file qua 1 vòng drain duy nhất (nút Print All và context menu
         // "In file này" đi chung đường này). KHÔNG thêm dòng mới; job giữ Queued tới lượt của nó.
         _queue.ProcessBatch(ready);
-        ShowToast($"Bắt đầu {action}...");
+        ShowToast(L10n.F(Keys.Toast.BatchStart, action));
         JobList.Items.Refresh();
         UpdateFooter();
 
@@ -1102,9 +1100,9 @@ public partial class MainWindow : Window
         {
             // Thông báo vào danh sách bell (KHÔNG còn card đơn bị ghi đè — mỗi lô một item).
             AddNotification(NotificationKind.Done,
-                $"Đã in xong {done} file",
+                L10n.F(Keys.Notify.BatchDone, done),
                 $"{DateTime.Now:HH:mm}");
-            ShowToast($"Đã in xong tất cả ({done} file).");
+            ShowToast(L10n.F(Keys.Toast.BatchDone, done));
 
             // Popup hoàn tất — user quyết có xóa file đã in không (không tự xóa âm thầm).
             var remove = PrintDoneWindow.Show(this, done, Jobs.ToList(), AppVersion);
@@ -1126,11 +1124,11 @@ public partial class MainWindow : Window
         Dispatcher.BeginInvoke(new Action(() =>
         {
             var waiting = Jobs.Count(j => j.State == JobState.Queued);
-            var name = failed?.FileName ?? "file";
+            var name = failed?.FileName ?? L10n.S(Keys.Common.FileFallback);
             AddNotification(NotificationKind.Warning,
-                $"Lô in bị dừng do lỗi \"{name}\"",
-                $"{done} file đã in, {waiting} file chờ — sửa xong bấm Resume.");
-            ShowToast($"Dừng lô in: \"{name}\" lỗi — {done} file đã in, {waiting} file chờ. Bấm Resume để in tiếp.");
+                L10n.F(Keys.Notify.BatchStopped, name),
+                L10n.F(Keys.Notify.BatchStoppedDetail, done, waiting));
+            ShowToast(L10n.F(Keys.Toast.BatchStopped, name, done, waiting));
             UpdateFooter();
         }));
     }
@@ -1172,10 +1170,10 @@ public partial class MainWindow : Window
         var info = await new UpdateChecker(CurrentVersion()).CheckAsync(CancellationToken.None);
         if (info is null)
         {
-            AddNotification(NotificationKind.Warning, "Bạn đang dùng bản mới nhất", AppVersion);
+            AddNotification(NotificationKind.Warning, L10n.S(Keys.Notify.UpdateLatest), AppVersion);
             return;
         }
-        AddNotification(NotificationKind.Update, $"Có bản mới {info.Version}",
+        AddNotification(NotificationKind.Update, L10n.F(Keys.Notify.UpdateAvailable, info.Version),
             info.Name, act: () => PromptAndInstallUpdate(info));
     }
 
@@ -1183,19 +1181,19 @@ public partial class MainWindow : Window
     private async void PromptAndInstallUpdate(UpdateInfo info)
     {
         var ask = MessageBox.Show(
-            $"Có bản mới {info.Version}.\n\n{info.Notes}\n\nTải và cài?", "Printonator — Bản cập nhật",
+            L10n.F(Keys.Banner.UpdateConfirm, info.Version, info.Notes), L10n.S(Keys.Banner.UpdateConfirmTitle),
             MessageBoxButton.YesNo, MessageBoxImage.Information);
         if (ask != MessageBoxResult.Yes) return;
 
         var path = await info.DownloadAsync(CancellationToken.None);
-        if (path is null) { MessageBox.Show("Không tải được bản cập nhật.", "Printonator", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+        if (path is null) { MessageBox.Show(L10n.S(Keys.Banner.UpdateDownloadFail), "Printonator", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
         if (!await info.VerifySha256Async(path, info.InstallerSha256))
         {
-            MessageBox.Show("Bản tải về không khớp checksum — đã hủy.", "Printonator", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(L10n.S(Keys.Banner.UpdateChecksumFail), "Printonator", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
         if (!info.LaunchInstaller(path))
-            MessageBox.Show("Không khởi động được trình cài đặt.", "Printonator", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(L10n.S(Keys.Banner.UpdateLaunchFail), "Printonator", MessageBoxButton.OK, MessageBoxImage.Error);
     }
 
     private static string AppVersion =>
@@ -1244,7 +1242,7 @@ public partial class MainWindow : Window
         var total = Jobs.Count;
         var done = Jobs.Count(j => j.State == JobState.Done);
         var err = Jobs.Count(j => j.State == JobState.Error);
-        FooterStats.Text = $"{total} files | {done} printed | {err} error";
+        FooterStats.Text = L10n.F(Keys.Main.FooterStatsFormat, total, done, err);
 
         // Progress bar + taskbar progress (Penpot gap).
         // Đúng: chỉ đếm job đã THỰC SỰ nằm trong lô in này (bắt đầu rồi hoặc xong/ngừng), chứ
@@ -1254,7 +1252,7 @@ public partial class MainWindow : Window
         var inRun = Jobs.Count(j => j.State is not JobState.Queued and not JobState.AwaitingApproval);
         var percent = inRun > 0 ? (int)(done * 100.0 / inRun) : 0;
         FooterProgress.Value = Math.Clamp(percent, 0, 100);
-        ProgressText.Text = $"{percent}%";
+        ProgressText.Text = L10n.F(Keys.Main.FooterProgressFormat, percent);
         TaskbarInfo.ProgressValue = percent / 100.0;
         TaskbarInfo.ProgressState =
             Jobs.Any(j => j.State is JobState.Converting or JobState.Spooling)
@@ -1266,12 +1264,12 @@ public partial class MainWindow : Window
         var printing = Jobs.Any(j => j.State is JobState.Converting or JobState.Spooling);
         if (_queue.IsPaused)
         {
-            PrintMainBtn.Content = "▶ Resume";
+            PrintMainBtn.Content = L10n.S(Keys.Main.PrintMainBtnResume);
             SetPrintButtonColor("#16A34A");   // xanh lá
         }
         else if (printing)
         {
-            PrintMainBtn.Content = "⏸ Pause";
+            PrintMainBtn.Content = L10n.S(Keys.Main.PrintMainBtnPause);
             SetPrintButtonColor("#DC2626");   // đỏ — nổi bật để người dùng bấm dừng
         }
         else
@@ -1279,8 +1277,8 @@ public partial class MainWindow : Window
             var queued = Jobs.Count(j => j.State == JobState.Queued);
             var selQueued = JobList.SelectedItems.OfType<PrintJob>().Count(j => j.State == JobState.Queued);
             PrintMainBtn.Content = selQueued > 0
-                ? $"Print ({selQueued})"
-                : (queued > 0 ? $"Print all ({queued})" : "Print all");
+                ? L10n.F(Keys.Main.PrintMainBtnSelected, selQueued)
+                : (queued > 0 ? L10n.F(Keys.Main.PrintMainBtnAll, queued) : L10n.S(Keys.Main.PrintMainButton));
             SetPrintButtonColor(null);
         }
 
@@ -1326,7 +1324,7 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             // Lỗi sort không được làm crash app — fallback về thứ tự thêm vào
-            ShowBanner(ErrorCodes.SpoolerFailed, "Lỗi khi sắp xếp danh sách.", ex.Message);
+            ShowBanner(ErrorCodes.SpoolerFailed, L10n.S(Keys.Banner.SortError), ex.Message);
         }
     }
 
@@ -1341,10 +1339,10 @@ public partial class MainWindow : Window
 
     private void UpdateSortHeaderArrows()
     {
-        ResetHeader(SortName, "Name");
-        ResetHeader(SortPages, "Pages to print");
-        ResetHeader(SortSettings, "Settings");
-        ResetHeader(SortStatus, "Status");
+        ResetHeader(SortName, L10n.S(Keys.Main.ColName));
+        ResetHeader(SortPages, L10n.S(Keys.Main.ColPages));
+        ResetHeader(SortSettings, L10n.S(Keys.Main.ColSettings));
+        ResetHeader(SortStatus, L10n.S(Keys.Main.ColStatus));
 
         var target = _sortColumn switch
         {
@@ -1401,7 +1399,7 @@ public partial class MainWindow : Window
     private void ShowBanner(string? code, string message, string detail)
     {
         ErrorBannerText.Text = detail.Length > 0
-            ? $"{message}  ({detail})"
+            ? L10n.F(Keys.Main.BannerErrorFormat, message, detail)
             : message;
         // Nút "Retry connection" CHỈ hiện với lỗi kết nối máy in/spooler — lỗi file/tham số không retry được
         RetryBtn.Visibility = IsRetryable(code) ? Visibility.Visible : Visibility.Collapsed;
@@ -1461,14 +1459,14 @@ public partial class MainWindow : Window
                     if (now > last)
                     {
                         job.WasReloaded = true;
-                        Dispatcher.Invoke(() => { JobList.Items.Refresh(); ShowToast($"Đã nạp lại bản mới: {job.FileName}"); });
+                        Dispatcher.Invoke(() => { JobList.Items.Refresh(); ShowToast(L10n.F(Keys.Toast.FileReloaded, job.FileName)); });
                     }
                 }
             });
         }
         catch (Exception ex)
         {
-            ShowBanner(ErrorCodes.FileNotFound, $"Không mở được file: {job.FileName}", ex.Message);
+            ShowBanner(ErrorCodes.FileNotFound, L10n.F(Keys.Banner.FileOpenError, job.FileName), ex.Message);
         }
     });
 }
@@ -1498,7 +1496,7 @@ public sealed class FolderLeafConverter : System.Windows.Data.IValueConverter
             var name = Path.GetFileName(leaf);
             if (!string.IsNullOrEmpty(name)) return name;
         }
-        return "File rời";
+        return L10n.S(Keys.Main.FolderLeafFallback);
     }
 
     public object ConvertBack(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture)

@@ -1,5 +1,6 @@
 using System.Windows;
 using Printonator.Core.Models;
+using Printonator.UI.Localization;
 
 namespace Printonator.UI;
 
@@ -38,11 +39,8 @@ public partial class PrintConfirmWindow : Window
     public static bool Show(Window owner, string printer, IReadOnlyList<PrintJob> jobs, int sheets)
     {
         var dlg = new PrintConfirmWindow { Owner = owner };
-        dlg.BodyText.Text =
-            $"Có {jobs.Count} file sẵn sàng in.\n\n" +
-            $"Tổng cộng khoảng {sheets:N0} tờ giấy ước tính (theo số bản và trang đã cấu hình).";
-        dlg.PrinterNote.Text =
-            $"Máy in: {printer}\nÁp dụng máy in này cho tất cả {jobs.Count} file.";
+        dlg.BodyText.Text = L10n.F(Keys.Confirm.Body, jobs.Count, L10n.N(sheets));
+        dlg.PrinterNote.Text = L10n.F(Keys.Confirm.PrinterNote, printer, jobs.Count);
         dlg.ShowDialog();
         return dlg.Confirmed;
     }

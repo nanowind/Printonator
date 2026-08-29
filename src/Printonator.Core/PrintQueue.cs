@@ -141,8 +141,10 @@ public sealed class PrintQueue : IDisposable
             }
             catch (Exception ex)
             {
-                // Không nuốt lỗi — chuyển thành PrintError đầy đủ
-                SetState(job, JobState.Error, WrapError(job, ex));
+                // Không nuốt lỗi — nếu exception kèm PrintError CỤ THỂ (PrintErrorException) thì GIỮ NGUYÊN
+                // (engine đã báo PRINTER_OFFLINE/FILE_LOCKED... rõ ràng), không re-wrap thành SPOOLER_FAILED.
+                var err = ExtractPrintError(ex);
+                SetState(job, JobState.Error, err ?? WrapError(job, ex));
             }
             finally
             {
@@ -371,6 +373,10 @@ public sealed class PrintQueue : IDisposable
     /// <summary>In lại 1 job đã có trong hàng đợi (giữ API cũ) — đi chung vòng drain tuần tự.</summary>
     public void ProcessExisting(PrintJob job)
         => ProcessBatch(job is null ? Array.Empty<PrintJob>() : new[] { job });
+
+    /// <summary>Móc PrintError cụ thể từ exception (nếu engine ném kèm lỗi đã phân loại qua PrintErrorException).</summary>
+    private static PrintError? ExtractPrintError(Exception ex)
+        => ex is PrintErrorException pee ? pee.Error : null;
 
     /// <summary>Bọc exception thành PrintError đầy đủ — dùng chung cho cả 2 đường drain.</summary>
     private static PrintError WrapError(PrintJob job, Exception ex) => new()

@@ -1,13 +1,14 @@
 <Window x:Class="Printonator.UI.PrintConfirmWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Xác nhận in hàng loạt"
+        xmlns:l10n="clr-namespace:Printonator.UI.Localization"
+        Title="{l10n:Loc Confirm.WindowTitle}"
         Width="440" Height="Auto" SizeToContent="Height"
         WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
         Background="#FFFFFF" FontFamily="Segoe UI"
         ShowInTaskbar="False">
     <StackPanel Margin="24,20,24,18">
-        <TextBlock Text="Xác nhận in hàng loạt" FontSize="15" FontWeight="SemiBold"
+        <TextBlock Text="{l10n:Loc Confirm.Title}" FontSize="15" FontWeight="SemiBold"
                    Foreground="{StaticResource TextBrush}"/>
         <TextBlock x:Name="BodyText" FontSize="12.5" Foreground="{StaticResource TextBrush}"
                    TextWrapping="Wrap" Margin="0,14,0,0" LineHeight="20"/>
@@ -15,12 +16,12 @@
             <TextBlock x:Name="PrinterNote" FontSize="11.5" Foreground="{StaticResource MutedBrush}"
                        TextWrapping="Wrap"/>
         </Border>
-        <TextBlock Text="Đừng đóng cửa sổ ứng dụng trong khi in." FontSize="11"
-                   Foreground="{StaticResource FaintBrush}" Margin="0,12,0,0"/>
+        <TextBlock Text="{l10n:Loc Confirm.DoNotCloseWarning}" FontSize="11"
+                   Foreground="{StaticResource FaintBrush}" Margin="0,12,0,0" TextWrapping="Wrap"/>
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
-            <Button Content="Hủy" Style="{StaticResource GhostBtn}" Padding="16,7" Margin="0,0,10,0"
+            <Button Content="{l10n:Loc Common.CancelButton}" Style="{StaticResource GhostBtn}" Padding="16,7" Margin="0,0,10,0"
                     IsCancel="True"/>
-            <Button Content="In" Style="{StaticResource RoundedBtn}" Padding="20,7"
+            <Button Content="{l10n:Loc Confirm.PrintButton}" Style="{StaticResource RoundedBtn}" Padding="20,7"
                     IsDefault="True" Click="Confirm_Click"/>
         </StackPanel>
     </StackPanel>

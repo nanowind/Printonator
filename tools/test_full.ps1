@@ -105,6 +105,7 @@ try {
     $testOut = @(); $testCode = 0; $passed = 0; $failed = 0
     $projects = @(
         'tests/Printonator.Core.Tests/Printonator.Core.Tests.csproj',
+        'tests/Printonator.Spool.Tests/Printonator.Spool.Tests.csproj',
         'tests/Printonator.UITests/Printonator.UITests.csproj'
     )
     foreach ($proj in $projects) {

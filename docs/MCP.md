@@ -39,23 +39,27 @@ claude mcp add printonator -t stdio -- <đường_dẫn>\Printonator.Mcp.exe --s
 **Client dùng `.mcp.json`** (VS Code / nhiều IDE): thêm entry `{ "command": "...", "args": ["--stdio"], "type": "stdio" }`.
 > ⚠️ **Đừng commit** entry trỏ đường dẫn tuyệt đối vào `.mcp.json` của repo — máy khác/CI sẽ vỡ. Bỏ vào user-scope hoặc docs như file này.
 
-## 2. Tools (8)
+## 2. Tools (13)
 
 | Tool | Mô tả |
 |---|---|
 | `list_printers` | Máy in + trạng thái (available/offline), khổ giấy, duplex/màu, khay giấy, máy ảo |
-| `print_files` | In hàng loạt file (paths, printer, copies, duplex, paper, pageRange, color) → job_ids + ước lượng trang |
+| `pick_printer` | Tự chọn máy in tốt nhất: máy vật lý available trước máy ảo; lọc theo khổ/duplex/màu. AI không biết in máy nào → dùng tool này |
+| `print_files` | In hàng loạt file (paths, printer?, copies, duplex, paper, pageRange, colorMode, paperSource, scaleMode, pagesPerSheet, parity, quality) → job_ids + ước lượng trang. **Bỏ trống `printer` = tự chọn máy vật lý sẵn sàng** (khi có allowlist) |
 | `print_with_preset` | In theo preset đã lưu (presetName, paths, printer?) |
 | `get_presets` / `save_preset` | Xem / lưu bộ cấu hình in tái sử dụng |
-| `list_jobs` / `job_status` | Hàng đợi đầy đủ (id, state, error có code/message/hint) |
+| `approve_job` / `reject_job` | Duyệt / từ chối job đang chờ duyệt (state=awaitingapproval) |
+| `list_jobs` / `job_status` | Hàng đợi đầy đủ (id, state, error có code/message/hint/suggestedAction) |
 | `cancel_job` | Hủy job đang chờ (Queued) |
+| `get_guard_config` | Xem cấu hình an toàn đang áp dụng (AI có tự in được không) |
+| `get_error_reference` | Tra cứu bảng mã lỗi → nghĩa + AI nên làm gì (xem §4) |
 
 > Engine in: file Office (DOCX/XLSX/PPTX) in bằng **app gốc trên máy user** (Word/Excel/PowerPoint COM,
 > như Print Conductor) → fallback shell "printto" khi không có app đó hoặc định dạng khác (PDF, ảnh...).
 > Xem `src/Printonator.Spool/Printing/OfficeComPrintEngine.cs`.
 
-Mọi tool trả JSON `{ok:true, ...}` hoặc `{ok:false, error:{code, category, message, hint}}` — không ném,
-không lộ đường dẫn/Detail cho AI.
+Mọi tool trả JSON `{ok:true, ...}` hoặc `{ok:false, error:{code, category, message, hint, suggestedAction}}` —
+không ném, không lộ đường dẫn/Detail cho AI.
 
 ## 3. An toàn (PrintGuard) — fail-closed
 
@@ -66,7 +70,7 @@ không lộ đường dẫn/Detail cho AI.
 | `PRINTONATOR_MAX_PAGES_PER_BATCH` | `200` | Trang/lô (cộng dồn cả hàng đợi). File chưa probe số trang = ngân sách bảo thủ 50 trang |
 | `PRINTONATOR_MAX_FILES_PER_BATCH` | `50` | Số file/lô |
 | `PRINTONATOR_MAX_COPIES_PER_FILE` | `100` | Bản in tối đa/file (chống in 999 bản) |
-| `PRINTONATOR_GUARD_FILE` | — | File JSON cấu hình McpGuardConfig (khi có màn Settings) |
+| `PRINTONATOR_GUARD_FILE` | — | File JSON cấu hình McpGuardConfig (thay env) |
 | `PRINTONATOR_AUDIT_LOG` | `%APPDATA%\Printonator\audit.log` | Audit JSON lines, chỉ ghi whitelist field (không lộ path/secret) |
 
 Ví dụ tự in:
@@ -77,8 +81,38 @@ $env:PRINTONATOR_MAX_PAGES_PER_BATCH="300"
 dotnet run --project src/Printonator.Mcp
 ```
 
-> Roadmap — approve thật: host MCP **in-process trong UI** (cùng PrintQueue), nút duyệt trên MainWindow
-> cho job `Source=Mcp, State=AwaitingApproval` (Core đã có `ApproveJob`/`RejectJob` + test).
+**Duyệt lệnh in qua MCP** (khi `REQUIRE_APPROVE=true`, mặc định): `print_files` không trả lỗi nữa —
+jobs vào trạng thái `AwaitingApproval`, tool trả `{ok:true, pendingApproval:true, jobIds}`. Duyệt bằng
+`approve_job(jobId)` (cho in) hoặc `reject_job(jobId)` (từ chối → Cancelled). Chỉ duyệt được job nguồn AI
+(`Source=Mcp`) đang `AwaitingApproval`; xem hàng chờ duyệt bằng `list_jobs status=awaitingapproval`.
+
+## 3b. Bảng mã lỗi (dùng được cho AI)
+
+Tra cứu động: `get_error_reference` — gọi khi gặp `{ok:false, error:{code}}`. Bảng đủ mọi mã với cột
+"AI nên làm gì". Một số hay gặp:
+
+| Mã | Nghĩa | AI nên làm |
+|---|---|---|
+| `PRINTER_OFFLINE` | Máy offline | `list_printers` xem available; `pick_printer` chọn máy khác, in lại |
+| `PRINTER_NO_PERMISSION` | Máy ngoài allowlist | `get_guard_config` xem allowlist; chọn máy trong đó hoặc báo người dùng thêm `PRINTONATOR_ALLOWED_PRINTERS` |
+| `APPROVAL_REQUIRED` / `pendingApproval` | Cần duyệt | `list_jobs status=awaitingapproval` + `approve_job` |
+| `JOB_NOT_FOUND` | job_id không có | `list_jobs` lấy đúng job_id |
+| `MAX_BATCH_EXCEEDED` | Vượt giới hạn | Chia nhỏ lô |
+| `SPOOLER_BUSY` | Máy/queue bận | Chờ vài giây, thử lại |
+
+## 3c. AI workflow chuẩn (auto in từ prompt)
+
+1. `get_guard_config` → `canAutoPrint:false` thì nhờ người dùng cấu hình, ngừng.
+2. `pick_printer` (hoặc `print_files` bỏ trống `printer`) → chọn máy vật lý rảnh.
+3. `print_files(paths, printer?, duplex?, paper?, ...)` → `jobIds`.
+4. Poll `job_status` mỗi ~1–2s đến khi `Done`/`Error`.
+5. Lỗi → `get_error_reference <code>` → làm theo `aiAction` → thử lại.
+
+Ví dụ:
+
+> **Người dùng:** "In file này 2 mặt khổ A4, máy nào rảnh thì in"
+>
+> AI: `list_printers` → Canon LBP rảnh · `print_files(paths:["C:\hopdong.docx"], printer:"Canon LBP151 (222)", duplex:true, paper:"A4")` → `{ok:true, jobIds}` · `job_status` → `{state:"Done"}` → **"Đã in xong 2 mặt A4 vào Canon LBP151 (222)."**
 
 ## 4. Penpot — CHỈ LÀ NGUỒN THIẾT KẾ (không phải đối tượng in)
 
@@ -92,7 +126,7 @@ Penpot không liên quan tới in. Bản thiết kế UI của app đã vẽ s�
 
 ```
 User(UI)  → Queued → Converting → Spooling → Done / Error(reason code + tiếng Việt)
-Mcp + approve on → AwaitingApproval → (ApproveJob) → Queued → ... (in-process UI, roadmap)
+Mcp + approve on → AwaitingApproval → (approve_job) → Queued → ...
 Mcp approve off → Enqueue thẳng như User
 ```
 
@@ -100,6 +134,7 @@ Mcp approve off → Enqueue thẳng như User
 
 ```bash
 dotnet build Printonator.sln
-dotnet test tests/Printonator.Core.Tests      # 52  (gồm PrintGuard/Preset/Approve/Queue)
-dotnet test tests/Printonator.UITests         # 4   (FlaUI, launch app thật)
+dotnet test tests/Printonator.Core.Tests      # 78  (PrintGuard/Preset/Approve/Queue/error-routing)
+dotnet test tests/Printonator.Mcp.Tests       # 6   (tool shape, error reference, pick printer)
+dotnet test tests/Printonator.Spool.Tests     # 4   (E2E print-to-PDF)
 ```

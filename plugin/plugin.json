@@ -1,0 +1,23 @@
+{
+  "name": "printonator-mcp",
+  "version": "0.1.8",
+  "description": "Printonator MCP — AI in file giùm (liệt kê máy in, tự chọn máy, in hàng loạt word/excel/ppt, duyệt job, tra cứu mã lỗi). Kèm skill printonator-mcp.",
+  "author": "Printonator",
+  "repository": "https://github.com/scraw/Printonator",
+  "entrypoints": {
+    "mcp": {
+      "printonator": {
+        "type": "stdio",
+        "command": "Printonator.Mcp.exe",
+        "args": ["--stdio"],
+        "env": {
+          "PRINTONATOR_REQUIRE_APPROVE": "false",
+          "PRINTONATOR_ALLOWED_PRINTERS": "Microsoft Print to PDF"
+        }
+      }
+    }
+  },
+  "skills": [
+    { "name": "printonator-mcp", "path": ".claude/skills/printonator-mcp/SKILL.md" }
+  ]
+}

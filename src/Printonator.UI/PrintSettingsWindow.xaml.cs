@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using Printonator.Core.Models;
 using Printonator.Core.Presets;
 using Printonator.Spool.Printing;
+using Printonator.UI.Localization;
 
 namespace Printonator.UI;
 
@@ -34,11 +35,15 @@ public partial class PrintSettingsWindow : Window
 
         InitializeComponent();
 
-        Title = _targets.Count == 1 ? $"Cấu hình in — {_targets[0].FileName}" : $"Cấu hình in — {_targets.Count} file";
+        Title = _targets.Count == 1
+            ? L10n.F(Keys.Settings.WindowTitleTarget, _targets[0].FileName)
+            : L10n.F(Keys.Settings.WindowTitlePlural, _targets.Count);
         TitleText.Text = _targets.Count == 1
             ? _targets[0].FileName
-            : $"Đang cấu hình {_targets.Count} file đã chọn";
-        ApplyBtn.Content = _targets.Count > 0 ? $"Áp dụng cho {_targets.Count} file" : "Đặt mặc định cho file mới";
+            : L10n.F(Keys.Settings.TitlePlural, _targets.Count);
+        ApplyBtn.Content = _targets.Count > 0
+            ? L10n.F(Keys.Settings.ApplyBtnTarget, _targets.Count)
+            : L10n.S(Keys.Settings.ApplyBtnDefault);
 
         PopulatePrinterDrivenLists();
         LoadFromConfig(_source);
@@ -66,7 +71,7 @@ public partial class PrintSettingsWindow : Window
             SheetHint.Visibility = Visibility.Visible;
             SheetCombo.IsEnabled = false;
             SheetCombo.Items.Clear();
-            SheetCombo.Items.Add(Item("Đang đọc sheet…", "__loading__"));
+            SheetCombo.Items.Add(Item(L10n.S(Keys.Common.SheetLoading), "__loading__"));
             SheetCombo.SelectedIndex = 0;
 
             var sheets = await OfficeComPrintEngine.ListSheetsAsync(excel.FilePath);
@@ -79,7 +84,7 @@ public partial class PrintSettingsWindow : Window
             }
             SheetCombo.IsEnabled = true;
             SheetCombo.Items.Clear();
-            SheetCombo.Items.Add(Item("Tất cả các sheet", ""));
+            SheetCombo.Items.Add(Item(L10n.S(Keys.Common.SheetAll), ""));
             foreach (var s in sheets) SheetCombo.Items.Add(Item(s, s));
             SelectTag(SheetCombo, _source.SheetName, "");
         }
@@ -94,13 +99,13 @@ public partial class PrintSettingsWindow : Window
         var sizes = _printer is { SupportedPaperSizes.Length: > 0 } p
             ? PaperCatalog.FromPrinter(p.SupportedPaperSizes)
             : PaperCatalog.StandardSizes();
-        PaperCombo.Items.Add(Item("Theo máy in (As in printer)", ""));
-        PaperCombo.Items.Add(Item("Theo tài liệu (khổ gốc từng trang)", PaperCatalog.AsDocument));
+        PaperCombo.Items.Add(Item(L10n.S(Keys.Option.PaperAsPrinter), ""));
+        PaperCombo.Items.Add(Item(L10n.S(Keys.Option.PaperAsDocument), PaperCatalog.AsDocument));
         foreach (var s in sizes)
             PaperCombo.Items.Add(Item(s, PaperCatalog.SizeName(s)));
 
         // Khay giấy: "theo máy in" (rỗng) + tray thân thiện từ máy in
-        PaperSourceCombo.Items.Add(Item("Theo máy in (máy tự chọn khay)", ""));
+        PaperSourceCombo.Items.Add(Item(L10n.S(Keys.Option.TrayAsPrinter), ""));
         if (_printer is { Trays.Length: > 0 } pp)
         {
             foreach (var t in pp.Trays)
@@ -108,7 +113,7 @@ public partial class PrintSettingsWindow : Window
         }
         else
         {
-            PaperSourceCombo.Items.Add(Item("(máy in không báo khay)", "__none__"));
+            PaperSourceCombo.Items.Add(Item(L10n.S(Keys.Option.TrayUnknown), "__none__"));
             PaperSourceCombo.IsEnabled = false;
         }
 
@@ -208,9 +213,9 @@ public partial class PrintSettingsWindow : Window
             if (RangePreview is not null)
             {
                 if (RangeAll.IsChecked == true)
-                    RangePreview.Text = "→ In toàn bộ trang của file.";
+                    RangePreview.Text = L10n.S(Keys.Settings.PreviewRangeAll);
                 else
-                    RangePreview.Text = "→ Nhập trang: 1,3 · 2-5 · 1-2,7 · S2:1-3";
+                    RangePreview.Text = L10n.S(Keys.Settings.PreviewRangePrompt);
             }
             return;
         }
@@ -218,8 +223,8 @@ public partial class PrintSettingsWindow : Window
         var representative = _representative;
         if (representative.Sections.Count > 0 && SectionInfo is not null)
         {
-            SectionInfo.Text = string.Join("  ·  ",
-                representative.Sections.Select(s => $"S{s.Index}: doc {s.FirstPhysicalPage}-{s.LastPhysicalPage}"));
+            SectionInfo.Text = string.Join("  ·  ", representative.Sections.Select(
+                s => L10n.F(Keys.Common.SectionInfoFormat, s.Index, s.FirstPhysicalPage, s.LastPhysicalPage)));
             SectionInfo.Visibility = Visibility.Visible;
         }
 
@@ -233,14 +238,14 @@ public partial class PrintSettingsWindow : Window
             {
                 var pages = r.Value!;
                 var shown = pages.Length > 20
-                    ? string.Join(",", pages.Take(20)) + $"… ({pages.Length} trang)"
+                    ? string.Join(",", pages.Take(20)) + L10n.F(Keys.Common.PagesCountSuffix, pages.Length)
                     : string.Join(",", pages);
-                RangePreview.Text = $"→ Sẽ in trang: {shown}";
+                RangePreview.Text = L10n.F(Keys.Settings.PreviewWillPrint, shown);
                 RangePreview.Foreground = System.Windows.Media.Brushes.SeaGreen;
             }
             else
             {
-                RangePreview.Text = $"✕ {r.Error!.Message}";
+                RangePreview.Text = L10n.F(Keys.Common.PreviewErrorFormat, r.Error!.Message);
                 RangePreview.Foreground = System.Windows.Media.Brushes.Firebrick;
             }
         }
@@ -281,7 +286,7 @@ public partial class PrintSettingsWindow : Window
         {
             var current = SelectedTag(ProfileCombo);
             ProfileCombo.Items.Clear();
-            ProfileCombo.Items.Add(Item("(Không dùng profile)", ""));
+            ProfileCombo.Items.Add(Item(L10n.S(Keys.Settings.ProfileNone), ""));
             var presets = _store.Load().OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList();
             foreach (var p in presets)
                 ProfileCombo.Items.Add(Item(p.Name, p.Name));
@@ -322,20 +327,20 @@ public partial class PrintSettingsWindow : Window
         var name = ProfileNameBox.Text.Trim();
         if (name.Length == 0)
         {
-            ProfileNameBox.ToolTip = "Tên profile không được để trống.";
+            ProfileNameBox.ToolTip = L10n.S(Keys.Settings.ProfileEmptyNameError);
             return;
         }
         var cfg = _source.Clone();
         WriteConfigInto(cfg);
         if (!_store.Save(cfg.ToPreset(name)))
         {
-            ProfileNameBox.ToolTip = "Không lưu được profile.";
+            ProfileNameBox.ToolTip = L10n.S(Keys.Settings.ProfileSaveError);
             return;
         }
         SavePanel.Visibility = Visibility.Collapsed;
         LoadProfiles();
         SelectTag(ProfileCombo, name, "");
-        ShowToast($"Đã lưu profile \"{name}\".");
+        ShowToast(L10n.F(Keys.Settings.ProfileSaved, name));
     }
 
     private void CancelSaveProfile_Click(object sender, RoutedEventArgs e) => SavePanel.Visibility = Visibility.Collapsed;
@@ -347,7 +352,7 @@ public partial class PrintSettingsWindow : Window
         _store.Delete(name);
         ProfileCombo.SelectedIndex = 0;
         LoadProfiles();
-        ShowToast($"Đã xóa profile \"{name}\".");
+        ShowToast(L10n.F(Keys.Settings.ProfileDeleted, name));
     }
 
     // ============ Dialog native driver ============
@@ -365,8 +370,8 @@ public partial class PrintSettingsWindow : Window
             {
                 Code = ErrorCodes.PrinterNotFound,
                 Category = PrintErrorCategory.Config,
-                Message = "Chưa chọn máy in.",
-                Hint = "Chọn máy in ở thanh công cụ chính.",
+                Message = L10n.S(Keys.Settings.PrinterNotSelectedError),
+                Hint = L10n.S(Keys.Settings.PrinterNotSelectedHint),
             });
         }
         else if (arg == "/e")
@@ -380,7 +385,7 @@ public partial class PrintSettingsWindow : Window
 
         if (!r.IsSuccess)
         {
-            NativeErrText.Text = $"✕ {r.Error!.Message} — {r.Error.Hint}";
+            NativeErrText.Text = L10n.F(Keys.Common.NativeErrFormat, r.Error!.Message, r.Error.Hint);
             NativeErrText.Foreground = System.Windows.Media.Brushes.Firebrick;
             NativeErrText.Visibility = Visibility.Visible;
         }

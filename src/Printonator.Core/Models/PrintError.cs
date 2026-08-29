@@ -50,6 +50,10 @@ public static class ErrorCodes
     public const string NoFilesSelected = "NO_FILES_SELECTED";
     public const string MaxBatchExceeded = "MAX_BATCH_EXCEEDED";
     public const string ApprovalRequired = "APPROVAL_REQUIRED";
+    public const string PresetNotFound = "PRESET_NOT_FOUND";
+    public const string InvalidPreset = "INVALID_PRESET";
+    public const string JobNotFound = "JOB_NOT_FOUND";
+    public const string JobNotApprovable = "JOB_NOT_APPROVABLE";
     // Engine
     public const string EngineNotFound = "ENGINE_NOT_FOUND";
     public const string EngineTimeout = "ENGINE_TIMEOUT";

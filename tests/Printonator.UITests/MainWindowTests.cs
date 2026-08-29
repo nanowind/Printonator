@@ -141,10 +141,11 @@ public class MainWindowTests
             list.Items[1].AddToSelection();
             Thread.Sleep(300);
 
-            // Bulk bar hiện ra — kiểm tra text "2 files selected" (BulkCountText — TextBlock có AutomationPeer)
+            // Bulk bar hiện ra — kiểm tra text "Đã chọn 2 file" (BulkCountText — TextBlock có AutomationPeer,
+            // giờ đi qua i18n: Main.BulkCountFormat = "Đã chọn {0} file")
             var bulkCount = main.FindFirstDescendant(c => c.ByAutomationId("BulkCountText"));
             Assert.NotNull(bulkCount);
-            Assert.Contains("2 files selected", bulkCount.Name);
+            Assert.Contains("Đã chọn 2 file", bulkCount.Name);
         }
         finally
         {

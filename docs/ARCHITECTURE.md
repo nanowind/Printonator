@@ -8,7 +8,7 @@
 **Printonator** = app in hàng loạt (bulk printing) cho Windows 10/11, C#/.NET 8 WPF, MIT.
 Luồng chính: kéo/thả N file → chọn máy in → cấu hình (bản, 2 mặt, khổ, page range) → **In tất cả / In selected** → theo dõi trạng thái từng job → lỗi có mã + tiếng Việt + gợi ý.
 
-Điểm khác biệt chiến lược (CONCEPT §6, chưa code): **MCP server** để AI in giùm — allowlist + approve + quota + audit.
+Điểm khác biệt chiến lược (CONCEPT §6): **MCP server** để AI in giùm — đã code (13 tools, guard, approve qua MCP, skill + plugin; xem docs/MCP.md).
 
 ## 2. Solution structure (4 projects)
 
@@ -38,8 +38,10 @@ Printonator.sln
 │     ├─ PaperSetupDialog.xaml   # Dialog khổ giấy / duplex / màu
 │     └─ app.ico
 └─ tests/
-   ├─ Printonator.Core.Tests/    # xUnit — 52 tests (page-range, section, queue, approve, preset, guard)
-   └─ Printonator.UITests/       # xUnit + FlaUI.UIA3 — 4 UI tests
+   ├─ Printonator.Core.Tests/    # xUnit — 78 tests (page-range, section, queue, approve, preset, guard, error-routing)
+   ├─ Printonator.Spool.Tests/   # xUnit — 4 E2E print-to-PDF
+   ├─ Printonator.Mcp.Tests/     # xUnit — 6 (tool shape, error reference, pick printer)
+   └─ Printonator.UITests/       # xUnit + FlaUI.UIA3 — 27 UI tests
 ```
 
 **Tóm tắt 1 dòng mỗi class:**
@@ -114,7 +116,7 @@ Engine implement `IPrintEngine { bool CanHandle(string format); Task<Result<bool
 ## 6. Testing
 
 ```bash
-dotnet test Printonator.sln          # Core 62 + UI 27 = 89 tests
+dotnet test Printonator.sln          # Core 78 + Spool 4 + Mcp 6 + UI 27 = 115 tests
 dotnet build Printonator.sln
 dotnet format Printonator.sln        # format chuẩn (đã chạy, tree sạch)
 ```
@@ -126,10 +128,10 @@ dotnet format Printonator.sln        # format chuẩn (đã chạy, tree sạch)
 ## 7. Những thứ chưa làm (từ gap analysis + CONCEPT) — thứ tự đề xuất
 
 Xem chi tiết `docs/COMPARISON_PRINT_CONDUCTOR.md`. Tóm tắt:
-1. **P0**: Engine PDF slicing thật để cắt **page range trên PDF** (browser viewer từ chối ranges — đã verify; cần lib/dịch vụ render nhẹ, hoặc dùng viewer API qua CDP); màn MCP/Safety UI + approve in-process
+1. **P0**: Engine PDF slicing thật để cắt **page range trên PDF** (browser viewer từ chối ranges — đã verify; cần lib/dịch vụ render nhẹ, hoặc dùng viewer API qua CDP)
 2. **P1**: Cover/Report page; Single print job (gộp PDF); Preset/Profile (.ini) + CLI; Per-file printer
-3. **P2**: Watermark; Post-processing; Watch folder; MCP guard đầy đủ; Email/CAD/HEIC; log file
-4. **MCP server** — ✅ đã có `Printonator.Mcp` (8 tools, HTTP/stdio, guard, xem docs/MCP.md); `Printonator.Cli` + host in-process trong UI (duyệt thật) là roadmap
+3. **P2**: Watermark; Post-processing; Watch folder; Email/CAD/HEIC; log file
+4. **MCP server** — ✅ đã có `Printonator.Mcp` (13 tools: pick_printer/approve_job/reject_job/get_guard_config/get_error_reference..., HTTP/stdio, guard, approve qua MCP, skill `.claude/skills/printonator-mcp` + plugin `plugin/`, xem docs/MCP.md). Duyệt thật giờ qua MCP tool; host in-process trong UI (màn duyệt) còn là roadmap-optional
 
 ## 8. Môi trường & tooling
 

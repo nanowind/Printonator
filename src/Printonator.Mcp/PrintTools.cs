@@ -58,8 +58,8 @@ public static class PrintTools
     // ============ In file ============
 
     [McpServerTool, Description(
-        "In hàng loạt các file (pdf/image/docx...). AI phải chỉ rõ máy in. Trả job_id cho từng file + ước lượng trang. " +
-        "Nếu cấu hình yêu cầu duyệt (mặc định), tool trả lỗi APPROVAL_REQUIRED.")]
+        "In hàng loạt các file (pdf/image/docx...). AI KHÔNG cần chỉ máy in — bỏ trống printer = hệ thống tự chọn máy in vật lý sẵn sàng (xem pick_printer). Trả job_id cho từng file + ước lượng trang. " +
+        "Nếu cấu hình yêu cầu duyệt (mặc định), jobs vào trạng thái awaitingapproval — dùng approve_job để duyệt (get_guard_config xem có cần duyệt không).")]
     public static async Task<object> PrintFiles(
         [Description("Đường dẫn các file cần in")] string[] paths,
         [Description("Tên máy in (để trống hoặc 'mặc định' = máy in mặc định Windows)")] string? printer = null,
@@ -130,15 +130,18 @@ public static class PrintTools
                 ColorMode = color ? PrintColorMode.Color : PrintColorMode.Grayscale,
             };
             var ok = new PresetStore().Save(preset);
-            return ok
-                ? new Dictionary<string, object?> { ["ok"] = true, ["preset"] = PresetDto(preset) }
-                : Fail(new PrintError
-                {
-                    Code = ErrorCodes.InvalidPageRange,
-                    Category = PrintErrorCategory.Config,
-                    Message = "Tên preset không hợp lệ.",
-                    Hint = "Tên không được để trống.",
-                });
+            if (ok)
+            {
+                AppServices.GuardInstance.Audit("save_preset", "ok", new Dictionary<string, object?> { ["presetName"] = name, ["ok"] = true });
+                return new Dictionary<string, object?> { ["ok"] = true, ["preset"] = PresetDto(preset) };
+            }
+            return Fail(new PrintError
+            {
+                Code = ErrorCodes.InvalidPreset,
+                Category = PrintErrorCategory.Config,
+                Message = "Tên preset không hợp lệ.",
+                Hint = "Tên không được để trống.",
+            });
         }
         catch (Exception ex) { return Fail(Err(ex, "Lưu preset thất bại.")); }
     }
@@ -153,7 +156,7 @@ public static class PrintTools
         if (preset is null)
             return Fail(new PrintError
             {
-                Code = ErrorCodes.InvalidPageRange,
+                Code = ErrorCodes.PresetNotFound,
                 Category = PrintErrorCategory.Config,
                 Message = $"Không tìm thấy preset \"{presetName}\".",
                 Hint = "Xem danh sách preset bằng get_presets.",
@@ -202,13 +205,7 @@ public static class PrintTools
     {
         var job = FindJob(jobId);
         if (job is null)
-            return Fail(new PrintError
-            {
-                Code = ErrorCodes.NoFilesSelected,
-                Category = PrintErrorCategory.Config,
-                Message = $"Không tìm thấy job {jobId}.",
-                Hint = "Dùng list_jobs để lấy job_id đúng.",
-            });
+            return Fail(JobNotFound(jobId));
         return new Dictionary<string, object?> { ["ok"] = true, ["job"] = JobDto(job) };
     }
 
@@ -217,15 +214,171 @@ public static class PrintTools
     {
         var job = FindJob(jobId);
         if (job is null)
-            return new Dictionary<string, object?> { ["ok"] = false, ["reason"] = "not_found" };
+            return Fail(JobNotFound(jobId));
         if (AppServices.Queue.CancelJob(job))
+        {
+            AppServices.GuardInstance.Audit("cancel_job", "ok", new Dictionary<string, object?> { ["jobId"] = jobId, ["ok"] = true });
             return new Dictionary<string, object?> { ["ok"] = true, ["jobId"] = jobId, ["state"] = "Cancelled" };
+        }
+        return Fail(new PrintError
+        {
+            Code = ErrorCodes.SpoolerBusy,
+            Category = PrintErrorCategory.Config,
+            Message = $"Job {jobId} đang in hoặc đã kết thúc — không hủy được.",
+            Hint = "Chờ job về Done/Error rồi thử lại, hoặc in lại.",
+        });
+    }
+
+    // ============ Tự chọn máy in ============
+
+    [McpServerTool, Description(
+        "Tự chọn máy in phù hợp nhất: ưu tiên máy VẬT LÝ đang sẵn sàng (không máy ảo PDF/XPS/OneNote/Fax). " +
+        "Có thể lọc theo khổ giấy / duplex / màu. Dùng trước print_files khi AI không biết nên in máy nào.")]
+    public static object PickPrinter(
+        [Description("Bắt buộc khổ giấy (vd A4/A3/Letter) — bỏ trống = mọi khổ")] string? paper = null,
+        [Description("Bắt buộc in 2 mặt")] bool requireDuplex = false,
+        [Description("Bắt buộc in màu")] bool requireColor = false)
+    {
+        try
+        {
+            var printers = new PrinterService().ListPrinters();
+            if (!printers.IsSuccess) return Fail(printers.Error!);
+            var picked = PickBestPrinter(printers.Value, paper, requireDuplex, requireColor);
+            if (picked is null)
+                return Fail(new PrintError
+                {
+                    Code = ErrorCodes.PrinterNotFound,
+                    Category = PrintErrorCategory.Printer,
+                    Message = "Không có máy in đáp ứng yêu cầu.",
+                    Hint = "Chạy list_printers để xem máy khả dụng + yêu cầu của bạn (khổ/duplex/màu); hoặc đặt PRINTONATOR_ALLOWED_PRINTERS nếu máy bị chặn.",
+                });
+
+            // Top 5 ứng viên xếp hạng — để AI tự cân nhắc nếu không đồng ý máy đầu
+            var candidates = printers.Value
+                .Where(p => AppServices.GuardConfig.IsPrinterAllowed(p.Name))
+                .OrderByDescending(p => p.IsAvailable)
+                .ThenBy(p => p.IsVirtual)
+                .ThenByDescending(p => p.IsDefault)
+                .Take(5)
+                .Select(p => new Dictionary<string, object?>
+                {
+                    ["name"] = p.Name,
+                    ["available"] = p.IsAvailable,
+                    ["virtual"] = p.IsVirtual,
+                    ["paper"] = p.SupportedPaperSizes,
+                    ["duplex"] = p.SupportsDuplex,
+                    ["color"] = p.SupportsColor,
+                    ["trays"] = p.TrayInfo,
+                });
+            return new Dictionary<string, object?>
+            {
+                ["ok"] = true,
+                ["printer"] = picked.Name,
+                ["available"] = picked.IsAvailable,
+                ["physical"] = !picked.IsVirtual,
+                ["isDefault"] = picked.IsDefault,
+                ["reason"] = picked.IsAvailable
+                    ? (picked.IsVirtual ? "Máy ảo khả dụng (không có máy vật lý) — hãy xác nhận trước khi in." : "Máy vật lý đang sẵn sàng.")
+                    : "Máy vật lý duy nhất khả dụng (có thể offline — kiểm tra trước khi in).",
+                ["candidates"] = candidates,
+            };
+        }
+        catch (Exception ex)
+        {
+            return Fail(Err(ex, "Lỗi khi chọn máy in."));
+        }
+    }
+
+    /// <summary>Xếp hạng máy in tốt nhất: available > máy vật lý > default; lọc theo allowlist + khổ/duplex/màu.
+    /// Helper THUẦN (nhận List&lt;PrinterInfo&gt;) — test được không cần spooler thật.</summary>
+    internal static PrinterInfo? PickBestPrinter(
+        IReadOnlyList<PrinterInfo> printers, string? paper, bool requireDuplex, bool requireColor)
+    {
+        if (printers is null || printers.Count == 0) return null;
+        return printers
+            .Where(p => AppServices.GuardConfig.IsPrinterAllowed(p.Name))
+            .Where(p => string.IsNullOrWhiteSpace(paper) || ContainsPaper(p, paper))
+            .Where(p => !requireDuplex || p.SupportsDuplex)
+            .Where(p => !requireColor || p.SupportsColor)
+            .OrderByDescending(p => p.IsAvailable)
+            .ThenBy(p => p.IsVirtual)       // máy vật lý trước máy ảo
+            .ThenByDescending(p => p.IsDefault)
+            .FirstOrDefault();
+    }
+
+    private static bool ContainsPaper(PrinterInfo p, string paper)
+        => (p.SupportedPaperSizes?.Contains(paper, StringComparer.OrdinalIgnoreCase) ?? false)
+           || (p.SupportedPaperSizes?.Any(s => s.Contains(paper, StringComparison.OrdinalIgnoreCase)) ?? false);
+
+    // ============ Duyệt job ============
+
+    [McpServerTool, Description(
+        "Duyệt 1 job từ AI đang chờ duyệt (state=awaitingapproval) để cho in. " +
+        "Chỉ duyệt được job nguồn AI đang chờ. Xem list_jobs status=awaitingapproval.")]
+    public static object ApproveJob([Description("job_id (UUID)")] string jobId)
+    {
+        var job = FindJob(jobId);
+        if (job is null) return Fail(JobNotFound(jobId));
+        if (job.State != JobState.AwaitingApproval || job.Source != JobSource.Mcp) return Fail(JobNotApprovable(job));
+        if (!AppServices.Queue.ApproveJob(job))
+            return Fail(JobNotApprovable(job));
+        AppServices.GuardInstance.Audit("approve_job", "ok", new Dictionary<string, object?> { ["jobId"] = jobId, ["ok"] = true });
+        return new Dictionary<string, object?> { ["ok"] = true, ["jobId"] = jobId, ["state"] = "Queued" };
+    }
+
+    [McpServerTool, Description(
+        "Từ chối 1 job đang chờ duyệt (state=awaitingapproval) — job chuyển cancelled, không in.")]
+    public static object RejectJob([Description("job_id (UUID)")] string jobId)
+    {
+        var job = FindJob(jobId);
+        if (job is null) return Fail(JobNotFound(jobId));
+        if (job.State != JobState.AwaitingApproval || job.Source != JobSource.Mcp) return Fail(JobNotApprovable(job));
+        if (!AppServices.Queue.RejectJob(job))
+            return Fail(JobNotApprovable(job));
+        AppServices.GuardInstance.Audit("reject_job", "ok", new Dictionary<string, object?> { ["jobId"] = jobId, ["ok"] = true });
+        return new Dictionary<string, object?> { ["ok"] = true, ["jobId"] = jobId, ["state"] = "Cancelled" };
+    }
+
+    // ============ Cấu hình an toàn + tra cứu lỗi ============
+
+    [McpServerTool, Description(
+        "Xem cấu hình an toàn đang áp dụng: máy được phép (allowlist), có bắt buộc duyệt không, giới hạn trang/file/bản. " +
+        "Gọi trước khi in để biết AI có tự in được không.")]
+    public static object GetGuardConfig()
+    {
+        var cfg = AppServices.GuardConfig;
         return new Dictionary<string, object?>
         {
-            ["ok"] = false,
-            ["jobId"] = jobId,
-            ["state"] = job.State.ToString(),
-            ["reason"] = "Job đang in (Converting/Spooling) hoặc đã kết thúc — không hủy được.",
+            ["ok"] = true,
+            ["requireApprove"] = cfg.RequireApprove,
+            ["canAutoPrint"] = !cfg.RequireApprove && cfg.AllowedPrinters.Length > 0,
+            ["allowedPrinters"] = cfg.AllowedPrinters,
+            ["maxPagesPerBatch"] = cfg.MaxPagesPerBatch,
+            ["maxFilesPerBatch"] = cfg.MaxFilesPerBatch,
+            ["maxCopiesPerFile"] = cfg.MaxCopiesPerFile,
+        };
+    }
+
+    [McpServerTool, Description(
+        "Tra cứu bảng mã lỗi Printonator: mỗi mã → nghĩa là gì + AI nên làm gì để khắc phục. " +
+        "Gọi khi gặp lỗi {ok:false, error:{code}} để biết cách xử lý.")]
+    public static object GetErrorReference(
+        [Description("Lọc theo mã lỗi (bỏ trống = trả toàn bộ)")] string? code = null)
+    {
+        IEnumerable<(string Code, string Meaning, string AiAction)> rows = ErrorReference;
+        if (!string.IsNullOrWhiteSpace(code))
+            rows = rows.Where(r => r.Code.Equals(code.Trim(), StringComparison.OrdinalIgnoreCase));
+        var list = rows.Select(r => new Dictionary<string, object?>
+        {
+            ["code"] = r.Code,
+            ["meaning"] = r.Meaning,
+            ["aiAction"] = r.AiAction,
+        });
+        return new Dictionary<string, object?>
+        {
+            ["ok"] = true,
+            ["codes"] = list,
+            ["note"] = rows.Any() ? null : "Không có mã này — xem danh sách đầy đủ (bỏ trống tham số code).",
         };
     }
 
@@ -301,15 +454,28 @@ public static class PrintTools
 
             if (guard.Config.RequireApprove)
             {
-                var approval = new PrintError
+                // LUỒNG DUYỆT THẬT qua MCP: jobs vào trạng thái AwaitingApproval (không hard-block nữa).
+                // AI/người dùng duyệt bằng approve_job (từ chối: reject_job). ApproveJob/RejectJob đã có trong Core.
+                foreach (var j in jobs) j.Config.PrinterName = string.IsNullOrWhiteSpace(printer) ? "mặc định" : printer;
+                AppServices.Queue.AddForApproval(jobs);
+
+                var pendingIds = jobs.Select(j => j.Id.ToString()).ToArray();
+                var pendingTotal = jobs.Sum(PrintQueue.EstimatedPages);
+                guard.Audit(tool, "pending_approval", new Dictionary<string, object?>(SafeArgs(jobs, printer))
                 {
-                    Code = ErrorCodes.ApprovalRequired,
-                    Category = PrintErrorCategory.Config,
-                    Message = "Cấu hình yêu cầu NGƯỜI duyệt trước khi in (an toàn mặc định).",
-                    Hint = "MCP đang chạy độc lập (không có màn hình duyệt). Muốn AI tự in: đặt PRINTONATOR_REQUIRE_APPROVE=false + PRINTONATOR_ALLOWED_PRINTERS.",
+                    ["jobIds"] = pendingIds,
+                    ["totalPages"] = pendingTotal,
+                });
+
+                return new Dictionary<string, object?>
+                {
+                    ["ok"] = true,
+                    ["pendingApproval"] = true,
+                    ["jobIds"] = pendingIds,
+                    ["estimatedPages"] = pendingTotal,
+                    ["printer"] = jobs[0].Config.PrinterName,
+                    ["note"] = "Jobs đang CHỜ DUYỆT — dùng approve_job để cho in, hoặc reject_job để từ chối (list_jobs status=awaitingapproval).",
                 };
-                guard.Audit(tool, "blocked", new Dictionary<string, object?>(SafeArgs(jobs, printer)) { ["error"] = approval.Code });
-                return Fail(approval);
             }
 
             if (!guard.Config.IsStandaloneAutoPrintAllowed())
@@ -323,6 +489,15 @@ public static class PrintTools
                 };
                 guard.Audit(tool, "blocked", new Dictionary<string, object?>(SafeArgs(jobs, printer)) { ["error"] = vpn.Code });
                 return Fail(vpn);
+            }
+
+            // TỰ CHỌN MÁY IN khi AI không chỉ rõ — nhưng CHỈ khi có allowlist (còn allowlist rỗng + không duyệt
+            // thì để guard chặn đúng PRINTER_NO_PERMISSION ở trên — không che lỗi cấu hình fail-closed).
+            if (string.IsNullOrWhiteSpace(printer) && AppServices.GuardConfig.AllowedPrinters.Length > 0)
+            {
+                var picked = PickBestPrinter(printerList(), null, false, false);
+                if (picked is not null)
+                    printer = picked.Name;
             }
 
             // Chuyển sang in thật
@@ -349,6 +524,17 @@ public static class PrintTools
         {
             AdmitGate.Release();
         }
+    }
+
+    /// <summary>Lấy danh sách máy in cho auto-pick (best-effort) — lỗi đọc máy thì bỏ qua auto-pick.</summary>
+    private static IReadOnlyList<PrinterInfo>? printerList()
+    {
+        try
+        {
+            var r = new PrinterService().ListPrinters();
+            return r.IsSuccess ? r.Value : null;
+        }
+        catch { return null; }
     }
 
     private static Dictionary<string, object?> SafeArgs(IReadOnlyList<PrintJob> jobs, string? printer) => new()
@@ -381,6 +567,22 @@ public static class PrintTools
             ? AppServices.Queue.Jobs.FirstOrDefault(j => j.Id == id)
             : null;
 
+    private static PrintError JobNotFound(string jobId) => new()
+    {
+        Code = ErrorCodes.JobNotFound,
+        Category = PrintErrorCategory.Config,
+        Message = $"Không tìm thấy job {jobId}.",
+        Hint = "Dùng list_jobs để lấy job_id đúng.",
+    };
+
+    private static PrintError JobNotApprovable(PrintJob job) => new()
+    {
+        Code = ErrorCodes.JobNotApprovable,
+        Category = PrintErrorCategory.Config,
+        Message = $"Job {job.Id} không ở trạng thái chờ duyệt (hiện: {job.State}).",
+        Hint = "Chỉ job nguồn AI (Mcp) đang awaitingapproval mới duyệt/từ chối được.",
+    };
+
     private static object JobDto(PrintJob j) => new Dictionary<string, object?>
     {
         ["id"] = j.Id.ToString(),
@@ -399,6 +601,7 @@ public static class PrintTools
             ["category"] = j.Error.Category.ToString(),
             ["message"] = j.Error.Message,
             ["hint"] = j.Error.Hint,
+            ["suggestedAction"] = SuggestedAction(j.Error.Code),
         },
     };
 
@@ -442,4 +645,64 @@ public static class PrintTools
         Hint = "Xem thông báo lỗi chi tiết trong terminal.",
         Detail = ex.Message, // chỉ log/local; không đưa vào response AI
     };
+
+    /// <summary>
+    /// Bảng tra cứu mã lỗi cho AI — single source of truth cho get_error_reference + suggestedAction của job_status.
+    /// Giữ đồng bộ với mọi hằng số trong ErrorCodes (test reflection chống lệch).
+    /// </summary>
+    private static readonly (string Code, string Meaning, string AiAction)[] ErrorReference =
+    [
+        (ErrorCodes.PrinterNotFound, "Không tìm thấy máy in.",
+            "Chạy list_printers để lấy đúng tên máy, thử lại với tên chính xác."),
+        (ErrorCodes.PrinterOffline, "Máy in đang offline / không phản hồi.",
+            "Chạy list_printers xem máy nào available:true; gọi pick_printer chọn máy khác rồi in lại."),
+        (ErrorCodes.PrinterNoPermission, "Máy không nằm trong allowlist (hoặc allowlist rỗng + không duyệt = cấm tự in).",
+            "Gọi get_guard_config xem allowedPrinters; chọn máy trong danh sách, hoặc báo người dùng thêm máy vào PRINTONATOR_ALLOWED_PRINTERS."),
+        (ErrorCodes.SpoolerBusy, "Spooler / job đang bận — không hủy hoặc thao tác được ngay.",
+            "Chờ vài giây rồi gọi job_status lại; nếu cần hủy thì đợi job về Done/Error."),
+        (ErrorCodes.SpoolerFailed, "Lỗi không xác định khi gửi in.",
+            "Báo người dùng xem log; thử pick_printer chọn máy khác và in lại 1 file nhỏ để kiểm tra."),
+        (ErrorCodes.FileNotFound, "File không tồn tại ở đường dẫn.",
+            "Kiểm tra lại đường dẫn file; báo người dùng xác nhận file còn ở đúng chỗ."),
+        (ErrorCodes.FileLocked, "File đang bị khóa (đang mở bởi app khác).",
+            "Yêu cầu người dùng đóng app đang giữ file rồi in lại."),
+        (ErrorCodes.FileCorrupted, "File hỏng / không đọc được.",
+            "Báo người dùng mở file kiểm tra; thử file khác."),
+        (ErrorCodes.UnsupportedFormat, "Định dạng không có engine in.",
+            "Báo người dùng chuyển file sang PDF rồi in lại."),
+        (ErrorCodes.InvalidPageRange, "Page range sai cú pháp.",
+            "Xem job_status để biết số trang của file; gọi print_files với range đúng (All, 2,5, 3-4, S2:1-3)."),
+        (ErrorCodes.SectionNotFound, "File không có section được chỉ định.",
+            "Hỏi người dùng số section đúng hoặc dùng page range All."),
+        (ErrorCodes.NoFilesSelected, "Không có file nào được truyền.",
+            "Gọi print_files với tham số paths không rỗng."),
+        (ErrorCodes.MaxBatchExceeded, "Vượt giới hạn trang / file / bản in.",
+            "Chia nhỏ lô (giảm số file/trang/bản), hoặc báo người dùng tăng PRINTONATOR_MAX_* nếu cần."),
+        (ErrorCodes.ApprovalRequired, "Cấu hình yêu cầu duyệt — AI chưa được tự in.",
+            "Nếu job đã vào hàng đợi: list_jobs status=awaitingapproval + approve_job. Muốn AI tự in: báo người dùng đặt PRINTONATOR_REQUIRE_APPROVE=false + PRINTONATOR_ALLOWED_PRINTERS."),
+        (ErrorCodes.JobNotFound, "job_id không tồn tại.",
+            "Chạy list_jobs để lấy job_id đúng rồi thử lại."),
+        (ErrorCodes.JobNotApprovable, "Job không ở trạng thái chờ duyệt (đã in/xong/lỗi, hoặc không phải nguồn AI).",
+            "Gọi job_status để xem state hiện tại; nếu đã Done/Error thì không cần duyệt nữa."),
+        (ErrorCodes.PresetNotFound, "Preset chưa tồn tại.",
+            "Chạy get_presets để xem tên đúng, dùng print_with_preset với tên đó."),
+        (ErrorCodes.InvalidPreset, "Tên preset không hợp lệ (vd trống).",
+            "Gọi save_preset với tên không rỗng."),
+        (ErrorCodes.EngineNotFound, "Không có engine in cho định dạng.",
+            "Chuyển file sang PDF rồi in lại."),
+        (ErrorCodes.EngineTimeout, "Engine in không phản hồi trong hạn.",
+            "Thử lại sau vài giây; nếu lặp lại, báo người dùng kiểm tra Word/Excel/LibreOffice."),
+        (ErrorCodes.OfficeAppBusy, "Word/Excel/PowerPoint đang bận.",
+            "Chờ app đóng rồi thử lại."),
+        (ErrorCodes.Unauthorized, "Thiếu quyền hệ thống.",
+            "Báo người dùng chạy với quyền đúng."),
+        (ErrorCodes.DiskFull, "Đĩa đầy.",
+            "Báo người dùng dọn đĩa rồi thử lại."),
+        (ErrorCodes.BuildUntrusted, "Bản build không đáng tin.",
+            "Báo người dùng build lại từ source hoặc dùng installer chính thức."),
+    ];
+
+    /// <summary>Hành động AI nên làm khi gặp mã lỗi (map từ ErrorReference) — job_status trả kèm.</summary>
+    private static string? SuggestedAction(string? code)
+        => code is null ? null : ErrorReference.FirstOrDefault(r => r.Code == code).AiAction;
 }

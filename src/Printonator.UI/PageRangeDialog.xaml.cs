@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using Printonator.Core.Models;
+using Printonator.UI.Localization;
 
 namespace Printonator.UI;
 
@@ -15,14 +16,14 @@ public partial class PageRangeDialog : Window
     {
         _job = job;
         InitializeComponent();
-        Title = $"Chọn trang — {job.FileName}";
+        Title = L10n.F(Keys.Range.WindowTitleWithFile, job.FileName);
         FileNameText.Text = job.FileName;
         PageRangeBox.Text = job.Config.PageRange;
 
         if (job.Sections.Count > 0)
         {
             SectionInfo.Text = string.Join("  ·  ",
-                job.Sections.Select(s => $"S{s.Index}: doc {s.FirstPhysicalPage}-{s.LastPhysicalPage}"));
+                job.Sections.Select(s => L10n.F(Keys.Common.SectionInfoFormat, s.Index, s.FirstPhysicalPage, s.LastPhysicalPage)));
             SectionInfo.Visibility = Visibility.Visible;
         }
 
@@ -49,14 +50,14 @@ public partial class PageRangeDialog : Window
             if (r.IsSuccess)
             {
                 var pages = r.Value!;
-                var shown = pages.Length > 20 ? string.Join(",", pages.Take(20)) + $"… ({pages.Length} trang)" : string.Join(",", pages);
-                PreviewText.Text = $"→ Will print physical pages: {shown}";
+                var shown = pages.Length > 20 ? string.Join(",", pages.Take(20)) + L10n.F(Keys.Common.PagesCountSuffix, pages.Length) : string.Join(",", pages);
+                PreviewText.Text = L10n.F(Keys.Range.PreviewWillPrint, shown);
                 PreviewText.Foreground = System.Windows.Media.Brushes.SeaGreen;
                 PreviewText.Visibility = Visibility.Visible;
             }
             else
             {
-                PreviewText.Text = $"✕ {r.Error!.Message}";
+                PreviewText.Text = L10n.F(Keys.Common.PreviewErrorFormat, r.Error!.Message);
                 PreviewText.Foreground = System.Windows.Media.Brushes.Firebrick;
                 PreviewText.Visibility = Visibility.Visible;
             }
@@ -77,7 +78,7 @@ public partial class PageRangeDialog : Window
             var r = _job.ResolvePhysicalPages();
             if (!r.IsSuccess && r.Error is not null)
             {
-                ErrorText.Text = r.Error.Message + "  " + r.Error.Hint;
+                ErrorText.Text = L10n.F(Keys.Range.ErrorDetail, r.Error.Message, r.Error.Hint);
                 ErrorText.Visibility = Visibility.Visible;
                 return;
             }

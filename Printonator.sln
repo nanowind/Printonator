@@ -21,6 +21,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Printonator.Mcp", "src\Prin
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Printonator.Spool.Tests", "tests\Printonator.Spool.Tests\Printonator.Spool.Tests.csproj", "{88AF47E7-D75A-4826-86DF-A4F1A33CC924}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Printonator.Mcp.Tests", "tests\Printonator.Mcp.Tests\Printonator.Mcp.Tests.csproj", "{D8B91602-8406-4F12-ADF8-C2F03A18653B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -58,6 +60,10 @@ Global
 		{88AF47E7-D75A-4826-86DF-A4F1A33CC924}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{88AF47E7-D75A-4826-86DF-A4F1A33CC924}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{88AF47E7-D75A-4826-86DF-A4F1A33CC924}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D8B91602-8406-4F12-ADF8-C2F03A18653B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D8B91602-8406-4F12-ADF8-C2F03A18653B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D8B91602-8406-4F12-ADF8-C2F03A18653B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D8B91602-8406-4F12-ADF8-C2F03A18653B}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{2186A664-369C-4894-A4DD-0C718AC2CBA4} = {F677B0D0-C311-42FF-A59D-8FF8363BEB5B}
@@ -67,5 +73,6 @@ Global
 		{72BC5534-F61D-47CD-9CB1-F353AEAA18F4} = {F677B0D0-C311-42FF-A59D-8FF8363BEB5B}
 		{A5866F67-8209-4CF8-8127-C42F85984238} = {F677B0D0-C311-42FF-A59D-8FF8363BEB5B}
 		{88AF47E7-D75A-4826-86DF-A4F1A33CC924} = {44C83E15-8AB8-46E9-ACC2-14DEC0E5F75C}
+		{D8B91602-8406-4F12-ADF8-C2F03A18653B} = {44C83E15-8AB8-46E9-ACC2-14DEC0E5F75C}
 	EndGlobalSection
 EndGlobal

@@ -1,6 +1,7 @@
 using System.Windows;
 using Printonator.Core.Models;
 using Printonator.Spool.Printing;
+using Printonator.UI.Localization;
 
 namespace Printonator.UI;
 
@@ -33,10 +34,10 @@ public partial class PrinterConfigWindow : Window
     {
         if (!r.IsSuccess)
         {
-            OfflineBannerText.Text = r.Error!.Message + "  " + r.Error.Hint;
+            OfflineBannerText.Text = L10n.F(Keys.Printers.OfflineErrorFormat, r.Error!.Message, r.Error.Hint);
             OfflineBanner.Visibility = Visibility.Visible;
             PrinterList.ItemsSource = null;
-            HeaderSub.Text = "Lỗi đọc máy in";
+            HeaderSub.Text = L10n.S(Keys.Printers.HeaderSubError);
             return;
         }
 
@@ -44,14 +45,11 @@ public partial class PrinterConfigWindow : Window
         PrinterList.ItemsSource = printers;
         var offline = printers.Count(p => !p.IsAvailable);
         var available = printers.Count(p => p.IsAvailable);
-        HeaderSub.Text = $"{printers.Count} máy in · {available} sẵn sàng · {offline} ngoại tuyến/lỗi";
+        HeaderSub.Text = L10n.F(Keys.Printers.HeaderSubSummary, printers.Count, available, offline);
 
         if (offline > 0)
         {
-            OfflineBannerText.Text =
-                $"Có {offline} máy in ngoại tuyến hoặc lỗi — job gửi vào các máy này sẽ KHÔNG được in. " +
-                "Kiểm tra máy bật, mở cửa, đủ giấy/mực, kết nối. Bấm 'Scan printers' để nạp lại. " +
-                "Máy ảo (PDF/XPS) là kênh xuất file, không in giấy.";
+            OfflineBannerText.Text = L10n.F(Keys.Printers.OfflineBanner, offline);
             OfflineBanner.Visibility = Visibility.Visible;
         }
         else
@@ -84,7 +82,7 @@ public partial class PrinterConfigWindow : Window
 
         if (!r.IsSuccess)
         {
-            OfflineBannerText.Text = $"✕ {r.Error!.Message} — {r.Error.Hint}";
+            OfflineBannerText.Text = L10n.F(Keys.Common.NativeErrFormat, r.Error!.Message, r.Error.Hint);
             OfflineBanner.Visibility = Visibility.Visible;
         }
     }
