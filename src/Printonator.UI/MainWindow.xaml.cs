@@ -13,6 +13,7 @@ using System.Windows.Threading;
 using System.Text.Json;
 using Printonator.Core;
 using Printonator.Core.Models;
+using Printonator.Core.Persistence;
 using Printonator.Spool.Printing;
 using Printonator.UI.Localization;
 
@@ -84,6 +85,8 @@ public partial class MainWindow : Window
         Deactivated += (_, _) => { if (_openPagePopup is { IsOpen: true }) _openPagePopup.IsOpen = false; };
         Closed += (_, _) =>
         {
+            try { QueueStore.Save(_queue.Jobs); }
+            catch { /* Đóng app: lưu lỗi (disk full, file bị khóa...) không đáng để phá shutdown — cleanup dưới vẫn phải chạy */ }
             _lifeCts.Cancel();
             _queue.Dispose();
             CleanupOrphanPrintProcesses();   // đóng app là dọn triệt để — mọi engine để lại gì thì gom lại
@@ -123,10 +126,68 @@ public partial class MainWindow : Window
         _queue.RegisterEngine(new LibreOfficePrintEngine());
         _queue.RegisterEngine(new BrowserPrintEngine());
         _queue.RegisterEngine(new SpoolPrintEngine());
+        RestorePendingJobs();
         LoadPrinters();
         _queue.MaxRetries = 2;
         _ = CheckForUpdatesSilentAsync();   // kiểm tra bản mới nền khi app mở — thông báo vào bell nếu có
+        SeedTestApprovalIfRequested();      // test hook PRINTONATOR_TEST_APPROVAL=1 — chỉ khi env set, không ảnh hưởng production
+        UpdateApprovalBar();                // trạng thái duyệt ban đầu (job Mcp khôi phục / test seed)
         await Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Test hook: PRINTONATOR_TEST_APPROVAL=1 → tạo 1 job Mcp giả (temp .txt) chờ duyệt để kiểm
+    /// tra màn duyệt job AwaitingApproval. CHỈ chạy khi env set — production không bao giờ gọi.
+    /// </summary>
+    private void SeedTestApprovalIfRequested()
+    {
+        if (Environment.GetEnvironmentVariable("PRINTONATOR_TEST_APPROVAL") != "1") return;
+        try
+        {
+            var path = Path.Combine(Path.GetTempPath(), $"printonator_test_approval_{Guid.NewGuid():N}.txt");
+            File.WriteAllText(path, "Printonator test approval job — delete me.");
+            var job = new PrintJob
+            {
+                FilePath = path,
+                FileName = Path.GetFileName(path),
+                Format = "TXT",
+                Config = DefaultConfigFor(DefaultPaperFor("TXT")),
+                Source = JobSource.Mcp,
+            };
+            _queue.AddForApproval(new[] { job });
+        }
+        catch { /* test seed lỗi (vd mất quyền temp) — bỏ qua, không làm hỏng app */ }
+    }
+
+    /// <summary>
+    /// Khôi phục hàng đợi in từ lần chạy trước (queue.json). Lọc bỏ file không còn tồn tại.
+    /// Job người dùng → AddOnly (Queued, chờ bấm in); job từ AI (MCP) → AddForApproval giữ trạng thái
+    /// chờ duyệt (AwaitingApproval). Vì PrintJob.State không set được từ UI nên restore = tạo job MỚI.
+    /// </summary>
+    private void RestorePendingJobs()
+    {
+        var restored = QueueStore.Load();
+        if (restored.Count == 0) return;
+
+        var jobs = restored
+            .Where(e => File.Exists(e.FilePath))   // lọc file không còn tồn tại
+            .Select(e => new PrintJob
+            {
+                FilePath = e.FilePath,
+                FileName = e.FileName,
+                Format = e.Format,
+                Config = e.Config,
+                Source = e.Source,
+                CreatedAt = e.CreatedAt,
+            }).ToList();
+        if (jobs.Count == 0) return;
+
+        var approval = jobs.Where(j => j.Source == JobSource.Mcp).ToList();
+        var rest = jobs.Except(approval).ToList();
+        if (approval.Count > 0) _queue.AddForApproval(approval);
+        if (rest.Count > 0) _queue.AddOnly(rest);
+        UpdateFooter();
+        ShowToast(L10n.F(Keys.Persist.RestoredToast, jobs.Count));
     }
 
     /// <summary>Chạy update check nền ngay khi mở app (không làm phiền nếu không có bản mới).</summary>
@@ -907,6 +968,78 @@ public partial class MainWindow : Window
         PrintJobs(ready, L10n.F(Keys.Main.ActionAllFiles, ready.Count));
     }
 
+    // Hủy lô: hủy toàn bộ job chờ in (Queued + AwaitingApproval) + job đang in (Converting/Spooling)
+    private void CancelBatch_Click(object sender, RoutedEventArgs e)
+    {
+        var pending = Jobs
+            .Where(j => j.State is JobState.Queued or JobState.AwaitingApproval or JobState.Converting or JobState.Spooling)
+            .ToList();
+        if (pending.Count == 0) { ShowToast(L10n.S(Keys.Stop.BatchNothingToCancel)); return; }
+
+        var running = pending.Count(j => j.State is JobState.Converting or JobState.Spooling);
+        var icon = running > 0 ? MessageBoxImage.Warning : MessageBoxImage.Question;
+        var message = running > 0
+            ? L10n.F(Keys.Stop.CancelConfirm, pending.Count) + "\n" + L10n.S(Keys.Stop.CancelRunning)
+            : L10n.F(Keys.Stop.CancelConfirm, pending.Count);
+        var ask = MessageBox.Show(message,
+            L10n.S(Keys.Stop.CancelBatch), MessageBoxButton.YesNo, icon);
+        if (ask != MessageBoxResult.Yes) return;
+
+        _queue.CancelPending();                       // job Queued → Cancelled
+        foreach (var j in pending)                    // các job còn lại chưa bị đổi state bởi CancelPending
+        {
+            if (j.State == JobState.AwaitingApproval) _queue.RejectJob(j);
+            else if (j.State is JobState.Converting or JobState.Spooling) _queue.CancelJob(j);
+        }
+        ShowToast(L10n.S(Keys.Stop.BatchCancelled));
+        UpdateFooter();
+    }
+
+    // ===== Màn duyệt job AwaitingApproval (job từ AI/MCP chờ người duyệt) =====
+
+    /// <summary>Cập nhật thanh duyệt: ẩn khi không có job chờ duyệt, hiện + đếm khi có.</summary>
+    private void UpdateApprovalBar()
+    {
+        if (ApprovalBar is null) return; // XAML chưa dựng xong
+        var n = _queue.Jobs.Count(j => j.State == JobState.AwaitingApproval);
+        ApprovalBar.Visibility = n > 0 ? Visibility.Visible : Visibility.Collapsed;
+        ApprovalCount.Text = $"({L10n.N(n)})";   // "(N)" — số file đang chờ duyệt
+    }
+
+    /// <summary>Duyệt TẤT CẢ job chờ duyệt (xác nhận trước) — đẩy vào hàng đợi để in.</summary>
+    private void ApproveAll_Click(object sender, RoutedEventArgs e)
+    {
+        var pending = _queue.Jobs.Where(j => j.State == JobState.AwaitingApproval).ToList();
+        if (pending.Count == 0) return;
+        var ask = MessageBox.Show(L10n.F(Keys.Approve.ApproveAllConfirm, pending.Count),
+            L10n.S(Keys.Approve.Title), MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (ask != MessageBoxResult.Yes) return;
+
+        var approved = 0;
+        foreach (var job in pending)
+            if (_queue.ApproveJob(job)) approved++;
+        ShowToast(L10n.F(Keys.Approve.ApprovedToast, approved));
+    }
+
+    /// <summary>Từ chối TẤT CẢ job chờ duyệt (xác nhận trước) — chuyển Cancelled, không in.</summary>
+    private void RejectAll_Click(object sender, RoutedEventArgs e)
+    {
+        var pending = _queue.Jobs.Where(j => j.State == JobState.AwaitingApproval).ToList();
+        if (pending.Count == 0) return;
+        var ask = MessageBox.Show(L10n.F(Keys.Approve.RejectAllConfirm, pending.Count),
+            L10n.S(Keys.Approve.Title), MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (ask != MessageBoxResult.Yes) return;
+
+        var rejected = 0;
+        foreach (var job in pending)
+            if (_queue.RejectJob(job)) rejected++;
+        ShowToast(L10n.F(Keys.Approve.RejectedToast, rejected));
+    }
+
+    /// <summary>✕ đóng thanh duyệt (chỉ ẩn tạm — job chờ duyệt vẫn còn trong danh sách).</summary>
+    private void ApprovalClose_Click(object sender, RoutedEventArgs e)
+        => ApprovalBar.Visibility = Visibility.Collapsed;
+
     private void PrintJobs(List<PrintJob> jobs, string action)
     {
         _orchestrator.PrintJobs(jobs, action);
@@ -948,6 +1081,26 @@ public partial class MainWindow : Window
         LoadPrinters(); // sau khi đóng — nạp lại trạng thái mới
     }
 
+    /// <summary>Nút "Cấu hình" (Presets) — mở trình quản lý preset; chọn Áp dụng → cập nhật config mặc định cho file mới,
+    /// và nếu có file đang chọn thì copy preset vào config từng file đó.</summary>
+    private void ManagePresets_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new PresetManagerWindow { Owner = this };
+        dlg.ShowDialog();
+        if (dlg.SelectedPreset is null) return;
+
+        var cfg = dlg.SelectedPreset.ToPrintConfig();
+        cfg.CopyInto(_defaultConfig);
+        var targets = JobList.SelectedItems.OfType<PrintJob>().ToList();
+        if (targets.Count > 0)
+        {
+            foreach (var job in targets)
+                cfg.CopyInto(job.Config);
+            JobList.Items.Refresh();
+        }
+        ShowToast(L10n.S(Keys.Preset.Applied));
+    }
+
     /// <summary>Nút Info (footer góc phải) — mở cửa sổ về changelog, license, liên hệ.</summary>
     private void Info_Click(object sender, RoutedEventArgs e)
         => AboutWindow.Show(this);
@@ -972,6 +1125,7 @@ public partial class MainWindow : Window
             // Refresh dòng để binding trạng thái (✓ Done / màu lỗi) cập nhật — PrintJob không INPC
             JobList.Items.Refresh();
             UpdateFooter();
+            UpdateApprovalBar();
             // (Xóa file đã in khỏi hàng đợi do popup 'In xong' quyết — không tự xóa âm thầm nữa)
         });
     }

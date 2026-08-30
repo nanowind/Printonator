@@ -31,6 +31,21 @@ public static class Keys
         public const string WindowTitle = "About.WindowTitle";
     }
 
+    public static class Approve
+    {
+        public const string Title = "Approve.Title";
+        public const string ApproveButton = "Approve.ApproveButton";
+        public const string RejectButton = "Approve.RejectButton";
+        public const string ApproveAll = "Approve.ApproveAll";
+        public const string RejectAll = "Approve.RejectAll";
+        public const string QueueTitle = "Approve.QueueTitle";
+        public const string NonePending = "Approve.NonePending";
+        public const string ApproveAllConfirm = "Approve.ApproveAllConfirm";
+        public const string RejectAllConfirm = "Approve.RejectAllConfirm";
+        public const string ApprovedToast = "Approve.ApprovedToast";
+        public const string RejectedToast = "Approve.RejectedToast";
+    }
+
     public static class Banner
     {
         public const string ConfirmRePrint = "Banner.ConfirmRePrint";
@@ -197,6 +212,7 @@ public static class Keys
         public const string PrinterStatusTooltip = "Main.PrinterStatusTooltip";
         public const string PrinterStatusWithDetail = "Main.PrinterStatusWithDetail";
         public const string PrintersButton = "Main.PrintersButton";
+        public const string ManagePresetsButton = "Main.ManagePresetsButton";
         public const string ReloadedBadge = "Main.ReloadedBadge";
         public const string SearchTooltip = "Main.SearchTooltip";
         public const string SelectAllTooltip = "Main.SelectAllTooltip";
@@ -251,6 +267,34 @@ public static class Keys
         public const string TrayAsPrinter = "Option.TrayAsPrinter";
         public const string TrayUnknown = "Option.TrayUnknown";
         public const string Zoom = "Option.Zoom";
+    }
+
+    public static class Persist
+    {
+        public const string RestoredToast = "Persist.RestoredToast";
+    }
+
+    public static class Preset
+    {
+        public const string ManageTitle = "Preset.ManageTitle";
+        public const string NewName = "Preset.NewName";
+        public const string ExportSuccess = "Preset.ExportSuccess";
+        public const string ImportSuccess = "Preset.ImportSuccess";
+        public const string ExportButton = "Preset.ExportButton";
+        public const string ExportEmpty = "Preset.ExportEmpty";
+        public const string ImportButton = "Preset.ImportButton";
+        public const string ImportEmpty = "Preset.ImportEmpty";
+        public const string ExportCount = "Preset.ExportCount";
+        public const string ExportFail = "Preset.ExportFail";
+        public const string FileDialogFilter = "Preset.FileDialogFilter";
+        public const string RenameButton = "Preset.RenameButton";
+        public const string DeleteButton = "Preset.DeleteButton";
+        public const string ApplyButton = "Preset.ApplyButton";
+        public const string NoneSelected = "Preset.NoneSelected";
+        public const string EmptyList = "Preset.EmptyList";
+        public const string Deleted = "Preset.Deleted";
+        public const string Renamed = "Preset.Renamed";
+        public const string Applied = "Preset.Applied";
     }
 
     public static class Printers
@@ -355,6 +399,15 @@ public static class Keys
         public const string WindowTitle = "Settings.WindowTitle";
         public const string WindowTitlePlural = "Settings.WindowTitlePlural";
         public const string WindowTitleTarget = "Settings.WindowTitleTarget";
+    }
+
+    public static class Stop
+    {
+        public const string CancelBatch = "Stop.CancelBatch";
+        public const string CancelConfirm = "Stop.CancelConfirm";
+        public const string CancelRunning = "Stop.CancelRunning";
+        public const string BatchCancelled = "Stop.BatchCancelled";
+        public const string BatchNothingToCancel = "Stop.BatchNothingToCancel";
     }
 
     public static class Toast

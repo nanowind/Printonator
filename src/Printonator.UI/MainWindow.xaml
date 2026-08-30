@@ -272,6 +272,14 @@
                                      <Button Content="{l10n:Loc Main.PrintersButton}" Style="{StaticResource GhostBtn}"
                                               Click="Printers_Click" Padding="12,6" Margin="0,0,8,0"
                                               ToolTip="{l10n:Loc Main.PrintersButton}"/>
+                                     <Button Content="{l10n:Loc Main.ManagePresetsButton}" Style="{StaticResource GhostBtn}"
+                                              Click="ManagePresets_Click" Padding="12,6" Margin="0,0,8,0"
+                                              AutomationProperties.AutomationId="ManagePresetsBtn"
+                                              ToolTip="{l10n:Loc Main.ManagePresetsButton}"/>
+                                     <Button Content="{l10n:Loc Stop.CancelBatch}" Style="{StaticResource GhostBtn}"
+                                              Click="CancelBatch_Click" Padding="12,6" Margin="0,0,8,0"
+                                              AutomationProperties.AutomationId="CancelBatchBtn"
+                                              ToolTip="{l10n:Loc Stop.CancelBatch}"/>
                                      <!-- Nút print DUY NHẤT, 3 trạng thái: rảnh = "Print all (N)" · đang in = "⏸ Pause" (đỏ, dừng lô) · tạm dừng = "▶ Resume" (xanh lá) -->
                                      <Button Content="{l10n:Loc Main.PrintMainButton}" x:Name="PrintMainBtn" Style="{StaticResource RoundedBtn}"
                                               Padding="18,7" Click="PrintMain_Click" AutomationProperties.AutomationId="PrintMainBtn"/>
@@ -294,6 +302,32 @@
                 <Button Content="{l10n:Loc Main.BannerRetryButton}" x:Name="RetryBtn" DockPanel.Dock="Right" Margin="0,0,10,0"
                         Background="Transparent" BorderThickness="0" Foreground="{StaticResource WarnBrush}"
                         FontWeight="SemiBold" Cursor="Hand" Click="RetryConnection_Click"/>
+            </DockPanel>
+        </Border>
+
+        <!-- ===== Approval bar (job từ AI/MCP chờ người duyệt) ===== -->
+        <Border Grid.Row="3" x:Name="ApprovalBar" Background="{StaticResource WarnBgBrush}" BorderBrush="{StaticResource WarnBrush}"
+                BorderThickness="1" CornerRadius="6" Margin="16,6,16,0" Padding="12,8" Visibility="Collapsed">
+            <DockPanel LastChildFill="False">
+                <TextBlock x:Name="ApprovalTitle" FontSize="13" FontWeight="SemiBold" Foreground="#92400E" VerticalAlignment="Center">
+                    <Run Text="{l10n:Loc Approve.Title}"/>
+                    <Run Text=" · "/>
+                    <Run Text="{l10n:Loc Approve.QueueTitle}"/>
+                </TextBlock>
+                <TextBlock x:Name="ApprovalCount" FontSize="12" Foreground="#92400E" VerticalAlignment="Center" Margin="8,0,0,0"/>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="{l10n:Loc Approve.ApproveAll}" Style="{StaticResource RoundedBtn}" Padding="12,5"
+                            Background="{StaticResource ReadyBrush}" Foreground="White" FontSize="11"
+                            Click="ApproveAll_Click" AutomationProperties.AutomationId="ApproveAllBtn"
+                            ToolTip="{l10n:Loc Approve.ApproveAll}"/>
+                    <Button Content="{l10n:Loc Approve.RejectAll}" Style="{StaticResource GhostBtn}" Padding="12,5"
+                            FontSize="11" Margin="8,0,8,0"
+                            Click="RejectAll_Click" AutomationProperties.AutomationId="RejectAllBtn"
+                            ToolTip="{l10n:Loc Approve.RejectAll}"/>
+                    <Button Content="✕" Style="{StaticResource GhostBtn}" Padding="8,2" FontSize="11"
+                            VerticalAlignment="Center" Click="ApprovalClose_Click"
+                            ToolTip="{l10n:Loc Main.BannerCloseTooltip}"/>
+                </StackPanel>
             </DockPanel>
         </Border>
 

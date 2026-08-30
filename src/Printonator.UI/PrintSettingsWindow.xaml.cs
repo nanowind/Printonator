@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using Microsoft.Win32;
 using Printonator.Core.Models;
 using Printonator.Core.Presets;
 using Printonator.Spool.Printing;
@@ -353,6 +354,76 @@ public partial class PrintSettingsWindow : Window
         ProfileCombo.SelectedIndex = 0;
         LoadProfiles();
         ShowToast(L10n.F(Keys.Settings.ProfileDeleted, name));
+    }
+
+    // ============ Xuất / Nhập profile (.printonator) ============
+
+    private void ExportPreset_Click(object sender, RoutedEventArgs e)
+    {
+        var all = _store.Load();
+        if (all.Count == 0)
+        {
+            ShowBanner(L10n.S(Keys.Preset.ExportEmpty));
+            return;
+        }
+
+        // Export preset đang chọn (combo) — nếu đang "Không dùng profile" thì export toàn bộ.
+        var name = SelectedTag(ProfileCombo);
+        var selected = all.Where(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase)).ToList();
+        var toExport = selected.Count > 0 ? selected : all;
+
+        var dlg = new SaveFileDialog
+        {
+            Filter = L10n.S(Keys.Preset.FileDialogFilter),
+            DefaultExt = ".printonator",
+            FileName = toExport.Count == 1 ? toExport[0].Name : "printonator-presets",
+        };
+        if (dlg.ShowDialog(this) != true) return;
+
+        try
+        {
+            PresetExporter.Export(toExport, dlg.FileName);
+            ShowToast(L10n.F(Keys.Preset.ExportCount, toExport.Count));
+        }
+        catch
+        {
+            ShowBanner(L10n.S(Keys.Preset.ExportFail));
+        }
+    }
+
+    private void ImportPreset_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new OpenFileDialog
+        {
+            Filter = L10n.S(Keys.Preset.FileDialogFilter),
+            DefaultExt = ".printonator",
+            Multiselect = false,
+        };
+        if (dlg.ShowDialog(this) != true) return;
+
+        // Import không ném: file hỏng → PresetExporter đổi tên .corrupt + trả danh sách rỗng
+        var presets = PresetExporter.Import(dlg.FileName);
+
+        if (presets.Count == 0)
+        {
+            ShowBanner(L10n.S(Keys.Preset.ImportEmpty));
+            return;
+        }
+
+        foreach (var p in presets)
+            _store.Save(p);   // upsert theo tên — preset trùng tên bị thay, tên khác được thêm mới
+        LoadProfiles();
+        ShowToast(L10n.S(Keys.Preset.ImportSuccess));
+    }
+
+    private void ShowBanner(string message)
+    {
+        NativeErrText.Text = message;
+        NativeErrText.Foreground = System.Windows.Media.Brushes.Firebrick;
+        NativeErrText.Visibility = Visibility.Visible;
+        var timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(4) };
+        timer.Tick += (_, _) => { timer.Stop(); NativeErrText.Visibility = Visibility.Collapsed; };
+        timer.Start();
     }
 
     // ============ Dialog native driver ============

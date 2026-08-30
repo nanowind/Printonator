@@ -107,6 +107,12 @@
                                 Padding="10,5" Margin="8,0,0,0" Click="SaveProfile_Click"/>
                         <Button x:Name="DeleteProfileBtn" Content="{l10n:Loc Settings.DeleteProfileBtn}" Style="{StaticResource GhostBtn}"
                                 Padding="10,5" Margin="8,0,0,0" Click="DeleteProfile_Click"/>
+                        <Button x:Name="ExportPresetBtn" Content="{l10n:Loc Preset.ExportButton}" Style="{StaticResource GhostBtn}"
+                                Padding="10,5" Margin="8,0,0,0" Click="ExportPreset_Click"
+                                AutomationProperties.AutomationId="ExportPresetBtn"/>
+                        <Button x:Name="ImportPresetBtn" Content="{l10n:Loc Preset.ImportButton}" Style="{StaticResource GhostBtn}"
+                                Padding="10,5" Margin="8,0,0,0" Click="ImportPreset_Click"
+                                AutomationProperties.AutomationId="ImportPresetBtn"/>
                     </StackPanel>
                     <!-- Panel nhập tên profile khi bấm Lưu -->
                     <StackPanel x:Name="SavePanel" Orientation="Horizontal" Visibility="Collapsed" Margin="0,8,0,0">
