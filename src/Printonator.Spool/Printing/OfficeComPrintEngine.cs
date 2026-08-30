@@ -64,13 +64,10 @@ public sealed class OfficeComPrintEngine : IPrintEngine
             }
             catch (OperationCanceledException)
             {
-                tcs.TrySetResult(Result<bool>.Fail(new PrintError
-                {
-                    Code = ErrorCodes.EngineTimeout,
-                    Category = PrintErrorCategory.System,
-                    Message = $"In {job.FileName} bị hủy giữa chừng.",
-                    Hint = "Bấm in lại nếu cần.",
-                }));
+                // CANCEL (per-job token) → KHÔNG fallback shell, KHÔNG trả Fail(EngineTimeout): báo hủy qua
+                // tcs để WaitWithTimeoutAsync (đang await) nhận OCE → dọn PID Office + rethrow → Cancelled.
+                // Worker là Thread trần — KHÔNG được throw; ở đây (sẽ vỡ process). TrySetCanceled là kênh an toàn.
+                tcs.TrySetCanceled(ct);
             }
             catch (Exception ex)
             {
@@ -115,16 +112,7 @@ public sealed class OfficeComPrintEngine : IPrintEngine
             // vì PrintOut chưa trả nên app.Quit trong finally không chạy, instance Word/Excel
             // (mà CHÍNH engine này tạo) sẽ treo vô hình. Kill ĐÚNG PID engine đã spawn — tuyệt
             // đối không đụng Office người dùng đang mở (PID không nằm trong danh sách này).
-            foreach (var pid in spawnedOfficePids)
-            {
-                try
-                {
-                    var p = System.Diagnostics.Process.GetProcessById(pid);
-                    p.Kill(entireProcessTree: true);
-                    p.WaitForExit(5000);
-                }
-                catch { }
-            }
+            KillSpawnedOffice(spawnedOfficePids);
             return Result<bool>.Fail(new PrintError
             {
                 Code = ErrorCodes.EngineTimeout,
@@ -135,13 +123,27 @@ public sealed class OfficeComPrintEngine : IPrintEngine
         }
         catch (OperationCanceledException)
         {
-            return Result<bool>.Fail(new PrintError
+            // CANCEL (user bấm Cancel / per-job token) → dọn PID Office engine tự spawn, RETHROW để
+            // OCE lan tới PrintQueue.DrainLoopAsync → job chuyển Cancelled (KHÔNG Error, KHÔNG retry).
+            // Timeout THẬT (TimeoutException ở trên) vẫn trả Fail(EngineTimeout) như cũ.
+            KillSpawnedOffice(spawnedOfficePids);
+            throw;
+        }
+    }
+
+    /// <summary>Dọn PID Office do engine tự spawn khi timeout/cancel — không đụng Office người dùng đang mở
+    /// (PID không nằm trong danh sách spawnedOfficePids). Gọi TRƯỚC khi trả lỗi / rethrow.</summary>
+    private static void KillSpawnedOffice(IReadOnlyCollection<int> spawnedOfficePids)
+    {
+        foreach (var pid in spawnedOfficePids)
+        {
+            try
             {
-                Code = ErrorCodes.EngineTimeout,
-                Category = PrintErrorCategory.System,
-                Message = $"In {job.FileName} đã bị hủy.",
-                Hint = "Bấm in lại nếu cần.",
-            });
+                var p = System.Diagnostics.Process.GetProcessById(pid);
+                p.Kill(entireProcessTree: true);
+                p.WaitForExit(5000);
+            }
+            catch { }
         }
     }
 

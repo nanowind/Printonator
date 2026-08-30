@@ -69,13 +69,9 @@ public static class WindowsPdfRasterizer
         }
         catch (OperationCanceledException)
         {
-            return Result<IReadOnlyList<RenderedPdfPage>>.Fail(new PrintError
-            {
-                Code = ErrorCodes.EngineTimeout,
-                Category = PrintErrorCategory.System,
-                Message = "Đang render PDF bị hủy giữa chừng.",
-                Hint = "Bấm in lại nếu cần.",
-            });
+            // OCE do cancel — LAN RA (rethrow) để caller (BrowserPrintEngine) phân biệt cancel vs lỗi render,
+            // không rơi vào nhánh "in cả file" khi bị hủy; DrainLoopAsync catch (OperationCanceledException) → Cancelled.
+            throw;
         }
         catch (Exception ex)
         {

@@ -20,6 +20,10 @@ public sealed class PrintQueue : IDisposable
     private readonly List<Task> _workers = new();
     private int _activeWorkers;
 
+    /// <summary>CTS per-job cho job ĐANG in — CancelJob/RemoveJob cancel token này để engine thoát sớm
+    /// (engine nhận token ở điểm chờ → job chuyển Cancelled, KHÔNG đánh dấu Done). Truy cập trong lock(_sync).</summary>
+    private readonly Dictionary<PrintJob, CancellationTokenSource> _jobCts = new();
+
     /// <summary>Jobs đang hiển thị trên UI (bao gồm cả pending).</summary>
     public ObservableCollection<PrintJob> Jobs { get; } = new();
 
@@ -64,20 +68,27 @@ public sealed class PrintQueue : IDisposable
 
     public void AddOnly(PrintJob job) => AddOnly(new[] { job });
 
-    /// <summary>Xóa job khỏi danh sách UI an toàn (lock) — tránh race với DrainAsync.</summary>
-    public bool RemoveJob(PrintJob job)
-    {
-        lock (_sync)
+    /// <summary>Xóa job khỏi danh sách UI an toàn (lock) — tránh race với DrainAsync.
+        /// Job ĐANG IN (Converting/Spooling) → cancel token thật để engine thoát sớm; job sẽ
+        /// chuyển Cancelled trong DrainLoopAsync (KHÔNG đánh dấu Done).</summary>
+        public bool RemoveJob(PrintJob job)
         {
-            if (job.State == JobState.Queued)
+            lock (_sync)
             {
-                // Nếu đang chờ trong hàng đợi — gỡ luôn khỏi pending
-                var pending = _pending.ToList();
-                if (pending.Remove(job)) _pending = new Queue<PrintJob>(pending);
+                if (job is null) return false;
+                if (job.State == JobState.Queued)
+                {
+                    // Nếu đang chờ trong hàng đợi — gỡ luôn khỏi pending
+                    var pending = _pending.ToList();
+                    if (pending.Remove(job)) _pending = new Queue<PrintJob>(pending);
+                }
+                else if (job.State is JobState.Converting or JobState.Spooling)
+                {
+                    CancelJobLocked(job);
+                }
+                return Jobs.Remove(job);
             }
-            return Jobs.Remove(job);
         }
-    }
 
     /// <summary>Đang tạm dừng lô in? (bấm Pause — dừng giữa các job; job chờ giữ Queued, job đang in chạy nốt)</summary>
     public bool IsPaused => _isPaused;
@@ -168,26 +179,41 @@ public sealed class PrintQueue : IDisposable
     private async Task ProcessWithRetryAsync(PrintJob job)
     {
         SetState(job, JobState.Converting);
-        for (var attempt = 0; attempt <= MaxRetries; attempt++)
+        // CTS per-job liên kết với token queue — CancelJob/RemoveJob cancel cái này để engine
+        // (đang chờ ở điểm chờ) thoát sớm → OCE lan tới DrainLoopAsync → job Cancelled (KHÔNG retry).
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
+        lock (_sync) _jobCts[job] = cts;
+        try
         {
-            var result = await PrintOnceAsync(job);
-            if (result.IsSuccess)
+            for (var attempt = 0; attempt <= MaxRetries; attempt++)
             {
-                SetState(job, JobState.Done);
-                return;
-            }
+                var result = await PrintOnceAsync(job, cts.Token);
+                if (result.IsSuccess)
+                {
+                    SetState(job, JobState.Done);
+                    return;
+                }
 
-            if (result.Error is null || !IsRetryable(result.Error))
+                if (result.Error is null || !IsRetryable(result.Error))
+                {
+                    SetState(job, JobState.Error, result.Error);
+                    return;
+                }
+
+                // Retry có giới hạn
+                if (attempt < MaxRetries)
+                    await Task.Delay(RetryDelayMs);
+                else
+                    SetState(job, JobState.Error, result.Error);
+            }
+        }
+        finally
+        {
+            // Dọn per-job CTS dù retry/cancel/error — không để mồ côi trong dictionary.
+            lock (_sync)
             {
-                SetState(job, JobState.Error, result.Error);
-                return;
+                if (_jobCts.Remove(job, out var c)) c.Dispose();
             }
-
-            // Retry có giới hạn
-            if (attempt < MaxRetries)
-                await Task.Delay(RetryDelayMs);
-            else
-                SetState(job, JobState.Error, result.Error);
         }
     }
 
@@ -217,17 +243,17 @@ public sealed class PrintQueue : IDisposable
         }
     }
 
-    private async Task<Result<bool>> PrintOnceAsync(PrintJob job)
+    private async Task<Result<bool>> PrintOnceAsync(PrintJob job, CancellationToken ct)
     {
         var engine = PickEngine(job.Format);
         if (engine is null)
         {
             // Mặc định khi chưa gắn engine: đánh dấu thành công để UI demo chạy được.
-            await Task.Delay(50); // mô phỏng xử lý
+            await Task.Delay(50, ct); // mô phỏng xử lý — tôn trọng token (cancel → OCE)
             job.PageCount = job.PageCount > 0 ? job.PageCount : 1;
             return Result<bool>.Ok(true);
         }
-        return await engine.PrintAsync(job, CancellationToken.None);
+        return await engine.PrintAsync(job, ct);
     }
 
     private static bool IsRetryable(PrintError error) =>
@@ -251,18 +277,39 @@ public sealed class PrintQueue : IDisposable
         }
     }
 
-    /// <summary>Hủy 1 job đang chờ (Queued) — MCP cancel_job dùng. Job đang in thì chờ xong.</summary>
-    public bool CancelJob(PrintJob job)
-    {
-        lock (_sync)
+    /// <summary>Hủy 1 job đang chờ (Queued) — MCP cancel_job dùng. Job ĐANG IN (Converting/Spooling)
+        /// cũng hủy được: cancel token thật → engine thoát sớm → DrainLoopAsync chuyển Cancelled
+        /// (KHÔNG đánh dấu Done). Trả true nếu job còn chưa về trạng thái cuối.</summary>
+        public bool CancelJob(PrintJob job)
         {
-            if (job is null || job.State != JobState.Queued) return false;
-            var pending = _pending.ToList();
-            if (pending.Remove(job)) _pending = new Queue<PrintJob>(pending);
-            SetState(job, JobState.Cancelled);
-            return true;
+            lock (_sync)
+            {
+                if (job is null) return false;
+                if (job.State == JobState.Queued)
+                {
+                    var pending = _pending.ToList();
+                    if (pending.Remove(job)) _pending = new Queue<PrintJob>(pending);
+                    SetState(job, JobState.Cancelled);
+                    return true;
+                }
+                if (job.State is JobState.Converting or JobState.Spooling)
+                {
+                    CancelJobLocked(job);
+                    return true;
+                }
+                return false; // Done/Error/Cancelled — không hủy được nữa
+            }
         }
-    }
+
+        /// <summary>Cancel token của job đang in (gọi TRONG lock(_sync)). Engine nhận token ở điểm chờ
+        /// sẽ ném OperationCanceledException → DrainLoopAsync chuyển job sang Cancelled thay vì Done.</summary>
+        private void CancelJobLocked(PrintJob job)
+        {
+            if (_jobCts.TryGetValue(job, out var cts))
+            {
+                try { cts.Cancel(); } catch { }
+            }
+        }
 
     /// <summary>
     /// Thêm job từ AI qua MCP vào hàng đợi CHỜ DUYỆT (state AwaitingApproval) — chưa in.
@@ -395,6 +442,16 @@ public sealed class PrintQueue : IDisposable
         _disposed = true;
         try { _cts.Cancel(); } catch { }
         try { _cts.Dispose(); } catch { }
+        // App đóng → job đang in cũng dừng (cancel per-job CTS → engine thoát sớm), không mồ côi.
+        lock (_sync)
+        {
+            foreach (var c in _jobCts.Values)
+            {
+                try { c.Cancel(); } catch { }
+                try { c.Dispose(); } catch { }
+            }
+            _jobCts.Clear();
+        }
         try { _gate.Dispose(); } catch { }
     }
 }

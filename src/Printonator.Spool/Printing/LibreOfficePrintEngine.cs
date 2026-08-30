@@ -98,14 +98,10 @@ public sealed class LibreOfficePrintEngine : IPrintEngine
             }
             catch (OperationCanceledException)
             {
+                // OCE do cancel — LAN RA (rethrow) để DrainLoopAsync catch (OperationCanceledException) → Cancelled.
+                // KHÔNG biến cancel thành EngineTimeout: timeout THẬT (WaitAsync TimeoutException) vẫn Fail(EngineTimeout) ở catch trên.
                 try { proc.Kill(entireProcessTree: true); } catch { }
-                return Result<bool>.Fail(new PrintError
-                {
-                    Code = ErrorCodes.EngineTimeout,
-                    Category = PrintErrorCategory.System,
-                    Message = $"In {job.FileName} bị hủy giữa chừng.",
-                    Hint = "Bấm in lại nếu cần.",
-                });
+                throw;
             }
 
             if (proc.ExitCode != 0)

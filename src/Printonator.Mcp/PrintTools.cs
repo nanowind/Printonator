@@ -209,7 +209,7 @@ public static class PrintTools
         return new Dictionary<string, object?> { ["ok"] = true, ["job"] = JobDto(job) };
     }
 
-    [McpServerTool, Description("Hủy 1 job đang chờ in (chưa gửi máy in).")]
+    [McpServerTool, Description("Hủy 1 job đang chờ hoặc đang in (job đang in sẽ dừng engine thật, chuyển trạng thái Cancelled).")]
     public static object CancelJob([Description("job_id (UUID)")] string jobId)
     {
         var job = FindJob(jobId);
@@ -224,8 +224,8 @@ public static class PrintTools
         {
             Code = ErrorCodes.SpoolerBusy,
             Category = PrintErrorCategory.Config,
-            Message = $"Job {jobId} đang in hoặc đã kết thúc — không hủy được.",
-            Hint = "Chờ job về Done/Error rồi thử lại, hoặc in lại.",
+            Message = $"Job {jobId} đã kết thúc hoặc đang chờ duyệt — không hủy bằng cancel_job được.",
+            Hint = "Job chờ duyệt: dùng reject_job. Job đang chờ in giữa lô: dùng cancel_job khi nó còn ở trạng thái chờ.",
         });
     }
 

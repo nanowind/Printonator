@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+﻿﻿using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
@@ -21,11 +21,17 @@ namespace Printonator.UI;
 public partial class MainWindow : Window
 {
     private readonly PrintQueue _queue = new();
-    private readonly DispatcherTimer _toastTimer = new() { Interval = TimeSpan.FromSeconds(4) };
+
     private string? _sortColumn;
     private bool _sortDescending;
     private int _printerScanGeneration;   // scan cũ về sau không được ghi đè kết quả scan mới
     private Popup? _openPagePopup;        // popup Pages đang mở — đóng bằng field (không duyệt container grouped)
+
+    // ===== Refactor T0.1: batch orchestration + footer/banner/toast tách sang class riêng =====
+    private readonly PrintBatchOrchestrator _orchestrator;
+    private readonly FooterController _footer;
+
+    private readonly CancellationTokenSource _lifeCts = new();   // vòng đời MainWindow — huỷ task nền khi đóng
 
     /// <summary>Danh sách thông báo hiển thị trong bell. Badge = số thông báo chưa đọc.</summary>
     public ObservableCollection<AppNotification> Notifications { get; } = new();
@@ -42,15 +48,35 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = this;
+
+        // ===== Refactor T0.1: batch orchestration + footer/banner/toast tách sang class riêng =====
+        _footer = new FooterController(
+            FooterStats, FooterProgress, ProgressText, TaskbarInfo, PrintMainBtn,
+            EmptyState, SearchBox,
+            Toast, ToastText,
+            ErrorBanner, ErrorBannerText, RetryBtn, ErrorBannerIcon,
+            BellBadge, BellBadgeBorder, NotifEmptyText,
+            Notifications, _queue,
+            () => JobList.SelectedItems,
+            () => JobList.SelectedItems.Count)
+        {
+            SyncSelectAllStateCallback = SyncSelectAllState,
+        };
+        _footer.UpdateNotificationBadge();
+
+        _orchestrator = new PrintBatchOrchestrator(_queue, Dispatcher, () => SelectedPrinter, this);
+        _orchestrator.AllCompleted += OnAllCompleted;
+        _orchestrator.BatchStopped += OnBatchStopped;
+        _orchestrator.ToastRequested += ShowToast;
+        _orchestrator.BannerRequested += ShowBanner;
+        _orchestrator.FooterUpdated += UpdateFooter;
+        _orchestrator.RefreshRequested += () => JobList.Items.Refresh();
+
         BellBadgeBorder.Visibility = Visibility.Collapsed;
         Notifications.CollectionChanged += (_, _) => UpdateNotificationBadge();
         JobList.SelectionChanged += OnSelectionChanged;
         _queue.JobStateChanged += OnJobStateChanged;
-        _toastTimer.Tick += (_, _) =>
-        {
-            _toastTimer.Stop();
-            FadeToast(0);
-        };
+
         PrinterCombo.SelectionChanged += (_, _) => UpdatePrinterDot();
         PreviewMouseLeftButtonDown += Window_PreviewMouseLeftButtonDown;   // bấm ngoài → đóng popup Pages
         // Chuyển sang app KHÁC (main window mất focus) → đóng popup (Popup là cửa sổ riêng, LUÔN nổi trên
@@ -58,6 +84,7 @@ public partial class MainWindow : Window
         Deactivated += (_, _) => { if (_openPagePopup is { IsOpen: true }) _openPagePopup.IsOpen = false; };
         Closed += (_, _) =>
         {
+            _lifeCts.Cancel();
             _queue.Dispose();
             CleanupOrphanPrintProcesses();   // đóng app là dọn triệt để — mọi engine để lại gì thì gom lại
         };
@@ -324,18 +351,7 @@ public partial class MainWindow : Window
     /// <summary>Đổi màu nút Print chính: null = style mặc định (RoundedBtn); hex = nền màu (Pause đỏ / Resume xanh lá).</summary>
     private void SetPrintButtonColor(string? hex)
     {
-        if (hex is null)
-        {
-            PrintMainBtn.ClearValue(Control.BackgroundProperty);
-            PrintMainBtn.ClearValue(Control.BorderBrushProperty);
-            PrintMainBtn.ClearValue(Control.ForegroundProperty);
-            return;
-        }
-        var brush = new System.Windows.Media.SolidColorBrush(
-            (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(hex));
-        PrintMainBtn.Background = brush;
-        PrintMainBtn.BorderBrush = brush;
-        PrintMainBtn.Foreground = System.Windows.Media.Brushes.White;
+        _footer.SetPrintButtonColor(hex);
     }
 
     /// <summary>✕ Đóng popup Pages của dòng hiện tại.</summary>
@@ -893,46 +909,7 @@ public partial class MainWindow : Window
 
     private void PrintJobs(List<PrintJob> jobs, string action)
     {
-        var ready = jobs.Where(j => j.State is JobState.Queued or JobState.Done or JobState.Error or JobState.Cancelled).ToList();
-        if (ready.Count == 0) { ShowBanner(ErrorCodes.NoFilesSelected, L10n.S(Keys.Banner.NoFilesSelected), ""); return; }
-
-        // ===== Xác nhận IN LẠI file đã in trước đó =====
-        // Nếu user KHÔNG xóa file đã in (Done) khỏi hàng đợi, bấm in tiếp sẽ gộp luôn các file Done
-        // đó — nghĩa là in lại chúng (tốn giấy/mực). Phải cho user quyết: in lại hết / bỏ qua file đã in.
-        var alreadyPrinted = ready.Where(j => j.State == JobState.Done).ToList();
-        if (alreadyPrinted.Count > 0)
-        {
-            var ask = MessageBox.Show(
-                L10n.F(Keys.Banner.ConfirmRePrint, alreadyPrinted.Count),
-                L10n.S(Keys.Banner.ConfirmRePrintTitle), MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
-            if (ask == MessageBoxResult.Cancel) return;
-            if (ask == MessageBoxResult.No)
-                ready = ready.Where(j => j.State != JobState.Done).ToList();
-            // Yes → giữ nguyên ready (in lại tất cả kể cả Done)
-            if (ready.Count == 0)
-            {
-                ShowBanner(ErrorCodes.NoFilesSelected, L10n.S(Keys.Banner.NoFilesAfterSkip), "");
-                return;
-            }
-        }
-
-        // Gắn máy in ĐANG CHỌN trên thanh công cụ cho MỌI job — máy in là lựa chọn toàn cục của batch.
-        // (Trước đây dùng ??= chỉ gắn cho job CHƯA có máy → job giữ máy cũ ghi lúc thêm file,
-        //  nên đổi combo sang LBP vẫn in vào "Microsoft Print to PDF".)
-        ApplySelectedPrinter(ready);
-
-        // ===== Pre-flight gate (chỉ khi lô lớn): ước tính tờ → vượt ngưỡng thì xác nhận =====
-        // Lô nhỏ (dưới ngưỡng) in thẳng 1 click — không làm chậm việc thường. Lô lớn: cho người
-        // xem "bao nhiêu tờ + máy in nào (sẽ áp cho mọi file)" trước khi tốn giấy/mực thật.
-        const int ConfirmSheetThreshold = 100;
-        var sheets = PrintConfirmWindow.EstimateSheets(ready);
-        if (sheets > ConfirmSheetThreshold
-            && !PrintConfirmWindow.Show(this, SelectedPrinter?.Name ?? L10n.S(Keys.Main.PrinterDefaultName), ready, sheets))
-        {
-            return; // người dùng hủy — KHÔNG in, không toast "bắt đầu"
-        }
-
-        StartPrintBatch(ready, action);
+        _orchestrator.PrintJobs(jobs, action);
     }
 
     /// <summary>Sắp xếp lại batch theo thứ tự đang HIỂN THỊ (sort + nhóm thư mục của user), không theo
@@ -941,26 +918,7 @@ public partial class MainWindow : Window
     /// top-to-bottom đúng như list đang hiện.</summary>
     private IEnumerable<PrintJob> OrderByDisplay(IEnumerable<PrintJob> jobs)
     {
-        var view = CollectionViewSource.GetDefaultView(Jobs);
-        var order = new Dictionary<PrintJob, int>();
-        var idx = 0;
-        foreach (var j in view.Groups.Count > 0 ? FlattenDisplayGroups(view.Groups) : view.Cast<PrintJob>())
-            order.TryAdd(j, idx++);
-        return jobs.OrderBy(j => order.TryGetValue(j, out var i) ? i : int.MaxValue);
-    }
-
-    /// <summary>Duyệt nhóm đệ quy — nhóm thư mục (GroupDescriptions) nằm ở view; nhóm con chứa item.</summary>
-    private static IEnumerable<PrintJob> FlattenDisplayGroups(System.Collections.IEnumerable groups)
-    {
-        foreach (var o in groups)
-        {
-            if (o is System.Windows.Data.CollectionViewGroup g)
-            {
-                foreach (var sub in FlattenDisplayGroups(g.Items)) yield return sub;
-            }
-            else if (o is PrintJob j)
-                yield return j;
-        }
+        return _orchestrator.OrderByDisplay(jobs);
     }
 
     /// <summary>Đường thực thi CHUNG cho mọi lệnh in (nút Print, In file này…) — ĐÚNG 1 nơi việc
@@ -968,88 +926,13 @@ public partial class MainWindow : Window
     /// kia (vd completion chỉ chạy cho nút Print, không cho context menu).</summary>
     private void StartPrintBatch(List<PrintJob> ready, string action)
     {
-        if (ready.Count == 0) { ShowBanner(ErrorCodes.NoFilesSelected, L10n.S(Keys.Banner.NoFilesSelected), ""); return; }
-
-        // ProcessBatch: in TUẦN TỰ từng file qua 1 vòng drain duy nhất (nút Print All và context menu
-        // "In file này" đi chung đường này). KHÔNG thêm dòng mới; job giữ Queued tới lượt của nó.
-        _queue.ProcessBatch(ready);
-        ShowToast(L10n.F(Keys.Toast.BatchStart, action));
-        JobList.Items.Refresh();
-        UpdateFooter();
-
-        // Batch-done: chờ MỌI job trong lô về trạng thái cuối (Done/Error/Cancelled) rồi fire
-        // OnAllCompleted MỘT lần. Không dùng timeout — chờ tự nhiên tới khi job xong.
-        _ = WaitBatchDoneAsync(ready);
-    }
-
-    /// <summary>Chờ toàn bộ job trong lô về trạng thái cuối, rồi fire completion 1 lần.
-    /// Không dùng timeout — chờ tự nhiên đến khi mọi job trong lô về trạng thái cuối
-    /// (Done/Error/Cancelled); in xong là khi nào job xong, không chặt 30s.
-    /// NGOẠI LỆ: lô bị queue TỰ DỪNG do 1 file lỗi (Stop-on-error) — các file sau vẫn Queued chờ
-    /// Resume, KHÔNG phải trạng thái cuối → phải coi là "bị dừng" ngay, không chờ vô hạn.</summary>
-    private async Task WaitBatchDoneAsync(List<PrintJob> batch)
-    {
-        var terminal = new[] { JobState.Done, JobState.Error, JobState.Cancelled };
-        var toWait = new HashSet<PrintJob>(batch);
-        var interrupted = false;
-        try
-        {
-            while (toWait.Count > 0)
-            {
-                var pending = toWait.Where(j => !terminal.Contains(j.State)).ToList();
-                if (pending.Count == 0) break;
-
-                // Queue tự pause do 1 file lỗi → lô này kết thúc tại đây (không phải "in xong").
-                if (_queue.IsPaused && _queue.StoppedByError)
-                {
-                    interrupted = true;
-                    break;
-                }
-
-                var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-                Action<PrintJob> handler = _ => { };
-                handler = j =>
-                {
-                    if (pending.Contains(j))
-                    {
-                        _queue.JobStateChanged -= handler;
-                        tcs.TrySetResult(true);
-                    }
-                };
-                _queue.JobStateChanged += handler;
-                if (pending.All(j => terminal.Contains(j.State)))
-                {
-                    _queue.JobStateChanged -= handler;
-                    tcs.TrySetResult(true);
-                }
-                await tcs.Task;
-                toWait.RemoveWhere(j => terminal.Contains(j.State));
-            }
-        }
-        catch (Exception) { /* dù lỗi vẫn cố báo completion */ }
-
-        if (interrupted)
-        {
-            // Lô bị DỪNG do lỗi: KHÔNG popup "in xong" — báo rõ file lỗi + còn bao nhiêu file chờ Resume.
-            var done = batch.Count(j => j.State == JobState.Done);
-            var failed = batch.FirstOrDefault(j => j.State == JobState.Error);
-            try { await Dispatcher.BeginInvoke(new Action(() => OnBatchStopped(done, failed))); }
-            catch { }
-            return;
-        }
-
-        // Truyền số file THẬT ĐÃ in xong (đếm từ batch đã chờ), không đếm lại từ Jobs.
-        var doneCount = batch.Count(j => j.State == JobState.Done);
-        try { await Dispatcher.BeginInvoke(new Action(() => OnAllCompleted(doneCount))); }
-        catch { }
+        _orchestrator.StartPrintBatch(ready, action);
     }
 
     /// <summary>Ép máy in đang chọn lên job — máy in thanh công cụ luôn thắng máy cũ đã ghi trong config.</summary>
     private void ApplySelectedPrinter(IEnumerable<PrintJob> jobs)
     {
-        var printer = SelectedPrinter?.Name ?? "mặc định";
-        foreach (var j in jobs)
-            j.Config.PrinterName = printer;
+        _orchestrator.ApplySelectedPrinter(jobs);
     }
 
     private void RetryConnection_Click(object sender, RoutedEventArgs e)
@@ -1142,10 +1025,7 @@ public partial class MainWindow : Window
     /// <summary>Badge bell = số thông báo chưa đọc; ẩn khi không có gì. Cũng sync trạng thái rỗng.</summary>
     private void UpdateNotificationBadge()
     {
-        var unread = Notifications.Count(n => !n.Read);
-        BellBadge.Text = unread.ToString();
-        BellBadgeBorder.Visibility = unread > 0 ? Visibility.Visible : Visibility.Collapsed;
-        NotifEmptyText.Visibility = Notifications.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        _footer.UpdateNotificationBadge();
     }
 
     /// <summary>Bấm 1 item thông báo: đánh dấu đọc + chạy hành động (vd download/install update).</summary>
@@ -1239,62 +1119,13 @@ public partial class MainWindow : Window
 
     private void UpdateFooter()
     {
-        var total = Jobs.Count;
-        var done = Jobs.Count(j => j.State == JobState.Done);
-        var err = Jobs.Count(j => j.State == JobState.Error);
-        FooterStats.Text = L10n.F(Keys.Main.FooterStatsFormat, total, done, err);
-
-        // Progress bar + taskbar progress (Penpot gap).
-        // Đúng: chỉ đếm job đã THỰC SỰ nằm trong lô in này (bắt đầu rồi hoặc xong/ngừng), chứ
-        // KHÔNG đếm toàn bộ Jobs (bao gồm cả job còn Queued chưa đem in lần này). Nếu đếm cả
-        // job đang chờ, khi bấm in 1 file mà còn N file Queued khác → progress frozen sai (vd 50%).
-        // Denom = số job đã vào lô: Converting/Spooling (đang chạy) + Done/Error/Cancelled (kết thúc).
-        var inRun = Jobs.Count(j => j.State is not JobState.Queued and not JobState.AwaitingApproval);
-        var percent = inRun > 0 ? (int)(done * 100.0 / inRun) : 0;
-        FooterProgress.Value = Math.Clamp(percent, 0, 100);
-        ProgressText.Text = L10n.F(Keys.Main.FooterProgressFormat, percent);
-        TaskbarInfo.ProgressValue = percent / 100.0;
-        TaskbarInfo.ProgressState =
-            Jobs.Any(j => j.State is JobState.Converting or JobState.Spooling)
-                ? System.Windows.Shell.TaskbarItemProgressState.Normal
-                : (total > 0 ? System.Windows.Shell.TaskbarItemProgressState.None : System.Windows.Shell.TaskbarItemProgressState.None);
-
-        // Nút print duy nhất — 3 trạng thái: rảnh = "Print (N)/Print all (N)" · đang in = "⏸ Pause" (đỏ, để
-        // dừng lô nếu lỡ bấm in) · tạm dừng = "▶ Resume" (xanh lá).
-        var printing = Jobs.Any(j => j.State is JobState.Converting or JobState.Spooling);
-        if (_queue.IsPaused)
-        {
-            PrintMainBtn.Content = L10n.S(Keys.Main.PrintMainBtnResume);
-            SetPrintButtonColor("#16A34A");   // xanh lá
-        }
-        else if (printing)
-        {
-            PrintMainBtn.Content = L10n.S(Keys.Main.PrintMainBtnPause);
-            SetPrintButtonColor("#DC2626");   // đỏ — nổi bật để người dùng bấm dừng
-        }
-        else
-        {
-            var queued = Jobs.Count(j => j.State == JobState.Queued);
-            var selQueued = JobList.SelectedItems.OfType<PrintJob>().Count(j => j.State == JobState.Queued);
-            PrintMainBtn.Content = selQueued > 0
-                ? L10n.F(Keys.Main.PrintMainBtnSelected, selQueued)
-                : (queued > 0 ? L10n.F(Keys.Main.PrintMainBtnAll, queued) : L10n.S(Keys.Main.PrintMainButton));
-            SetPrintButtonColor(null);
-        }
-
-        // Checkbox chọn-tất-cả trên header sync theo selection hiện tại
-        SyncSelectAllState();
-
-        // Overlay hướng dẫn khi hàng đợi trống
-        UpdateEmptyState();
+        _footer.UpdateFooter();
     }
 
     /// <summary>Empty state (Kéo thả file...) hiện khi hàng đợi trống VÀ không đang tìm kiếm.</summary>
     private void UpdateEmptyState()
     {
-        if (EmptyState is null) return; // XAML chưa dựng xong
-        var empty = Jobs.Count == 0 && string.IsNullOrWhiteSpace(SearchBox?.Text);
-        EmptyState.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
+        _footer.UpdateEmptyState();
     }
 
     // ===== Sort theo cột (user yêu cầu) =====
@@ -1374,70 +1205,19 @@ public partial class MainWindow : Window
     // ===== Toast success (Penpot gap) =====
     private void ShowToast(string message)
     {
-        ToastText.Text = message;
-        Toast.Visibility = Visibility.Visible;
-        Toast.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(180)));
-        _toastTimer.Stop();
-        _toastTimer.Start();
+        _footer.ShowToast(message);
     }
 
     private void FadeToast(double to)
     {
-        var anim = new DoubleAnimation(to, TimeSpan.FromMilliseconds(300));
-        if (to <= 0)
-            anim.Completed += (_, _) => Toast.Visibility = Visibility.Collapsed;
-        Toast.BeginAnimation(OpacityProperty, anim);
+        _footer.FadeToast(to);
     }
-
-    /// <summary>Mã lỗi thuộc loại "warn/offline thật" → banner giữ nền vàng; các mã còn lại là lỗi thật → nền đỏ.</summary>
-    private static readonly HashSet<string> WarningBannerCodes = new(
-        [ErrorCodes.PrinterOffline, ErrorCodes.PrinterNotFound, ErrorCodes.PrinterNoPermission,
-         ErrorCodes.SpoolerBusy, ErrorCodes.SpoolerFailed, ErrorCodes.EngineNotFound,
-         ErrorCodes.EngineTimeout, ErrorCodes.OfficeAppBusy, ErrorCodes.NoFilesSelected],
-        StringComparer.Ordinal);
 
     private void ShowBanner(string? code, string message, string detail)
     {
-        ErrorBannerText.Text = detail.Length > 0
-            ? L10n.F(Keys.Main.BannerErrorFormat, message, detail)
-            : message;
-        // Nút "Retry connection" CHỈ hiện với lỗi kết nối máy in/spooler — lỗi file/tham số không retry được
-        RetryBtn.Visibility = IsRetryable(code) ? Visibility.Visible : Visibility.Collapsed;
-
-        // "Nói thật" mức độ: cảnh báo máy in offline/bận + hướng dẫn → vàng (mặc định XAML);
-        // lỗi thật (file/job/không mở được…) → đỏ, phân biệt ngay bằng màu không cần đọc chữ.
-        if (code is null || WarningBannerCodes.Contains(code))
-            ResetBannerToWarn();
-        else
-            SetBannerToError();
-
-        ErrorBanner.Visibility = Visibility.Visible;
+        _footer.ShowBanner(code, message, detail);
     }
-
-    private void ResetBannerToWarn()
-    {
-        // Trả về đúng màu mặc định khai báo trong XAML (vàng) — quan trọng sau khi banner đã hiện đỏ
-        if (TryFindResource("WarnBgBrush") is Brush bg) ErrorBanner.Background = bg;
-        ErrorBanner.BorderBrush = new SolidColorBrush(Color.FromRgb(0xEA, 0xB3, 0x08)); // #EAB308 (default XAML)
-        ErrorBannerText.Foreground = new SolidColorBrush(Color.FromRgb(0x92, 0x40, 0x0E)); // #92400E (default XAML)
-        if (ErrorBannerIcon is not null) ErrorBannerIcon.Foreground = TryFindResource("WarnBrush") as Brush;
-    }
-
-    private void SetBannerToError()
-    {
-        if (TryFindResource("ErrorBgBrush") is Brush bg) ErrorBanner.Background = bg;
-        if (TryFindResource("ErrorBrush") is Brush err)
-        {
-            ErrorBanner.BorderBrush = err;
-            ErrorBannerText.Foreground = err;
-            if (ErrorBannerIcon is not null) ErrorBannerIcon.Foreground = err;
-        }
-    }
-
-    private static bool IsRetryable(string? code)
-        => code is ErrorCodes.SpoolerFailed or ErrorCodes.PrinterNotFound;
-
-    private void HideBanner() => ErrorBanner.Visibility = Visibility.Collapsed;
+    private void HideBanner() => _footer.HideBanner();
 
     /// <summary>✕ đóng banner — luôn cho phép đóng, không phụ thuộc Retry.</summary>
     private void BannerClose_Click(object sender, RoutedEventArgs e) => HideBanner();
@@ -1452,16 +1232,18 @@ public partial class MainWindow : Window
             _ = Task.Run(async () =>
             {
                 var last = File.GetLastWriteTimeUtc(job.FilePath);
-                await Task.Delay(8000);
-                if (File.Exists(job.FilePath))
+                try
                 {
-                    var now = File.GetLastWriteTimeUtc(job.FilePath);
-                    if (now > last)
-                    {
-                        job.WasReloaded = true;
-                        Dispatcher.Invoke(() => { JobList.Items.Refresh(); ShowToast(L10n.F(Keys.Toast.FileReloaded, job.FileName)); });
-                    }
+                    await Task.Delay(8000, _lifeCts.Token);
+                    _lifeCts.Token.ThrowIfCancellationRequested();
                 }
+                catch (OperationCanceledException) { return; } // app đóng — im lặng
+                if (!File.Exists(job.FilePath)) return;
+                var now = File.GetLastWriteTimeUtc(job.FilePath);
+                if (now <= last) return;
+                job.WasReloaded = true;
+                if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished) return;
+                Dispatcher.Invoke(() => { JobList.Items.Refresh(); ShowToast(L10n.F(Keys.Toast.FileReloaded, job.FileName)); });
             });
         }
         catch (Exception ex)

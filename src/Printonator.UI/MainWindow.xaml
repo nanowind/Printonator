@@ -249,10 +249,11 @@
 <!-- ===== Toolbar ===== -->
         <Border Grid.Row="1" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Background="#FFFFFF">
             <DockPanel Margin="16,8">
-                <Button Content="{l10n:Loc Main.AddFilesButton}" Style="{StaticResource RoundedBtn}" Padding="16,7" Click="AddFiles_Click"/>
+                <Button Content="{l10n:Loc Main.AddFilesButton}" Style="{StaticResource RoundedBtn}" Padding="16,7" Click="AddFiles_Click" ToolTip="{l10n:Loc Main.AddFilesButton}"/>
                 <ComboBox x:Name="PrinterCombo" Width="240" Margin="16,0,0,0" VerticalAlignment="Center"
                           DisplayMemberPath="Name"
-                          SelectedItem="{Binding SelectedPrinter, Mode=TwoWay}"/>
+                          SelectedItem="{Binding SelectedPrinter, Mode=TwoWay}"
+                          ToolTip="{Binding SelectedItem.Name, RelativeSource={RelativeSource Self}}"/>
                 <!-- Status dot: dot màu + padding đều 2 bên (status chi tiết ở tooltip) -->
                 <Ellipse x:Name="PrinterStatusDot" Width="10" Height="10" Fill="{StaticResource ReadyBrush}"
                          VerticalAlignment="Center" Margin="12,0,12,0" Stroke="#FFFFFF" StrokeThickness="1.5"
@@ -261,14 +262,16 @@
                 <Border x:Name="PrinterReminder" Background="#FFF9ED" BorderBrush="#EAB308" BorderThickness="1"
                         CornerRadius="6" Padding="8,4" Margin="0,0,8,0" VerticalAlignment="Center" Visibility="Collapsed"
                         ToolTip="{l10n:Loc Main.PrinterReminderTooltip}">
-                    <TextBlock Text="{l10n:Loc Main.PrinterReminderText}" FontSize="11" Foreground="#92400E" FontWeight="SemiBold"/>
+                    <TextBlock Text="{l10n:Loc Main.PrinterReminderText}" FontSize="11" Foreground="#92400E" FontWeight="SemiBold"
+                                                       TextWrapping="Wrap" MaxWidth="320"/>
                 </Border>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
 <Button Content="{l10n:Loc Main.PrintSettingsButton}" Style="{StaticResource GhostBtn}" Click="PrintSettings_Click"
                                               Padding="14,6" Margin="0,0,8,0" AutomationProperties.AutomationId="PrintSettingsBtn"
                                               ToolTip="{l10n:Loc Main.PrintSettingsTooltip}"/>
                                      <Button Content="{l10n:Loc Main.PrintersButton}" Style="{StaticResource GhostBtn}"
-                                              Click="Printers_Click" Padding="12,6" Margin="0,0,8,0"/>
+                                              Click="Printers_Click" Padding="12,6" Margin="0,0,8,0"
+                                              ToolTip="{l10n:Loc Main.PrintersButton}"/>
                                      <!-- Nút print DUY NHẤT, 3 trạng thái: rảnh = "Print all (N)" · đang in = "⏸ Pause" (đỏ, dừng lô) · tạm dừng = "▶ Resume" (xanh lá) -->
                                      <Button Content="{l10n:Loc Main.PrintMainButton}" x:Name="PrintMainBtn" Style="{StaticResource RoundedBtn}"
                                               Padding="18,7" Click="PrintMain_Click" AutomationProperties.AutomationId="PrintMainBtn"/>
@@ -324,18 +327,23 @@
                                                   ToolTip="{l10n:Loc Main.SelectAllTooltip}" Click="SelectAllChk_Click"/>
                                         <TextBlock Grid.Column="3" Text="{l10n:Loc Main.ColName}" x:Name="SortName" Tag="Name" Cursor="Hand"
                                                Foreground="{StaticResource MutedBrush}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"
-                                               ToolTip="{l10n:Loc Main.ColNameTooltip}" PreviewMouseLeftButtonDown="Sort_Column"/>
+                                               ToolTip="{l10n:Loc Main.ColNameTooltip}" PreviewMouseLeftButtonDown="Sort_Column"
+                                               TextTrimming="CharacterEllipsis"/>
                                         <TextBlock Grid.Column="5" Text="{l10n:Loc Main.ColPages}" x:Name="SortPages" Tag="Pages" Cursor="Hand"
                                                Foreground="{StaticResource MutedBrush}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" TextAlignment="Center"
-                                               ToolTip="{l10n:Loc Main.ColPagesTooltip}" PreviewMouseLeftButtonDown="Sort_Column"/>
+                                               ToolTip="{l10n:Loc Main.ColPagesTooltip}" PreviewMouseLeftButtonDown="Sort_Column"
+                                               TextTrimming="CharacterEllipsis"/>
                                         <TextBlock Grid.Column="7" Text="{l10n:Loc Main.ColSettings}" x:Name="SortSettings" Tag="Settings" Cursor="Hand"
                                                Foreground="{StaticResource MutedBrush}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"
                                                ToolTip="{l10n:Loc Main.ColSettingsTooltip}"
-                                               PreviewMouseLeftButtonDown="Sort_Column"/>
+                                               PreviewMouseLeftButtonDown="Sort_Column"
+                                               TextTrimming="CharacterEllipsis"/>
                                         <TextBlock Grid.Column="9" Text="{l10n:Loc Main.ColStatus}" x:Name="SortStatus" Tag="Status" Cursor="Hand"
                                                Foreground="{StaticResource MutedBrush}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"
-                                               ToolTip="{l10n:Loc Main.ColStatusTooltip}" PreviewMouseLeftButtonDown="Sort_Column"/>
-                                        <TextBlock Grid.Column="11" Text="{l10n:Loc Main.ColError}" Foreground="{StaticResource MutedBrush}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                               ToolTip="{l10n:Loc Main.ColStatusTooltip}" PreviewMouseLeftButtonDown="Sort_Column"
+                                               TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Grid.Column="11" Text="{l10n:Loc Main.ColError}" Foreground="{StaticResource MutedBrush}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"/>
                 </Grid>
             </Border>
 
@@ -522,7 +530,7 @@
                                                                                                            MouseLeftButtonUp="SettingsCell_Click"
                                                                                                            ToolTip="{l10n:Loc Main.SettingsCellTooltip}"/>
                                                                 <!-- status pill -->
-                                                                <Border Grid.Column="9" CornerRadius="10" Padding="6,1" VerticalAlignment="Center" HorizontalAlignment="Left">
+                                                                <Border Grid.Column="9" CornerRadius="10" Padding="10,1" VerticalAlignment="Center" HorizontalAlignment="Left">
                                     <Border.Style>
                                         <Style TargetType="Border">
                                             <!-- Mặc định (Queued, Cancelled): xám idle — chưa chạy, chứ KHÔNG phải done -->
@@ -549,7 +557,8 @@
                                         </Style>
                                     </Border.Style>
 <TextBlock FontSize="11" TextAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold"
-                                           Text="{Binding StateText}">
+                                           Text="{Binding StateText}"
+                                           TextTrimming="CharacterEllipsis" ToolTip="{Binding StateText}">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
                                             <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
@@ -594,9 +603,11 @@
                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Border>
                 <TextBlock Text="{l10n:Loc Main.EmptyStateTitle}" FontSize="14" FontWeight="SemiBold"
-                           Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" Margin="0,14,0,0"/>
+                           Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" Margin="0,14,0,0"
+                           TextWrapping="Wrap" TextTrimming="CharacterEllipsis"/>
                 <TextBlock Text="{l10n:Loc Main.EmptyStateHint}" FontSize="12"
-                           Foreground="{StaticResource FaintBrush}" HorizontalAlignment="Center" Margin="0,5,0,0"/>
+                           Foreground="{StaticResource FaintBrush}" HorizontalAlignment="Center" Margin="0,5,0,0"
+                           TextWrapping="Wrap" TextTrimming="CharacterEllipsis"/>
             </StackPanel>
         </Grid>
 
@@ -670,10 +681,12 @@
                                HorizontalAlignment="Center"/>
                     <TextBlock Text="{l10n:Loc Main.DropHighlightTitle}" FontSize="16" FontWeight="SemiBold"
                                Foreground="{StaticResource TextBrush}" Margin="0,10,0,0"
-                               HorizontalAlignment="Center"/>
+                               HorizontalAlignment="Center"
+                               TextWrapping="Wrap" TextTrimming="CharacterEllipsis"/>
                     <TextBlock Text="{l10n:Loc Main.DropHighlightHint}"
                                FontSize="12" Foreground="{StaticResource MutedBrush}" Margin="0,5,0,0"
-                               HorizontalAlignment="Center"/>
+                               HorizontalAlignment="Center"
+                               TextWrapping="Wrap" TextTrimming="CharacterEllipsis"/>
                 </StackPanel>
             </Grid>
         </Border>

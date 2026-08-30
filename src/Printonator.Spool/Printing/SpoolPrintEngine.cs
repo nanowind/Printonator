@@ -18,6 +18,7 @@ public sealed class SpoolPrintEngine : IPrintEngine
 
     public Task<Result<bool>> PrintAsync(PrintJob job, CancellationToken ct)
     {
+        Process? spawnedProc = null;   // process printto engine đã spawn — dọn khi cancel (scope ngoài try để catch thấy)
         try
         {
             var printerName = job.Config.PrinterName;
@@ -82,8 +83,8 @@ public sealed class SpoolPrintEngine : IPrintEngine
                 var q = server.GetPrintQueue(printerName);
                 int baseline = ActiveJobCount(q);   // baseline TRƯỚC printto = biết job nào là của mình
 
-                var proc = Process.Start(psi);
-                if (proc is null)
+                spawnedProc = Process.Start(psi);
+                if (spawnedProc is null)
                     return Task.FromResult(Result<bool>.Fail(new PrintError
                     {
                         Code = ErrorCodes.SpoolerFailed,
@@ -92,7 +93,7 @@ public sealed class SpoolPrintEngine : IPrintEngine
                         Hint = "Kiểm tra máy in có tồn tại và app đọc file có hoạt động."
                     }));
 
-                WaitForPrintCompletion(q, baseline);   // chờ job mới in XONG mới trả về (lần lượt từng file)
+                WaitForPrintCompletion(q, baseline, ct);   // chờ job mới in XONG mới trả về (lần lượt từng file)
             }
             catch (System.Printing.PrintSystemException) { /* không đọc được queue — không chờ (best-effort) */ }
 
@@ -101,13 +102,11 @@ public sealed class SpoolPrintEngine : IPrintEngine
         }
         catch (OperationCanceledException)
         {
-            return Task.FromResult(Result<bool>.Fail(new PrintError
-            {
-                Code = ErrorCodes.EngineTimeout,
-                Category = PrintErrorCategory.System,
-                Message = $"In {job.FileName} bị hủy.",
-                Hint = "Bấm in lại nếu cần."
-            }));
+            // CANCEL (user bấm Cancel) → dọn process printto engine đã spawn, RETHROW để OCE lan tới
+            // PrintQueue.DrainLoopAsync → job chuyển Cancelled (KHÔNG Error, KHÔNG retry).
+            // Timeout THẬT (WaitForPrintCompletion hết 90s) KHÔNG vào đây — nó trả về bình thường.
+            CleanupSpawnedProc(spawnedProc);
+            throw;
         }
         catch (Exception ex)
         {
@@ -142,7 +141,7 @@ public sealed class SpoolPrintEngine : IPrintEngine
 
     /// <summary>Chờ job in vừa đẩy (sau printto) HOÀN TẤT trên máy in — in LẦN LƯỢT từng file (như Print
     /// Conductor), không chồng đống job lên máy. Poll spooler queue; baseline = job đang chạy TRƯỚC printto.</summary>
-    private static void WaitForPrintCompletion(System.Printing.PrintQueue q, int baseline)
+    private static void WaitForPrintCompletion(System.Printing.PrintQueue q, int baseline, CancellationToken ct)
     {
         try
         {
@@ -153,10 +152,34 @@ public sealed class SpoolPrintEngine : IPrintEngine
                 var active = ActiveJobCount(q);
                 if (active > baseline) jobSeen = true;
                 if (jobSeen && active <= baseline) return;   // job mới đã in xong
+                ct.ThrowIfCancellationRequested();           // cancel giữa mỗi poll → OCE rethrow
                 System.Threading.Thread.Sleep(300);
             }
         }
+        catch (OperationCanceledException)
+        {
+            throw;   // CANCEL → rethrow để PrintAsync dọn process + DrainLoopAsync chuyển Cancelled
+        }
         catch { /* máy in lỗi/lỗi đọc queue — không chờ (best-effort) */ }
+    }
+
+    /// <summary>Dọn process printto engine đã spawn khi job bị cancel — tránh app đọc file mồ côi.</summary>
+    private static void CleanupSpawnedProc(Process? proc)
+    {
+        if (proc is null) return;
+        try
+        {
+            if (!proc.HasExited)
+            {
+                proc.Kill(entireProcessTree: true);
+                proc.WaitForExit(5000);
+            }
+        }
+        catch { /* best-effort — process có thể đã tự thoát */ }
+        finally
+        {
+            proc.Dispose();
+        }
     }
 
     private static int ActiveJobCount(System.Printing.PrintQueue q)

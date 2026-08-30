@@ -60,6 +60,10 @@ docs/HANDOFF_KE_TOAN_2026-08-28.md
 .github/skills/
 .impeccable/
 skills-lock.json
+# Hermes/AI framework plans + local working notes (never commit)
+.hermes/
+AGENTS.md.bk
+cai-tien.md
 # OS
 Thumbs.db
 Desktop.ini
