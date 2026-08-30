@@ -4,6 +4,7 @@ using System.Windows.Data;
 using System.Windows.Threading;
 using Printonator.Core;
 using Printonator.Core.Models;
+using Printonator.Spool.Printing;
 using Printonator.UI.Localization;
 
 namespace Printonator.UI;
@@ -73,13 +74,14 @@ public sealed class PrintBatchOrchestrator
     {
         var printer = _selectedPrinterGetter()?.Name ?? "mặc định";
         foreach (var j in jobs)
-            j.Config.PrinterName = printer;
+            if (!j.HasPerFilePrinter)
+                j.Config.PrinterName = printer;
     }
 
     /// <summary>
     /// In batch — xác nhận in lại, pre-flight, rồi chạy StartPrintBatch.
     /// </summary>
-    public void PrintJobs(List<PrintJob> jobs, string action)
+    public async Task PrintJobsAsync(List<PrintJob> jobs, string action)
     {
         var ready = jobs.Where(j => j.State is JobState.Queued or JobState.Done or JobState.Error or JobState.Cancelled).ToList();
         if (ready.Count == 0) { BannerRequested?.Invoke(ErrorCodes.NoFilesSelected, L10n.S(Keys.Banner.NoFilesSelected), ""); return; }
@@ -102,6 +104,58 @@ public sealed class PrintBatchOrchestrator
         }
 
         ApplySelectedPrinter(ready);
+
+        try
+        {
+            // ===== Trang bìa (T2.1): in 1 trang bìa trước lô; fail → bỏ qua bìa, in lô bình thường (không chặn) =====
+            if (ready.Any(j => j.Config.CoverPage))
+            {
+                var cfg = ready.First().Config;
+                var html = CoverPageRenderer.BuildHtml(
+                    DateTime.Now.ToString("yyyy-MM-dd HH:mm"),
+                    ready.Count,
+                    ready.Sum(j => Math.Max(j.PageCount, 1)),
+                    DateTime.Now, cfg.PrinterName);
+                var (ok, b64) = await CoverPageRenderer.RenderCoverAsync(html, cfg, CancellationToken.None);
+                if (ok && b64 is not null)
+                    await CoverPageRenderer.PrintCoverAsync(b64, cfg.PrinterName ?? "mặc định", CancellationToken.None);
+            }
+
+            // ===== Gộp file (T2.4): job bật MergeIntoOneFile → in chung 1 bản qua MergePrintEngine =====
+            var mergeJobs = ready.Where(j => j.Config.MergeIntoOneFile).ToList();
+            var normalJobs = ready.Where(j => !j.Config.MergeIntoOneFile).ToList();
+            if (mergeJobs.Count > 1)
+            {
+                var merged = await new MergePrintEngine().MergeAndPrintAsync(mergeJobs, CancellationToken.None);
+                if (merged.IsSuccess)
+                {
+                    // Merge in xong ra spooler — đánh dấu file nguồn DONE để không bị "in lại" khi bấm
+                    // In tất cả lần sau (chúng đã in chung 1 bản qua MergePrintEngine).
+                    foreach (var j in mergeJobs) _queue.MarkDone(j);
+                    ready = normalJobs;
+                    if (ready.Count == 0)
+                    {
+                        ToastRequested?.Invoke($"Đã in gộp {mergeJobs.Count} file.");
+                        return;
+                    }
+                }
+                else
+                {
+                    // Merge thất bại → báo + giữ nguyên để in TỪNG FILE như bình thường (không mất lô)
+                    BannerRequested?.Invoke(merged.Error?.Code ?? ErrorCodes.EngineFailed,
+                        merged.Error?.Message ?? "Không gộp được file — in từng file riêng.",
+                        merged.Error?.Hint ?? "");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // Fire-and-forget (PrintJobs wrapper) — exception phải biến thành banner, không được bay ra ngoài.
+            BannerRequested?.Invoke(ErrorCodes.EngineFailed,
+                "Không dựng được trang bìa hoặc gộp file — in lại.",
+                ex.Message);
+            return;
+        }
 
         // ===== Pre-flight gate (chỉ khi lô lớn) =====
         const int ConfirmSheetThreshold = 100;

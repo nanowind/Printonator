@@ -33,10 +33,11 @@ public static class AppServices
         {
             if (_engineRegistered) return;
             // Engine ưu tiên (dynamic theo máy user — KHÔNG bundle lib):
-            // 1) MS Office COM → 2) LibreOffice (soffice nếu máy có) → 3) Browser render (Edge/Chrome — PDF/ảnh/TXT đúng options) → 4) SpoolPrintEngine (fallback)
+            // 1) MS Office COM → 2) LibreOffice (soffice nếu máy có) → 3) Watermark bọc Browser render
+            // (Edge/Chrome — PDF/ảnh/TXT đúng options; không watermark → delegate inner Browser) → 4) SpoolPrintEngine (fallback)
             Queue.RegisterEngine(new OfficeComPrintEngine());
             Queue.RegisterEngine(new LibreOfficePrintEngine());
-            Queue.RegisterEngine(new BrowserPrintEngine());
+            Queue.RegisterEngine(new WatermarkPrintEngine(new BrowserPrintEngine()));
             Queue.RegisterEngine(new SpoolPrintEngine());
             _engineRegistered = true;
         }

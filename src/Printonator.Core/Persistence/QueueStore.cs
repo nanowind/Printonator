@@ -17,14 +17,16 @@ public static class QueueStore
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "Printonator", "queue.json");
 
-    /// <summary>DTO phẳng cho serialize — tránh phụ thuộc vào init-only properties của PrintJob.</summary>
+    /// <summary>DTO phẳng cho serialize — tránh phụ thuộc vào init-only properties của PrintJob.
+    /// HasPerFilePrinter mặc định false để file queue.json CŨ (thiếu field) vẫn đọc được.</summary>
     public record QueueEntry(
         string FilePath,
         string FileName,
         string Format,
         JobSource Source,
         PrintConfig Config,
-        DateTimeOffset CreatedAt);
+        DateTimeOffset CreatedAt,
+        bool HasPerFilePrinter = false);
 
     /// <summary>Lưu job chờ (đường dẫn mặc định). Xóa file nếu không có gì để lưu.</summary>
     public static void Save(IEnumerable<PrintJob> jobs) => Save(FilePath, jobs);
@@ -34,7 +36,7 @@ public static class QueueStore
     {
         var entries = jobs
             .Where(j => j.State is JobState.Queued or JobState.AwaitingApproval)
-            .Select(j => new QueueEntry(j.FilePath, j.FileName, j.Format, j.Source, j.Config, j.CreatedAt))
+            .Select(j => new QueueEntry(j.FilePath, j.FileName, j.Format, j.Source, j.Config, j.CreatedAt, j.HasPerFilePrinter))
             .ToList();
 
         if (entries.Count == 0)

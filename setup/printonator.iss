@@ -55,6 +55,13 @@ Name: "japanese"; MessagesFile: "Japanese.isl"
 ; uninsdeletevalue: gỡ cài KHÔNG để lại value cũ ảnh hưởng lần cài sau.
 Root: HKCU; Subkey: "Software\Printonator"; ValueType: string; ValueName: "Language"; ValueData: "{code:GetLangTag}"; Flags: uninsdeletevalue
 
+; T2.8: menu chuột phải "In với Printonator" trên MỌI file (HKCU — không cần admin).
+; {cm:ShellMenuPrint} = tên menu theo ngôn ngữ lúc cài (khai báo [CustomMessages] bên dưới).
+; uninsdeletekey trên cả 2 key: gỡ cài xóa sạch menu (không để lại cụm shell bẩn).
+Root: HKCU; Subkey: "Software\Classes\*\shell\Printonator"; ValueType: string; ValueName: ""; ValueData: "{cm:ShellMenuPrint}"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\*\shell\Printonator"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\{#MyAppExeName}"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\*\shell\Printonator\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" --print ""%1"""; Flags: uninsdeletekey
+
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
@@ -118,6 +125,13 @@ japanese.DotNetContinuePrompt=続行するには [OK] を押してください�
 japanese.DotNetInstallError=.NET 8 ランタイムのインストールに失敗しました（コード %1）。手動でインストールしてください：https://dotnet.microsoft.com/download/dotnet/8.0 の後、セットアップを再実行してください。
 japanese.DotNetLaunchError=.NET 8 ランタイムのインストーラーを起動できませんでした。手動でインストールしてください：https://dotnet.microsoft.com/download/dotnet/8.0 の後、セットアップを再実行してください。
 japanese.DotNetDownloadError=.NET 8 デスクトップ ランタイムをダウンロードできませんでした（ネットワークエラーまたは SHA 不一致）。手動でインストールしてください：https://dotnet.microsoft.com/download/dotnet/8.0 の後、セットアップを再実行してください。
+
+; T2.8: tên menu chuột phải "In với Printonator" (dùng trong [Registry] — theo ngôn ngữ lúc cài).
+ShellMenuPrint=In với Printonator
+english.ShellMenuPrint=Print with Printonator
+chinesesimp.ShellMenuPrint=用 Printonator 打印
+russian.ShellMenuPrint=Печать через Printonator
+japanese.ShellMenuPrint=Printonatorで印刷
 
 [Code]
 

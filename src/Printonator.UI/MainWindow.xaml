@@ -276,6 +276,10 @@
                                               Click="ManagePresets_Click" Padding="12,6" Margin="0,0,8,0"
                                               AutomationProperties.AutomationId="ManagePresetsBtn"
                                               ToolTip="{l10n:Loc Main.ManagePresetsButton}"/>
+                                     <Button Content="{l10n:Loc Main.WatchButton}" Style="{StaticResource GhostBtn}"
+                                              Click="WatchFolders_Click" Padding="12,6" Margin="0,0,8,0"
+                                              AutomationProperties.AutomationId="WatchFoldersBtn"
+                                              ToolTip="{l10n:Loc Main.WatchButton}"/>
                                      <Button Content="{l10n:Loc Stop.CancelBatch}" Style="{StaticResource GhostBtn}"
                                               Click="CancelBatch_Click" Padding="12,6" Margin="0,0,8,0"
                                               AutomationProperties.AutomationId="CancelBatchBtn"
@@ -350,6 +354,8 @@
                                             <ColumnDefinition Width="116"/>
                                             <ColumnDefinition Width="16"/>
                                             <ColumnDefinition Width="2.5*"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="16"/>
                                             <ColumnDefinition Width="16"/>
                                             <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="16"/>
@@ -372,11 +378,14 @@
                                                ToolTip="{l10n:Loc Main.ColSettingsTooltip}"
                                                PreviewMouseLeftButtonDown="Sort_Column"
                                                TextTrimming="CharacterEllipsis"/>
-                                        <TextBlock Grid.Column="9" Text="{l10n:Loc Main.ColStatus}" x:Name="SortStatus" Tag="Status" Cursor="Hand"
+                                        <TextBlock Grid.Column="8" Text="{l10n:Loc Main.ColPrinter}" x:Name="ColPrinter"
+                                               Foreground="{StaticResource MutedBrush}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Grid.Column="11" Text="{l10n:Loc Main.ColStatus}" x:Name="SortStatus" Tag="Status" Cursor="Hand"
                                                Foreground="{StaticResource MutedBrush}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"
                                                ToolTip="{l10n:Loc Main.ColStatusTooltip}" PreviewMouseLeftButtonDown="Sort_Column"
                                                TextTrimming="CharacterEllipsis"/>
-                                        <TextBlock Grid.Column="11" Text="{l10n:Loc Main.ColError}" Foreground="{StaticResource MutedBrush}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"
+                                        <TextBlock Grid.Column="13" Text="{l10n:Loc Main.ColError}" Foreground="{StaticResource MutedBrush}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center"
                                                TextTrimming="CharacterEllipsis"/>
                 </Grid>
             </Border>
@@ -453,6 +462,8 @@
                                                                     <ColumnDefinition Width="116"/>
                                                                     <ColumnDefinition Width="16"/>
                                                                     <ColumnDefinition Width="2.5*"/>
+                                                                    <ColumnDefinition Width="*"/>
+                                                                    <ColumnDefinition Width="16"/>
                                                                     <ColumnDefinition Width="16"/>
                                                                     <ColumnDefinition Width="Auto"/>
                                                                     <ColumnDefinition Width="16"/>
@@ -563,8 +574,14 @@
                                                                                                            TextWrapping="Wrap" TextTrimming="CharacterEllipsis" Cursor="Hand"
                                                                                                            MouseLeftButtonUp="SettingsCell_Click"
                                                                                                            ToolTip="{l10n:Loc Main.SettingsCellTooltip}"/>
+                                                                <!-- máy in riêng per-file — chọn máy thật → HasPerFilePrinter; "Theo máy thanh công cụ" = dùng máy toolbar -->
+                                                                <ComboBox x:Name="RowPrinterCombo" Grid.Column="8" Width="Auto" MinWidth="90"
+                                                                          ItemsSource="{Binding Printers, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                                          DisplayMemberPath="Name" VerticalAlignment="Center"
+                                                                          SelectionChanged="PrinterPerFile_SelectionChanged"
+                                                                          Loaded="PrinterPerFile_Loaded"/>
                                                                 <!-- status pill -->
-                                                                <Border Grid.Column="9" CornerRadius="10" Padding="10,1" VerticalAlignment="Center" HorizontalAlignment="Left">
+                                                                <Border Grid.Column="11" CornerRadius="10" Padding="10,1" VerticalAlignment="Center" HorizontalAlignment="Left">
                                     <Border.Style>
                                         <Style TargetType="Border">
                                             <!-- Mặc định (Queued, Cancelled): xám idle — chưa chạy, chứ KHÔNG phải done -->
@@ -618,7 +635,7 @@
                                 </TextBlock>
                                 </Border>
                                 <!-- error -->
-                                <TextBlock Grid.Column="11" Text="{Binding Error.Message}" Foreground="{StaticResource ErrorBrush}"
+                                <TextBlock Grid.Column="13" Text="{Binding Error.Message}" Foreground="{StaticResource ErrorBrush}"
                                            FontSize="12" VerticalAlignment="Center" TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
                                            ToolTip="{Binding Error.Hint}"/>
                             </Grid>

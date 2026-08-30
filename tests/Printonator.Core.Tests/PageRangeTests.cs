@@ -34,6 +34,9 @@ public class PageRangeTests
     [InlineData("1-2,7", 10, new[] { 1, 2, 7 })]
     [InlineData("5-3", 10, new[] { 3, 4, 5 })]           // reversed → sorted
     [InlineData("", 10, new[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 })] // empty = All
+    [InlineData("last", 10, new[] { 10 })]               // last page only
+    [InlineData("last3", 10, new[] { 8, 9, 10 })]        // last 3 pages
+    [InlineData("last1", 10, new[] { 10 })]              // last 1 page = last
     public void ParseRange_Valid(string range, int pages, int[] expected)
     {
         var result = MakeJob(range, pages).ResolvePhysicalPages();
@@ -48,6 +51,8 @@ public class PageRangeTests
     [InlineData("1-2;5", 10)]      // bad separator
     [InlineData("1-", 10)]         // missing end
     [InlineData("-5", 10)]         // missing start
+    [InlineData("last0", 10)]      // last0 invalid — N must be > 0
+    [InlineData("last", 0)]        // chưa biết số trang → fail
     public void ParseRange_Invalid_ReturnsError(string range, int pages)
     {
         var result = MakeJob(range, pages).ResolvePhysicalPages();
@@ -100,5 +105,14 @@ public class PageRangeTests
         var result = MakeJob("All", 0).ResolvePhysicalPages();
         Assert.True(result.IsSuccess);
         Assert.Equal(new[] { 1 }, result.Value);
+    }
+
+    [Fact]
+    public void SectionRange_LastMacro_ReturnsInvalid()
+    {
+        // Section không hỗ trợ macro last/lastN — phải nhập số trang cụ thể
+        var result = MakeJob("S2:last", 10, withSections: true).ResolvePhysicalPages();
+        Assert.False(result.IsSuccess);
+        Assert.Equal(ErrorCodes.InvalidPageRange, result.Error!.Code);
     }
 }

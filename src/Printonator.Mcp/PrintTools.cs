@@ -690,6 +690,8 @@ public static class PrintTools
             "Gọi save_preset với tên không rỗng."),
         (ErrorCodes.EngineNotFound, "Không có engine in cho định dạng.",
             "Chuyển file sang PDF rồi in lại."),
+        (ErrorCodes.EngineFailed, "Engine in gặp lỗi không xác định (vd không gộp được file).",
+            "Thử lại với ít file hơn hoặc in từng file riêng; báo người dùng xem log nếu lặp lại."),
         (ErrorCodes.EngineTimeout, "Engine in không phản hồi trong hạn.",
             "Thử lại sau vài giây; nếu lặp lại, báo người dùng kiểm tra Word/Excel/LibreOffice."),
         (ErrorCodes.OfficeAppBusy, "Word/Excel/PowerPoint đang bận.",

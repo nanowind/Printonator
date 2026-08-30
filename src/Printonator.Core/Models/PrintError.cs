@@ -57,6 +57,7 @@ public static class ErrorCodes
     // Engine
     public const string EngineNotFound = "ENGINE_NOT_FOUND";
     public const string EngineTimeout = "ENGINE_TIMEOUT";
+    public const string EngineFailed = "ENGINE_FAILED";   // gộp file / việc dựng bản in thất bại (merge fallback)
     public const string OfficeAppBusy = "OFFICE_APP_BUSY";
     // System
     public const string Unauthorized = "UNAUTHORIZED";

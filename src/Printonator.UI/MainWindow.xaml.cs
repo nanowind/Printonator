@@ -34,8 +34,21 @@ public partial class MainWindow : Window
 
     private readonly CancellationTokenSource _lifeCts = new();   // vòng đời MainWindow — huỷ task nền khi đóng
 
+    /// <summary>Theo dõi thư mục (T2.6) — null nếu khởi tạo watcher bị lỗi/bỏ qua.</summary>
+    private WatchFolderService? _watchService;
+
     /// <summary>Danh sách thông báo hiển thị trong bell. Badge = số thông báo chưa đọc.</summary>
     public ObservableCollection<AppNotification> Notifications { get; } = new();
+
+    /// <summary>Item 0 của Printers = "Theo máy thanh công cụ" (job không có máy in riêng).</summary>
+    private static readonly PrinterInfo ToolbarDefaultPrinter = new()
+    {
+        Name = L10n.S(Keys.Main.PrinterToolbarDefault),
+        IsVirtual = true,
+    };
+
+    /// <summary>Máy in cho cột per-file: item 0 = "Theo máy thanh công cụ", sau đó là máy in thật.</summary>
+    public ObservableCollection<PrinterInfo> Printers { get; } = new() { ToolbarDefaultPrinter };
 
     /// <summary>Cấu hình mặc định cho FILE MỚI (thay thế bảng Paper setup cũ) — áp khi thêm file.</summary>
     private readonly PrintConfig _defaultConfig = new();
@@ -87,6 +100,9 @@ public partial class MainWindow : Window
         {
             try { QueueStore.Save(_queue.Jobs); }
             catch { /* Đóng app: lưu lỗi (disk full, file bị khóa...) không đáng để phá shutdown — cleanup dưới vẫn phải chạy */ }
+            try { if (_watchService is not null) WatchFolderService.SaveWatches(WatchFolderService.FilePath, _watchService.Snapshot()); }
+            catch { /* lưu watch config lỗi — không đáng phá shutdown */ }
+            _watchService?.Dispose();
             _lifeCts.Cancel();
             _queue.Dispose();
             CleanupOrphanPrintProcesses();   // đóng app là dọn triệt để — mọi engine để lại gì thì gom lại
@@ -124,15 +140,32 @@ public partial class MainWindow : Window
         // 1) MS Office COM → 2) LibreOffice (soffice nếu máy có) → 3) Browser render (Edge/Chrome headless — PDF/ảnh/TXT đúng page range/scale/khổ giấy) → 4) shell printto fallback
         _queue.RegisterEngine(new OfficeComPrintEngine());
         _queue.RegisterEngine(new LibreOfficePrintEngine());
-        _queue.RegisterEngine(new BrowserPrintEngine());
+        // Watermark decorator bọc BrowserPrintEngine — không có watermark → delegate inner Browser.
+        // KHÔNG đăng ký BrowserPrintEngine riêng (nếu đăng ký cả 2, các format browser sẽ qua
+        // Watermark trước vì CanHandle giống Browser — dư 1 lớp nên chỉ giữ bản decorator).
+        _queue.RegisterEngine(new WatermarkPrintEngine(new BrowserPrintEngine()));
         _queue.RegisterEngine(new SpoolPrintEngine());
         RestorePendingJobs();
         LoadPrinters();
         _queue.MaxRetries = 2;
+        InitWatchFolders();   // T2.6: theo dõi thư mục lưu từ lần chạy trước
         _ = CheckForUpdatesSilentAsync();   // kiểm tra bản mới nền khi app mở — thông báo vào bell nếu có
         SeedTestApprovalIfRequested();      // test hook PRINTONATOR_TEST_APPROVAL=1 — chỉ khi env set, không ảnh hưởng production
         UpdateApprovalBar();                // trạng thái duyệt ban đầu (job Mcp khôi phục / test seed)
         await Task.CompletedTask;
+    }
+
+    /// <summary>T2.6: khởi tạo theo dõi thư mục — nạp cấu hình watch.json, mở watcher cho từng thư mục.</summary>
+    private void InitWatchFolders()
+    {
+        try
+        {
+            _watchService = new WatchFolderService(_queue, Dispatcher, _lifeCts.Token);
+            _watchService.Toast = ShowToast;   // file mới từ thư mục theo dõi → toast
+            foreach (var kv in WatchFolderService.LoadWatches())
+                _watchService.StartWatch(kv.Key, kv.Value);
+        }
+        catch { _watchService = null; /* watch lỗi (mất quyền...) — app vẫn chạy bình thường */ }
     }
 
     /// <summary>
@@ -179,6 +212,7 @@ public partial class MainWindow : Window
                 Config = e.Config,
                 Source = e.Source,
                 CreatedAt = e.CreatedAt,
+                HasPerFilePrinter = e.HasPerFilePrinter,
             }).ToList();
         if (jobs.Count == 0) return;
 
@@ -280,6 +314,10 @@ public partial class MainWindow : Window
             return;
         }
         PrinterCombo.ItemsSource = printers;
+        Printers.Clear();
+        Printers.Add(ToolbarDefaultPrinter);
+        foreach (var p in printers) Printers.Add(p);
+        RefreshPerFileComboSelections();
 
         // Máy in bị treo / bị firewall chặn → vẫn hiện (mục "Không phản hồi…") + báo vàng để user biết
         // tại sao list thiếu máy, và có nút Retry (không để im như trước).
@@ -351,6 +389,67 @@ public partial class MainWindow : Window
         PrinterStatusDot.ToolTip = p.StatusDetail is null
             ? L10n.F(Keys.Main.PrinterStatusReady, p.Name)
             : L10n.F(Keys.Main.PrinterStatusWithDetail, p.Name, p.StatusDetail);
+    }
+
+    // ===== Cột máy in per-file (T2.3): chọn máy riêng cho từng job; item 0 = "Theo máy thanh công cụ" = không ghi đè =====
+
+    /// <summary>User đổi máy in trên combo của 1 dòng: máy thật → HasPerFilePrinter; item "Theo máy thanh công cụ" → bỏ per-file.</summary>
+    private void PrinterPerFile_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox combo) return;
+        if (combo.DataContext is not PrintJob job) return;
+        if (combo.SelectedItem is not PrinterInfo sel) return; // null khi container khởi tạo / Printers chưa nạp — không đụng job
+
+        if (ReferenceEquals(sel, ToolbarDefaultPrinter))
+        {
+            job.HasPerFilePrinter = false;
+            job.Config.PrinterName = null;   // ApplySelectedPrinter sẽ áp máy thanh công cụ
+        }
+        else
+        {
+            job.Config.PrinterName = sel.Name;
+            job.HasPerFilePrinter = true;
+        }
+    }
+
+    /// <summary>Row mới được dựng → chọn đúng item theo trạng thái per-file của job (thay thế null → combo không bị trống).</summary>
+    private void PrinterPerFile_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ComboBox combo) return;
+        if (combo.DataContext is not PrintJob job) return;
+        SelectComboForJob(combo, job);
+    }
+
+    /// <summary>Đồng bộ ComboBox của 1 row về đúng lựa chọn per-file của job (khớp tên máy in, fallback item toolbar).</summary>
+    private static void SelectComboForJob(ComboBox combo, PrintJob job)
+    {
+        if (job.HasPerFilePrinter && job.Config.PrinterName is not null)
+        {
+            var match = combo.Items.OfType<PrinterInfo>()
+                .FirstOrDefault(p => !ReferenceEquals(p, ToolbarDefaultPrinter)
+                    && p.Name.Equals(job.Config.PrinterName, StringComparison.OrdinalIgnoreCase));
+            if (match is not null) { combo.SelectedItem = match; return; }
+        }
+        // Chưa có / mất máy → item 0 (Theo máy thanh công cụ). ItemsSource chưa nạp → WPF để null, Refresh sau sẽ sửa.
+        combo.SelectedItem = ToolbarDefaultPrinter;
+    }
+
+    /// <summary>ApplyPrinterList nạp lại Printers → resync selection mọi combo per-file (row viirtualized chưa dựng thì Loaded lo).</summary>
+    private void RefreshPerFileComboSelections()
+    {
+        foreach (var combo in FindVisualChildren<ComboBox>(JobList))
+            if (combo.Name == "RowPrinterCombo" && combo.DataContext is PrintJob job)
+                SelectComboForJob(combo, job);
+    }
+
+    private static IEnumerable<T> FindVisualChildren<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match) yield return match;
+            foreach (var sub in FindVisualChildren<T>(child)) yield return sub;
+        }
     }
 
     /// <summary>Phím Delete (phím tắt, không có nút UI) — xóa các file đang chọn khỏi hàng đợi.</summary>
@@ -822,6 +921,17 @@ public partial class MainWindow : Window
         }
     }
 
+    // ===== Shell context menu (T2.8) — public wrapper cho App.OnStartup (instance 1 nhận file từ shell) =====
+    /// <summary>Thêm file từ shell (menu chuột phải / open-with). Đã lọc tồn tại + bỏ cờ "--print" ở App.</summary>
+    public void AddFilesFromExternal(IEnumerable<string> paths, string source) => AddFiles(paths.ToList(), source);
+
+    /// <summary>In ngay các file vừa thêm từ shell (khi có cờ --print) — đường thực thi chung với nút Print.</summary>
+    public void PrintAddedFromExternal()
+    {
+        var jobs = _queue.Jobs.Where(j => j.State == JobState.Queued).ToList();
+        if (jobs.Count > 0) StartPrintBatch(jobs, L10n.S(Keys.Shell.PrintTaskName));
+    }
+
     // ===== Multi-select helpers =====
     private void OnSelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
@@ -1042,7 +1152,8 @@ public partial class MainWindow : Window
 
     private void PrintJobs(List<PrintJob> jobs, string action)
     {
-        _orchestrator.PrintJobs(jobs, action);
+        // PrintJobsAsync có cover/merge (await trong orchestrator) — fire-and-forget giống WaitBatchDoneAsync
+        _ = _orchestrator.PrintJobsAsync(jobs, action);
     }
 
     /// <summary>Sắp xếp lại batch theo thứ tự đang HIỂN THỊ (sort + nhóm thư mục của user), không theo
@@ -1079,6 +1190,14 @@ public partial class MainWindow : Window
         var dlg = new PrinterConfigWindow { Owner = this };
         dlg.ShowDialog();
         LoadPrinters(); // sau khi đóng — nạp lại trạng thái mới
+    }
+
+    /// <summary>T2.6: mở cửa sổ quản lý thư mục theo dõi.</summary>
+    private void WatchFolders_Click(object sender, RoutedEventArgs e)
+    {
+        if (_watchService is null) return;   // watch không khởi tạo được — không có gì để quản lý
+        var dlg = new WatchFolderWindow(_watchService) { Owner = this };
+        dlg.ShowDialog();
     }
 
     /// <summary>Nút "Cấu hình" (Presets) — mở trình quản lý preset; chọn Áp dụng → cập nhật config mặc định cho file mới,
@@ -1122,6 +1241,16 @@ public partial class MainWindow : Window
         {
             if (job.State == JobState.Error && job.Error is not null)
                 ShowBanner(job.Error.Code, job.Error.Message, job.Error.Hint);
+            // T2.7: job về trạng thái cuối (Done/Error/Cancelled) → ghi lịch sử in (im lặng nếu lỗi lưu)
+            if ((job.State is JobState.Done or JobState.Error or JobState.Cancelled) && job.FinishedAt is not null)
+            {
+                try
+                {
+                    HistoryStore.Append(new HistoryEntry(job.FileName, job.FilePath, job.State, job.Error?.Code,
+                        job.FinishedAt.Value, job.StartedAt, job.Config.Copies, job.PageCount));
+                }
+                catch { /* lưu lịch sử lỗi (disk full, file bị khóa...) — không làm hỏng vòng đời job */ }
+            }
             // Refresh dòng để binding trạng thái (✓ Done / màu lỗi) cập nhật — PrintJob không INPC
             JobList.Items.Refresh();
             UpdateFooter();

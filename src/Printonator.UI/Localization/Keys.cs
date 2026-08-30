@@ -133,6 +133,11 @@ public static class Keys
         public const string UpdateLaunch = "Error.UpdateLaunch";
     }
 
+    public static class History
+    {
+        public const string HistorySaved = "History.HistorySaved";
+    }
+
     public static class Main
     {
         public const string ActionAllFiles = "Main.ActionAllFiles";
@@ -153,6 +158,7 @@ public static class Keys
         public const string ColNameTooltip = "Main.ColNameTooltip";
         public const string ColPages = "Main.ColPages";
         public const string ColPagesTooltip = "Main.ColPagesTooltip";
+        public const string ColPrinter = "Main.ColPrinter";
         public const string ColSettings = "Main.ColSettings";
         public const string ColSettingsTooltip = "Main.ColSettingsTooltip";
         public const string ColStatus = "Main.ColStatus";
@@ -211,6 +217,7 @@ public static class Keys
         public const string PrinterStatusReady = "Main.PrinterStatusReady";
         public const string PrinterStatusTooltip = "Main.PrinterStatusTooltip";
         public const string PrinterStatusWithDetail = "Main.PrinterStatusWithDetail";
+        public const string PrinterToolbarDefault = "Main.PrinterToolbarDefault";
         public const string PrintersButton = "Main.PrintersButton";
         public const string ManagePresetsButton = "Main.ManagePresetsButton";
         public const string ReloadedBadge = "Main.ReloadedBadge";
@@ -219,6 +226,7 @@ public static class Keys
         public const string SettingsCellTooltip = "Main.SettingsCellTooltip";
         public const string SheetComboTooltip = "Main.SheetComboTooltip";
         public const string SheetLabel = "Main.SheetLabel";
+        public const string WatchButton = "Main.WatchButton";
         public const string WindowTitle = "Main.WindowTitle";
     }
 
@@ -333,11 +341,15 @@ public static class Keys
         public const string ApplyBtnTarget = "Settings.ApplyBtnTarget";
         public const string ApplyButton = "Settings.ApplyButton";
         public const string AutoOrientationCheck = "Settings.AutoOrientationCheck";
+        public const string CoverPage = "Settings.CoverPage";
+        public const string CoverPageHint = "Settings.CoverPageHint";
         public const string DeleteProfileBtn = "Settings.DeleteProfileBtn";
         public const string DriverTitle = "Settings.DriverTitle";
         public const string ErrorCopiesRange = "Settings.ErrorCopiesRange";
         public const string ErrorRangeSyntax = "Settings.ErrorRangeSyntax";
         public const string FitToPageWideCheck = "Settings.FitToPageWideCheck";
+        public const string MergeHint = "Settings.MergeHint";
+        public const string MergeIntoOne = "Settings.MergeIntoOne";
         public const string GroupPagesCopies = "Settings.GroupPagesCopies";
         public const string GroupPagesCopiesAdvanced = "Settings.GroupPagesCopiesAdvanced";
         public const string GroupPaperColor = "Settings.GroupPaperColor";
@@ -396,9 +408,19 @@ public static class Keys
         public const string TabAdvanced = "Settings.TabAdvanced";
         public const string TabBasic = "Settings.TabBasic";
         public const string TitlePlural = "Settings.TitlePlural";
+        public const string WatermarkOpacity = "Settings.WatermarkOpacity";
+        public const string WatermarkOpacityHint = "Settings.WatermarkOpacityHint";
+        public const string WatermarkText = "Settings.WatermarkText";
+        public const string WatermarkTextHint = "Settings.WatermarkTextHint";
         public const string WindowTitle = "Settings.WindowTitle";
         public const string WindowTitlePlural = "Settings.WindowTitlePlural";
         public const string WindowTitleTarget = "Settings.WindowTitleTarget";
+    }
+
+    public static class Shell
+    {
+        public const string MenuText = "Shell.MenuText";
+        public const string PrintTaskName = "Shell.PrintTaskName";
     }
 
     public static class Stop
@@ -436,6 +458,16 @@ public static class Keys
         public const string SkippedMissing = "Toast.SkippedMissing";
         public const string SkippedOnly = "Toast.SkippedOnly";
         public const string SkippedUnsupported = "Toast.SkippedUnsupported";
+    }
+
+    public static class Watch
+    {
+        public const string AddButton = "Watch.AddButton";
+        public const string AutoPrint = "Watch.AutoPrint";
+        public const string FileAdded = "Watch.FileAdded";
+        public const string NoneConfigured = "Watch.NoneConfigured";
+        public const string RemoveButton = "Watch.RemoveButton";
+        public const string WindowTitle = "Watch.WindowTitle";
     }
 
 }

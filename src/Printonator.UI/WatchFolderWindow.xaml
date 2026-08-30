@@ -1,0 +1,59 @@
+<Window x:Class="Printonator.UI.WatchFolderWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:l10n="clr-namespace:Printonator.UI.Localization"
+        Title="{l10n:Loc Watch.WindowTitle}" Height="400" Width="480"
+        MinWidth="420" MinHeight="320"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        AutomationProperties.AutomationId="WatchFolderWindow"
+        Background="#FFFFFF" FontFamily="Segoe UI">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Border Grid.Row="0" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1">
+            <TextBlock Text="{l10n:Loc Watch.WindowTitle}" FontSize="16" FontWeight="SemiBold"
+                       Foreground="{StaticResource TextBrush}" Margin="16,14"/>
+        </Border>
+
+        <!-- Danh sách thư mục đang theo dõi -->
+        <Grid Grid.Row="1" Margin="16,12,16,8">
+            <ListBox x:Name="WatchList" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1"
+                     Background="Transparent" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                     SelectionChanged="WatchList_SelectionChanged" AutomationProperties.AutomationId="WatchList">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding Key}" FontSize="13" Foreground="{StaticResource TextBrush}"
+                                   Padding="6,8" TextTrimming="CharacterEllipsis" ToolTip="{Binding Key}"/>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+            <TextBlock x:Name="EmptyText" Text="{l10n:Loc Watch.NoneConfigured}" FontSize="12"
+                       Foreground="{StaticResource FaintBrush}" HorizontalAlignment="Center"
+                       VerticalAlignment="Center" Visibility="Collapsed" IsHitTestVisible="False"/>
+        </Grid>
+
+        <!-- Thêm / Xóa / Tự in + Đóng -->
+        <Border Grid.Row="2" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0" Background="#FAFAFA">
+            <StackPanel Margin="16,10,16,14">
+                <CheckBox x:Name="AutoPrintCheck" Content="{l10n:Loc Watch.AutoPrint}" FontSize="12"
+                          Foreground="{StaticResource TextBrush}" Cursor="Hand" Margin="0,0,0,10"
+                          Checked="AutoPrint_Changed" Unchecked="AutoPrint_Changed"
+                          AutomationProperties.AutomationId="WatchAutoPrintCheck"/>
+                <StackPanel Orientation="Horizontal">
+                    <Button x:Name="AddBtn" Content="{l10n:Loc Watch.AddButton}" Style="{StaticResource RoundedBtn}"
+                            Padding="14,6" AutomationProperties.AutomationId="WatchAddBtn" Click="Add_Click"/>
+                    <Button x:Name="RemoveBtn" Content="{l10n:Loc Watch.RemoveButton}" Style="{StaticResource GhostBtn}"
+                            Padding="12,6" Margin="8,0,0,0" AutomationProperties.AutomationId="WatchRemoveBtn" Click="Remove_Click"/>
+                    <Button x:Name="CloseBtn" Content="{l10n:Loc About.CloseButton}" Style="{StaticResource GhostBtn}"
+                            Padding="14,6" Margin="8,0,0,0" AutomationProperties.AutomationId="WatchCloseBtn" Click="Close_Click"
+                            HorizontalAlignment="Right"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

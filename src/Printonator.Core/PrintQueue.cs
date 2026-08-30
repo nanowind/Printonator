@@ -349,6 +349,23 @@ public sealed class PrintQueue : IDisposable
         return true;
     }
 
+    /// <summary>Đánh dấu job ĐÃ IN XONG (Done) từ bên ngoài — dùng cho lô in gộp (MergePrintEngine)
+    /// khi file nguồn đã in chung 1 bản, không đẩy từng file vào queue. Chỉ áp dụng cho job
+    /// đang chờ (Queued/AwaitingApproval); job khác trả false. SetState chạy trong lock(_sync).</summary>
+    public bool MarkDone(PrintJob job)
+    {
+        lock (_sync)
+        {
+            if (job is null || !Jobs.Contains(job)) return false;
+            if (job.State is not (JobState.Queued or JobState.AwaitingApproval)) return false;
+            // Gỡ khỏi pending nếu đang chờ trong hàng đợi (tránh drain in lại sau khi đánh dấu xong)
+            var pending = _pending.ToList();
+            if (pending.Remove(job)) _pending = new Queue<PrintJob>(pending);
+            SetState(job, JobState.Done);
+            return true;
+        }
+    }
+
     /// <summary>Từ chối job đang chờ duyệt (chuyển Cancelled, không in).</summary>
     public bool RejectJob(PrintJob job)
     {

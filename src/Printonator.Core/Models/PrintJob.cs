@@ -179,6 +179,21 @@ public sealed class PrintConfig
     /// <summary>Tên profile (preset) đang áp cho file — chỉ để hiển thị/ghi chú, không đổi hành vi.</summary>
     public string? ProfileName { get; set; }
 
+    /// <summary>In thêm 1 trang bìa trước lô (ghi tên lô, ngày, số lượng file).</summary>
+    public bool CoverPage { get; set; }
+
+    /// <summary>Gộp toàn bộ file được chọn thành 1 bản in (chỉ PDF/ảnh/TXT).</summary>
+    public bool MergeIntoOneFile { get; set; }
+
+    /// <summary>Chữ dấu mờ in trên mỗi trang — null/rỗng = không watermark.</summary>
+    public string? WatermarkText { get; set; }
+
+    /// <summary>Độ mờ của dấu mờ (0.1–1.0).</summary>
+    public double WatermarkOpacity { get; set; } = 0.3;
+
+    /// <summary>Vị trí dấu mờ: center/top-left/top-right/bottom-left/bottom-right.</summary>
+    public string WatermarkPosition { get; set; } = "center";
+
     public PrintConfig Clone() => (PrintConfig)MemberwiseClone();
 
     /// <summary>Copy toàn bộ giá trị sang config khác (UI/MCP dùng khi áp cấu hình cho job).</summary>
@@ -203,6 +218,11 @@ public sealed class PrintConfig
         target.SheetName = SheetName;
         target.FitToPageWide = FitToPageWide;
         target.AutoOrientation = AutoOrientation;
+        target.CoverPage = CoverPage;
+        target.MergeIntoOneFile = MergeIntoOneFile;
+        target.WatermarkText = WatermarkText;
+        target.WatermarkOpacity = WatermarkOpacity;
+        target.WatermarkPosition = WatermarkPosition;
     }
 
     /// <summary>Chuỗi ngắn gọn mô tả cấu hình khác biệt so với mặc định (cho cột Settings).</summary>
@@ -259,6 +279,9 @@ public sealed class PrintConfig
                     PrintScaleMode.Fill => "fill",
                     _ => "scale",
                 });
+            if (CoverPage) parts.Add("bìa");
+            if (MergeIntoOneFile) parts.Add("gộp");
+            if (!string.IsNullOrEmpty(WatermarkText)) parts.Add("dấu mờ");
             return string.Join(" · ", parts);
         }
     }
@@ -334,6 +357,9 @@ public sealed class PrintJob
     public int PageCount { get; set; }
     public bool WasReloaded { get; set; }              // file đã sửa qua double-click → nạp bản mới
 
+    /// <summary>Job có máy in RIÊNG per-file (MCP/UI chỉ định) — ApplySelectedPrinter KHÔNG ghi đè máy này.</summary>
+    public bool HasPerFilePrinter { get; set; }
+
     /// <summary>Bản đồ trang: section → (trang vật lý đầu, trang vật lý cuối). DOCX có section mới có.</summary>
     public List<SectionMap> Sections { get; } = new();
 
@@ -371,9 +397,45 @@ public sealed class PrintJob
                     Hint = $"File này có {Sections.Count} section: {string.Join(", ", Sections.Select(s => $"S{s.Index}"))}."
                 });
 
+            // Section không hỗ trợ macro last/lastN — chỉ nhận số trang cụ thể
+            if (parts[1].StartsWith("last", StringComparison.OrdinalIgnoreCase))
+                return Result<int[]>.Fail(new PrintError
+                {
+                    Code = ErrorCodes.InvalidPageRange,
+                    Category = PrintErrorCategory.Config,
+                    Message = $"Macro \"{parts[1]}\" không dùng được trong section.",
+                    Hint = $"Nhập số trang cụ thể: S{secIdx}:1-{sec.PageCount}."
+                });
+
             return ParseRange(parts[1], 1, sec.PageCount,
                 $"Section {secIdx} chỉ có {sec.PageCount} trang.")
                 .Map(pageList => pageList.Select(p => p + sec.FirstPhysicalPage - 1).ToArray());
+        }
+
+        // Macro last / lastN: in trang cuối / N trang cuối (N>0). Cần biết số trang của file.
+        if (raw.StartsWith("last", StringComparison.OrdinalIgnoreCase))
+        {
+            if (PageCount <= 0)
+                return Result<int[]>.Fail(new PrintError
+                {
+                    Code = ErrorCodes.InvalidPageRange,
+                    Category = PrintErrorCategory.Config,
+                    Message = $"Không in được \"{raw}\": chưa biết số trang của file này.",
+                    Hint = "Macro 'last' cần biết số trang — dùng 'All' hoặc nhập range số cụ thể."
+                });
+            var n = raw.Equals("last", StringComparison.OrdinalIgnoreCase) ? 1
+                : int.TryParse(raw["last".Length..], out var v) && v > 0 ? v
+                : -1;
+            if (n <= 0)
+                return Result<int[]>.Fail(new PrintError
+                {
+                    Code = ErrorCodes.InvalidPageRange,
+                    Category = PrintErrorCategory.Config,
+                    Message = $"Page range \"{raw}\" không hợp lệ.",
+                    Hint = "Định dạng đúng: last (trang cuối) · lastN (N trang cuối) · All · 2,5 · 3-4 · S2:1-3."
+                });
+            var start = Math.Max(1, PageCount - n + 1);
+            return Result<int[]>.Ok(Enumerable.Range(start, Math.Min(n, PageCount)).ToArray());
         }
 
         // Plain pages: 2,5 | 3-4 | 1-2,7

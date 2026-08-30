@@ -156,6 +156,11 @@ public partial class PrintSettingsWindow : Window
 
         FitToPageWideCheck.IsChecked = cfg.FitToPageWide;
         AutoOrientationCheck.IsChecked = cfg.AutoOrientation;
+        CoverPageCheck.IsChecked = cfg.CoverPage;
+        MergeCheck.IsChecked = cfg.MergeIntoOneFile;
+        WatermarkText.Text = cfg.WatermarkText ?? "";
+        WatermarkOpacitySlider.Value = Math.Clamp(cfg.WatermarkOpacity, 0.1, 1.0);
+        UpdateWatermarkOpacityText();
 
         SelectTag(OrientationCombo, cfg.Orientation.ToString(), "Portrait");
         SelectTag(QualityCombo, cfg.Quality.ToString(), "AsPrinter");
@@ -276,6 +281,20 @@ public partial class PrintSettingsWindow : Window
         if (isZoom && (!int.TryParse(ZoomBox.Text, out var z) || z < 10))
             ZoomBox.Text = "100";
         ZoomBox.Focusable = isZoom;
+    }
+
+    // ============ Watermark opacity slider: hiện giá trị phần trăm ============
+
+    private void WatermarkOpacity_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (WatermarkOpacityValue is null) return;   // gọi trước InitializeComponent xong XAML binding
+        UpdateWatermarkOpacityText();
+    }
+
+    private void UpdateWatermarkOpacityText()
+    {
+        if (WatermarkOpacityValue is null) return;
+        WatermarkOpacityValue.Text = $"{Math.Round(WatermarkOpacitySlider.Value * 100)}%";
     }
 
     // ============ Profile (printer template) ============
@@ -558,6 +577,12 @@ public partial class PrintSettingsWindow : Window
 
         cfg.FitToPageWide = FitToPageWideCheck.IsChecked == true;
         cfg.AutoOrientation = AutoOrientationCheck.IsChecked == true;
+        cfg.CoverPage = CoverPageCheck.IsChecked == true;
+        cfg.MergeIntoOneFile = MergeCheck.IsChecked == true;
+        var watermark = WatermarkText.Text.Trim();
+        cfg.WatermarkText = string.IsNullOrEmpty(watermark) ? null : watermark;
+        cfg.WatermarkOpacity = Math.Round(Math.Clamp(WatermarkOpacitySlider.Value, 0.1, 1.0), 2);
+        cfg.WatermarkPosition = "center";
 
         cfg.Parity = SelectedTag(ParityCombo) switch
         {
