@@ -16,7 +16,7 @@
 | Giá | Trả phí theo máy | Miễn phí, mã mở | Lợi thế cốt lõi |
 | Office engine | Dùng MS Office bản quyền | App gốc (COM) + **LibreOffice dynamic** (soffice có sẵn trên máy) | ✅ Cả 2 engine đã code; nếu máy không có gì → shell fallback |
 | PDF/ảnh/TXT render | PDFium nhúng sẵn | **Browser render dynamic** (Chrome/Edge headless CDP) + **Windows.Data.Pdf** (API có sẵn Win10/11) | ✅ KHÔNG bundle lib — máy ai cũng có |
-| Automation | CLI bản cao, đóng | **MCP AI-native** ✅ + CLI + CSV + watch-folder | MCP server đã có (xem docs/MCP.md) |
+| Automation | CLI bản cao, đóng | **MCP AI-native** ✅ + watch-folder + shell verb in file | MCP server 13 tools đã có (xem docs/MCP.md); CLI wrapper đóng gói chưa có |
 | Data/privacy | License server, activation | 100% local, no telemetry | — |
 | Tùy chọn in cơ bản (page range/màu/khay/scale/N-up/odd-even/res) | Đầy đủ, mức app + driver | ✅ Đầy đủ trên màn Print Settings (bảng 3) | Đợt 2026-08-26 |
 
@@ -36,8 +36,8 @@
 | In chỉ các mục chọn lọc | ✅ Có | Print selected |
 | Chỉnh cấu hình TỪNG file (Item settings) | ✅ **Có (mới)** | Context menu → "Cấu hình in (Item settings)…" mở Print Settings |
 | Double-click mở file gốc | ✅ Có | OpenFileCommand + reload watcher + badge "↻ Reloaded" |
-| Context menu Windows Explorer ("Print with Printonator") | ❌ Thiếu | v2 (registry shell verb) |
-| History pane (danh sách lần chạy gần nhất) | ❌ Thiếu | v2 |
+| Context menu Windows Explorer ("Print with Printonator") | ✅ **Có** | Shell verb qua SingleInstance (T2.8) |
+| History pane (danh sách lần chạy gần nhất) | ✅ **Có** | Lịch sử in lưu JSON (`HistoryStore`, max 1000 entry) — xem `docs/ARCHITECTURE.md` |
 
 ### 2. Máy in
 | Tính năng PC | Printonator | Ghi chú |
@@ -45,7 +45,7 @@
 | Local / Network / Virtual printer | ✅ | PrinterService qua LocalPrintServer; badge "ảo" |
 | Trạng thái từng máy (available/offline/error + khổ giấy + ability) | ✅ | GetPrintQueues + GetPrintCapabilities |
 | **Printer Properties / Printing Preferences (dialog NATIVE driver)** | ✅ **Có (mới)** | Nút trên từng máy (màn Printers) + trong Print Settings; chạy `printui.dll /p` và `/e` — đúng như PC |
-| Print trên nhiều máy khác nhau (per-file printer) | ❌ Thiếu | Cần cột Printer per row |
+| Print trên nhiều máy khác nhau (per-file printer) | ✅ **Có** | Combo máy in riêng TỪNG dòng (HasPerFilePrinter); mặc định "Theo máy thanh công cụ" |
 | Printer load balancing | ❌ Thiếu | v2 |
 | Lưu/thu hồi Printer Properties khi thoát app | ❌ Thiếu | v2 (PC có "keep/discard changes on exit") |
 
@@ -53,7 +53,7 @@
 | Tùy chọn (PC) | Printonator | Ghi chú |
 |---|---|---|
 | **Page range: chọn All HOẶC Pages (input)** | ✅ **Có (mới)** | Print Settings có radio "Tất cả (All)" / "Chọn trang:" + preview live trang vật lý; syntax All/1,3/2-5/1-2,7/S2:1-3 |
-| Page range syntax `last/last1/last2` (từ cuối tài liệu) | ❌ Thiếu | ParseRange chưa hỗ trợ macro `last` — P1 |
+| Page range syntax `last/last1/last2` (từ cuối tài liệu) | ✅ **Có** | `ResolvePhysicalPages` hỗ trợ macro `last`/`lastN` (trang cuối / N trang cuối) — cần biết số trang file |
 | **Chỉ in trang lẻ / trang chẵn (Print odd or even)** | ✅ **Có (mới)** | Combo All/Odd/Even — engine render lọc đúng trang; shell để nguyên |
 | Bỏ trang lặp (skip repeated pages khi range trùng) | ✅ Có | ResolvePhysicalPages luôn Distinct+sorted |
 | Số bản copies | ✅ | PrintConfig.Copies + Print Settings |
@@ -67,38 +67,38 @@
 | **Page orientation: As in document / As in printer / Portrait / Landscape** | ✅ **Có (mới)** | Enum mở rộng + engine bỏ ép chiều khi "theo file/máy" |
 | Auto rotate trang | ❌ Thiếu | v2 |
 | **Scale mode: Shrink / Fit / Original / Fill / Zoom %** | ✅ **Có (mới)** | Enum PrintScaleMode + combo 6 mức + ô Zoom% |
-| **Pages per sheet (N-up): 2/4/6/9/16 + Booklet** | ✅ **Có (mới)** | Combo + field PagesPerSheet/Booklet (engine render chưa có — cần engine render dynamic để áp thật) |
+| **Pages per sheet (N-up): 2/4/6/9/16 + Booklet** | ✅ **Có (mới)** | Combo + field PagesPerSheet/Booklet; áp qua BrowserPrintEngine render (CDP printToPDF) |
 | **Page size based (in đúng khổ từng trang file)** | ✅ **Có (mới)** | Paper "Theo tài liệu (khổ gốc)" = sentinel `AsDocument` → browser dùng `preferCSSPageSize=true` |
 | **Printer resolution (High/Medium/Low/Draft)** | ✅ **Có (mới)** | Combo 5 mức → DPI rasterize 200/150/100/75 (WindowsPdfRasterizer); AsPrinter = driver quyết |
 | Print as image + rasterization DPI | ⚠️ Một phần | Ảnh/PDF render qua browser/Windows PDF; TXT giữ text |
 | Crop marks / Vectorize text / Alignment+offset | ❌ Thiếu | v2 |
 | In password-protected PDF/DOCX | ❌ Thiếu | v2 (Windows.Data.Pdf báo lỗi mật khẩu → fallback shell) |
 | Reverse order / Blank pages skip / Print job name / in mỗi N trang 1 job | ❌ Thiếu | v2 |
-| **Printer profile template** (lưu/đọc profile in) | ✅ **Có (mới)** | Profile combo trong Print Settings = PresetStore JSON; MCP get/save/print_with_preset đã có; PC dùng .ini export/import — UI export file CHƯA có |
+| **Printer profile template** (lưu/đọc profile in) | ✅ **Có (mới)** | Profile combo trong Print Settings = PresetStore JSON; MCP get/save/print_with_preset đã có; **PresetExporter** xuất/nhập file `.printonator` từ UI (Print Settings) |
 
 ### 4. Cover & report pages
 | Tính năng PC | Printonator | Ghi chú |
 |---|---|---|
-| Cover page / Cover Designer / report page / estimation report | ❌ Thiếu | v1.x — value cao văn phòng VN |
+| Cover page / Cover Designer / report page / estimation report | ✅ **Có (mới)** | `CoverPageRenderer` (HTML → browser → PDF → in) trong BatchOrchestrator; report page đầy đủ chưa có |
 
 ### 5. Single print job mode
 | Tính năng PC | Printonator | Ghi chú |
 |---|---|---|
-| Gộp tất cả file → 1 PDF → 1 lần đẩy spooler | ❌ Thiếu | CONCEPT đặt Printonator.Spool merge; Spool hiện chỉ PrinterService + engine |
+| Gộp tất cả file → 1 PDF → 1 lần đẩy spooler | ✅ **Có (mới)** | `MergePrintEngine`: rasterize từng trang PDF/ảnh/TXT → HTML → browser printToPDF → PDF tạm → in 1 lần |
 
 ### 6. Watermark / 7. Pre-print & post-processing
 | Tính năng PC | Printonator | Ghi chú |
 |---|---|---|
-| Watermark (text/image/barcode, macro {page}...) | ❌ Thiếu | v1.x/v2 |
+| Watermark (text/image/barcode, macro {page}...) | ✅ **Có (mới)** | `WatermarkPrintEngine` (engine bọc, decorator): chèn chữ dấu mờ trên PDF/ảnh, có opacity; chưa có barcode/macro {page} |
 | Pre-print ops (insert/rotate/resize/crop/grayscale), post-processing (move/copy/delete) | ❌ Thiếu | v2 |
 
 ### 8. Settings / Profile
 | Tính năng PC | Printonator | Ghi chú |
 |---|---|---|
-| Export/Import settings (.ini profile) | ⚠️ Một phần | Preset JSON có (PresetStore) + MCP; UI màn profile có (Print Settings); **export/import FILE .ini chưa có** |
-| Chạy với pre-saved settings từ command line | ❌ Thiếu | CLI chưa có |
+| Export/Import settings (.ini profile) | ✅ **Có (mới)** | Preset JSON (PresetStore) + MCP + UI; **PresetExporter** xuất/nhập file `.printonator` (enum ghi theo tên, đọc số legacy) |
+| Chạy với pre-saved settings từ command line | ⚠️ Một phần | Shell verb in file đã có (qua SingleInstance); CLI wrapper đóng gói chưa có |
 | File extension aliases | ❌ Thiếu | v2 |
-| Restore list + printer từ lần chạy trước | ❌ Thiếu | v2 |
+| Restore list + printer từ lần chạy trước | ✅ **Có (mới)** | `QueueStore` khôi phục hàng đợi chưa in từ lần chạy trước (JSON) |
 
 ### 9. Khác
 | Tính năng PC | Printonator | Ghi chú |
@@ -111,28 +111,36 @@
 | CAD (DWG/DXF) | ❌ Thiếu | v2 (DefaultPaperFor đã biết A3 cho bản vẽ) |
 | HEIC photos | ⚠️ | WIC nếu codec cài |
 | Validate digital signatures (PDF) | ❌ Thiếu | v2 |
-| Log files | ⚠️ Một phần | Audit log MCP (JSON) có; UI chưa có log phiên file |
+| Log files | ⚠️ Một phần | Audit log MCP (JSON) có; `HistoryStore` lưu lịch sử in; UI chưa có log phiên file đầy đủ |
 | Scheduled printing | ❌ Thiếu | ngoài MVP |
+| Watch folder (in tự động file mới trong thư mục) | ✅ **Có (mới)** | `WatchFolderService` (FileSystemWatcher debounce 2s) + `WatchFolderWindow` quản lý, auto-print tùy chọn |
 | Silent deploy | ✅ | Inno /VERYSILENT |
 | Customize interface / preview pane | ❌ | roadmap theme |
 | Time delay between print jobs | ❌ Thiếu | v2 |
 | Print job name / "Start print after every N pages" | ❌ Thiếu | v2 |
 
-## Khoảng trống quan trọng nhất (giá trị/effort)
+## Khoảng trống quan trọng nhất (giá trị/effort) — cập nhật 2026-08-30
 
-### P0 — còn lại
-1. **Màn MCP/Safety UI + nút duyệt `AwaitingApproval`** (host MCP in-process trong UI) — an toàn AI in gium.
-2. **Cover page + Report page** — value cao văn phòng VN.
+### ✅ Đã xong (các đợt 2026-08-26..30)
+1. **Màn duyệt `AwaitingApproval` in-process trong UI** — nút Approve all / Reject all trên MainWindow (ApproveAll_Click).
+2. **Cover page** — `CoverPageRenderer` in trước lô (BatchOrchestrator).
+3. **Single print job mode (gộp PDF)** — `MergePrintEngine`.
+4. **Per-file printer** — combo máy in riêng từng dòng.
+5. **Page range macro `last`** — `ResolvePhysicalPages` hỗ trợ `last`/`lastN`.
+6. **Shell context menu** "In với Printonator" — shell verb qua SingleInstance.
+7. **Watermark** — `WatermarkPrintEngine` (decorator).
+8. **Watch folder** — `WatchFolderService` + `WatchFolderWindow`.
+9. **History pane** — `HistoryStore` (lịch sử in JSON, max 1000).
+10. **Preset export/import file** — `PresetExporter` (`.printonator`).
+11. **Restore hàng đợi** — `QueueStore`.
 
-### P1 — v1.x
-3. Export/Import preset .ini (profile) + CLI chạy preset.
-4. Single print job mode (gộp PDF).
-5. Per-file printer (cột Printer per row).
-6. Page range macro `last` (in từ cuối).
-7. Shell context menu "Print with Printonator".
-
-### P2 — v2
-8. Watermark → 9. Post-processing → 10. Watch folder → 11. Email/CAD/HEIC/signature → 12. UI theme → 13. Reverse order/blank skip/job name → 14. History pane / Import TXT-Excel-URL / archives.
+### Còn lại
+- **Report page đầy đủ** (mới chỉ có cover) — value cao văn phòng VN.
+- **CLI chạy preset** (CLI wrapper đóng gói).
+- **Post-processing** (insert/rotate/resize/crop/grayscale, move/copy/delete).
+- **Email (.msg/.eml)** · **CAD (DWG/DXF)** · **HEIC** · **Validate digital signatures (PDF)**.
+- **UI theme** · **Reverse order/blank skip/job name** · **Import TXT/Excel/URL** · **Archives ZIP/RAR/7Z**.
+- **Time delay between print jobs** · **File extension aliases**.
 
 ## UI/UX gaps — đã xử lý đợt 2026-08-26 (theo yêu cầu user)
 
@@ -162,16 +170,17 @@ Trước: option in cũ gói trong 1 BulkBar hàng ngang chật (copies/duplex/c
    nhận thêm colorMode/paperSource/scaleMode/pagesPerSheet/parity/quality; Preset lưu đủ trường (profile template).
 
 ## Điểm Printonator vượt Print Conductor (giữ và quảng bá)
-- **MCP AI-native** ✅ — PC không có: 8 tools + PrintGuard (allowlist, quota, approve mặc định, audit) — fail-closed.
+- **MCP AI-native** ✅ — PC không có: 13 tools (list_printers, pick_printer, print_files, print_with_preset, presets, approve/reject, list_jobs, job_status, cancel_job, get_guard_config, get_error_reference) + PrintGuard (allowlist, quota, approve mặc định, audit) — fail-closed.
 - **Không phụ thuộc bản quyền + app NHẸ**: engine dynamic theo máy — MS Office nếu có, LibreOffice nếu có,
   Chrome/Edge (máy ai cũng có) render đúng page range/scale/khổ giấy cho PDF/ảnh/TXT, ngược lại shell/handler mặc định.
   Không bundle thư viện nặng (PDFium/LibreOffice) vào installer.
 - **MIT, no telemetry** — 100% local.
 - **Section-aware page range (S2:1-3)** — PC không nêu.
 
-## Roadmap đề xuất (cập nhật)
+## Roadmap đề xuất (cập nhật 2026-08-30)
 ```
-Ngay: Màn MCP/Safety UI + approve in-process → Cover/Report page
-v1.x: Export/Import preset .ini + CLI → Single-job merge → Per-file printer → macro "last" → Shell context menu
-v2: Watermark → Post-processing → Watch folder → Email/CAD/HEIC/signature → Theme → Reverse/blank/job-name → History/Import/Archives
+Đã xong: Màn MCP/Safety UI + approve in-process → Cover page → Single-job merge → Per-file printer → macro "last"
+          → Shell context menu → Watermark → Watch folder → History → Preset export/import (.printonator)
+Tiếp theo: Report page đầy đủ → CLI wrapper → Post-processing → Email/CAD/HEIC/signature → Theme
+          → Reverse/blank/job-name → Import TXT/Excel/URL → Archives → Time delay → Aliases
 ```

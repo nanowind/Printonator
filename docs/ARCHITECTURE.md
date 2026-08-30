@@ -18,6 +18,9 @@ Printonator.sln
 │  ├─ Printonator.Core/          # Logic lõi, không phụ thuộc UI
 │  │  ├─ PrintQueue.cs           # Queue engine: drain, retry, state machine, engine registry, approve/cancel
 │  │  ├─ Presets/PresetStore.cs  # JSON preset (save/load/delete, backup file hỏng)
+│  │  ├─ Presets/PresetExporter.cs  # Xuất/nhập preset file .printonator
+│  │  ├─ Persistence/HistoryStore.cs  # Lịch sử in (JSON, tối đa 1000 entry)
+│  │  ├─ Persistence/QueueStore.cs    # Khôi phục hàng đợi chưa in (JSON)
 │  │  ├─ Safety/PrintGuard.cs    # Allowlist máy in + quota trang/lô/copies + approve + audit (fail-closed)
 │  │  └─ Models/
 │  │     ├─ PrintJob.cs          # Job + Config + Source(User/Mcp) + State(AwaitingApproval) + SectionMap + Result<T>
@@ -26,19 +29,35 @@ Printonator.sln
 │  │  ├─ Printing/PrinterService.cs    # GetPrintQueues + GetPrintCapabilities thật (trạng thái, khổ giấy, khay)
 │  │  ├─ Printing/InstalledApps.cs     # Phát hiện Word/Excel/PowerPoint (ProgID COM)
 │  │  ├─ Printing/OfficeComPrintEngine.cs  # In Office bằng app gốc (COM PrintOut, như Print Conductor)
+│  │  ├─ Printing/LibreOfficePrintEngine.cs  # In Office bằng LibreOffice (`soffice --headless --pt`)
+│  │  ├─ Printing/LibreOfficeLocator.cs  # Dò soffice.exe trên máy (registry/path/env)
+│  │  ├─ Printing/BrowserPrintEngine.cs  # In PDF/ảnh/TXT qua Chrome/Edge headless (CDP printToPDF)
+│  │  ├─ Printing/BrowserLocator.cs  # Dò Chrome/Edge executable
+│  │  ├─ Printing/DevToolsPrintClient.cs  # Client WebSocket CDP (BCL, không NuGet)
+│  │  ├─ Printing/CdpPrintParams.cs  # Tham số printToPDF (page range, scale, khổ giấy, margin)
+│  │  ├─ Printing/WindowsPdfRasterizer.cs  # Cắt trang PDF (Windows.Data.Pdf — API có sẵn Win10/11)
+│  │  ├─ Printing/CoverPageRenderer.cs  # Trang bìa in trước lô (HTML → browser → PDF → in)
+│  │  ├─ Printing/MergePrintEngine.cs  # Gộp lô thành 1 bản in (PDF/ảnh/TXT → HTML → browser printToPDF)
+│  │  ├─ Printing/WatermarkPrintEngine.cs  # Engine bọc chèn dấu mờ (decorator)
 │  │  └─ Printing/SpoolPrintEngine.cs  # Engine shell "printto" fallback (mọi định dạng)
 │  ├─ Printonator.Mcp/           # MCP server "AI in giùm" (stdio + HTTP 127.0.0.1:3939/mcp)
 │  │  ├─ Program.cs / AppServices.cs
-│  │  ├─ PrintTools.cs           # 8 tools + PrintGuard chặn trước khi Enqueue (cổng tuần tự chống TOCTOU)
+│  │  ├─ PrintTools.cs           # 13 tools + PrintGuard chặn trước khi Enqueue (cổng tuần tự chống TOCTOU)
 │  │  ├─ Probing/PdfPageCountProbe.cs  # Đếm trang PDF best-effort cho quota
 │  └─ Printonator.UI/            # WPF (net8.0-windows)
 │     ├─ MainWindow.xaml(.cs)    # Toàn bộ UI: job table, toolbar, bulk bar, bell, search, sort, toast, progress
+│     ├─ PrintSettingsWindow     # Bảng cấu hình in đầy đủ (2 cột, page range, màu, khay, scale, N-up, profile)
+│     ├─ PrintConfirmWindow      # Xác nhận in trước khi chạy (số file, ước lượng trang, máy in)
+│     ├─ PrintDoneWindow         # Màn "Đã in xong" (thống kê + rate request)
 │     ├─ PrinterConfigWindow     # Màn "Printers & paper setup" (trạng thái/khổ giấy/capabilities/Scan)
+│     ├─ PresetManagerWindow     # Quản lý preset (danh sách, đổi tên, xóa, xuất, nhập)
+│     ├─ WatchFolderWindow       # Theo dõi thư mục (thêm/xóa folder, auto-print)
+│     ├─ WatchFolderService      # FileSystemWatcher debounce + tự thêm vào queue
 │     ├─ PageRangeDialog.xaml    # Dialog chọn trang (+ preview "→ Will print physical pages")
-│     ├─ PaperSetupDialog.xaml   # Dialog khổ giấy / duplex / màu
+│     ├─ ModeResolver            # Lite/Full mode (registry)
 │     └─ app.ico
 └─ tests/
-   ├─ Printonator.Core.Tests/    # xUnit — 78 tests (page-range, section, queue, approve, preset, guard, error-routing)
+   ├─ Printonator.Core.Tests/    # xUnit — 102 tests (page-range, section, queue, approve, preset, guard, error-routing, store)
    ├─ Printonator.Spool.Tests/   # xUnit — 4 E2E print-to-PDF
    ├─ Printonator.Mcp.Tests/     # xUnit — 6 (tool shape, error reference, pick printer)
    └─ Printonator.UITests/       # xUnit + FlaUI.UIA3 — 27 UI tests
@@ -108,6 +127,9 @@ Nguyên tắc: **dynamic theo máy user, KHÔNG bundle thư viện** (app nhẹ,
 | `LibreOfficePrintEngine` (dynamic) | ✅ Có (2026-08-26) | `LibreOfficeLocator` dò `soffice.exe` trên máy (registry HKLM/HKCU `Software\LibreOffice\LibreOffice` → InstallPath, đường dẫn mặc định, env `PRINTONATOR_LIBREOFFICE`) → `soffice --headless --pt "máy"` (hoặc `-p` máy mặc định); timeout 120s + kill; KHÔNG bundle LibreOffice |
 | `BrowserPrintEngine` (dynamic render) | ✅ Có (2026-08-26) | PDF/ảnh/TXT: **Chrome trước, Edge sau** (xác thực: Chrome headless ổn định; một số bản Edge 151+ không chạy headless/CDP — máy này) → headless `Page.printToPDF` qua CDP (ClientWebSocket BCL, không NuGet): áp thật page range (non-PDF — pageRanges CDP), scale, khổ giấy (inch), landscape, margin (Fill=0), **preferCSSPageSize khi khổ "theo tài liệu"**. FAST-PATH: cấu hình như default (A4/dọc/All/AsDocument) → shell thẳng, KHÔNG render. **PDF page SLICING** dùng WindowsPdfRasterizer (Windows.Data.Pdf — API có sẵn, không lib): render trang chọn → PNG → HTML → printToPDF đúng khổ gốc. **Lọc trang lẻ/chẵn** (Parity) + **DPI rasterize** theo chất lượng (High 200/Medium 150/Low 100/Draft 75). Render lỗi → rớt mềm về shell. |
 | `SpoolPrintEngine` (shell printto) | ✅ Fallback mọi định dạng | PDF/ảnh/TXT qua app mặc định của Windows (Edge/Adobe...); **Win32Exception 1155** nếu file không có handler — báo lỗi rõ |
+| `CoverPageRenderer` (trang bìa) | ✅ Hoạt động | Dựng HTML 1 trang → browser printToPDF → PDF tạm → in qua SpoolPrintEngine; dùng trong In lô (BatchOrchestrator) |
+| `MergePrintEngine` (gộp lô) | ✅ Hoạt động | Gộp PDF/ảnh/TXT thành 1 bản in: rasterize từng trang → HTML → browser printToPDF → SpoolPrintEngine |
+| `WatermarkPrintEngine` (dấu mờ) | ✅ Hoạt động | Engine bọc (decorator); không có watermark text → in nguyên bản qua inner engine |
 | WIC (ảnh) | ❌ Chưa code | roadmap — Windows Imaging Component có sẵn (không cần bundle) |
 
 **Cách gắn engine mới:** `queue.RegisterEngine(engine)` (registry DANH SÁCH, `PickEngine` = engine đầu tiên CanHandle).
@@ -116,7 +138,7 @@ Engine implement `IPrintEngine { bool CanHandle(string format); Task<Result<bool
 ## 6. Testing
 
 ```bash
-dotnet test Printonator.sln          # Core 78 + Spool 4 + Mcp 6 + UI 27 = 115 tests
+dotnet test Printonator.sln          # Core 102 + Spool 4 + Mcp 6 + UI 27 = 139 tests
 dotnet build Printonator.sln
 dotnet format Printonator.sln        # format chuẩn (đã chạy, tree sạch)
 ```
@@ -125,13 +147,25 @@ dotnet format Printonator.sln        # format chuẩn (đã chạy, tree sạch)
 - **UITests (FlaUI)**: tự launch `Printonator.UI.exe` từ `AppContext.BaseDirectory` (resolve 5 cấp `..\..\..\..\..\src\...`), tìm window, click/select qua AutomationId (`JobList`, `PrintAllBtn`, `PrintSelectedBtn`, `BulkCountText`...). `PrintSettingsWindow_Constructor_Loads` dựng window trên STA + nạp theme thủ công (`pack://application:,,,/Printonator.UI;component/Themes/*.xaml` — vì test host không resolve relative Source của App.xaml).
   - **Pitfall đã biết:** ContextMenu WPF popup KHÔNG lộ qua UIA3 (chỉ thấy "System") — test hành vi gián tiếp (bulk bar) thay vì menu. Border WPF không có AutomationPeer → assert qua TextBlock (BulkCountText). **SendInput flaky** (`Win32Exception Access is denied` trên máy này) → test bấm nút dùng `Invoke()` pattern, chỉ Dropdown test giữ mouse click thật (bắt regression z-order).
 
-## 7. Những thứ chưa làm (từ gap analysis + CONCEPT) — thứ tự đề xuất
+## 7. Những thứ đã làm mới + còn lại (từ gap analysis + CONCEPT)
 
 Xem chi tiết `docs/COMPARISON_PRINT_CONDUCTOR.md`. Tóm tắt:
-1. **P0**: Engine PDF slicing thật để cắt **page range trên PDF** (browser viewer từ chối ranges — đã verify; cần lib/dịch vụ render nhẹ, hoặc dùng viewer API qua CDP)
-2. **P1**: Cover/Report page; Single print job (gộp PDF); Preset/Profile (.ini) + CLI; Per-file printer
-3. **P2**: Watermark; Post-processing; Watch folder; Email/CAD/HEIC; log file
-4. **MCP server** — ✅ đã có `Printonator.Mcp` (13 tools: pick_printer/approve_job/reject_job/get_guard_config/get_error_reference..., HTTP/stdio, guard, approve qua MCP, skill `.claude/skills/printonator-mcp` + plugin `plugin/`, xem docs/MCP.md). Duyệt thật giờ qua MCP tool; host in-process trong UI (màn duyệt) còn là roadmap-optional
+
+**Đã xong (trong các đợt 2026-08-26..30):**
+1. ✅ **PDF slicing thật** — cắt page range trên PDF bằng `WindowsPdfRasterizer` (Windows.Data.Pdf, API có sẵn) → render trang chọn → HTML → browser printToPDF đúng khổ gốc.
+2. ✅ **Cover page** — `CoverPageRenderer` (trang bìa in trước lô) qua `PrintBatchOrchestrator`.
+3. ✅ **Single print job (gộp PDF)** — `MergePrintEngine` gộp PDF/ảnh/TXT thành 1 bản in.
+4. ✅ **Watermark (dấu mờ)** — `WatermarkPrintEngine` (decorator), kèm opacity; cấu hình trong Print Settings.
+5. ✅ **Watch folder** — `WatchFolderWindow` + `WatchFolderService` (FileSystemWatcher debounce 2s, auto-print tùy chọn, lưu config JSON).
+6. ✅ **Per-file printer** — combo máy in riêng từng dòng (HasPerFilePrinter), mặc định "Theo máy thanh công cụ".
+7. ✅ **History + Queue restore** — `HistoryStore` (lịch sử in, max 1000) + `QueueStore` (khôi phục hàng đợi chưa in).
+8. ✅ **Preset export/import** — `PresetExporter` (file `.printonator`).
+9. ✅ **Shell context menu** — "In với Printonator" (T2.8, registry shell verb qua SingleInstance).
+10. ✅ **MCP server** — `Printonator.Mcp` (13 tools, HTTP/stdio, guard fail-closed, approve qua MCP, skill `.claude/skills/printonator-mcp` + plugin `plugin/`, xem docs/MCP.md).
+11. ✅ **i18n 5 ngôn ngữ** (vi/en/zh/ru/ja) — Strings.json catalog, chọn ngôn ngữ trong AboutWindow; **Lite/Full mode** (ModeResolver).
+
+**Còn lại (thứ tự đề xuất tiếp):**
+- Report page đầy đủ (mới chỉ có cover) · CLI wrapper đóng gói · Email (.msg/.eml)/CAD/HEIC/signature validate · UI log file phiên · Reverse order/blank skip/job name · Import danh sách TXT/Excel/URL · Archives ZIP · Shell menu registry thường trực khi cài
 
 ## 8. Môi trường & tooling
 

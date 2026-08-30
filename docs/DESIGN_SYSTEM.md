@@ -61,7 +61,7 @@
 ### Status pill
 - Border CornerRadius 10 Padding `6,1`; Background ReadyBgBrush → DataTrigger State=Error → ErrorBgBrush
 - Text: Semibold 11; ReadyBrush → Error → ErrorBrush
-- **TODO (Penpot gap):** thêm icon ✓ khi Done + badge "↻ Reloaded" (WasReloaded → hiển thị)
+- ✅ Đã có: icon "✓ Done" + badge "↻ Reloaded" (WasReloaded → hiển thị)
 
 ### Job table colums (header + item KHỚP):
 ```
@@ -89,9 +89,9 @@ Grid 7 rows:
 
 ## 6. Toast / Notification (Penpot gap — ✅ đã làm)
 
-- **Toast success** "Added 3 files to queue": góc dưới phải, nền trắng border mỏng, auto ẩn 4-6s. Chưa có — hiện chỉ có banner lỗi + footer stats.
+- **Toast success** "Added 3 files to queue": góc dưới phải, nền trắng border mỏng, auto ẩn 4-6s. ✅ Đã làm (add file / in xong / reload / preset...).
 - **Notifications popover** (bell): ĐÃ CÓ — NotifPopup (Update/Security items giống Penpot).
-- **Progress bar**: CHƯA CÓ — cần `ProgressBar` (taskbar progress + footer progress) tính `done/total`.
+- **Progress bar**: ĐÃ CÓ — `ProgressBar` footer + taskbar progress tính `done/total`, kèm `ProgressText %`.
 
 ## 7. Dialog patterns
 
@@ -99,18 +99,30 @@ Grid 7 rows:
 |---|---|---|---|
 | PageRangeDialog | 460 | FileName, TextBox range, hint format, SectionInfo, ErrorText | Hủy (Ghost) / OK (Rounded) |
 | PaperSetupDialog | 420 | Khổ giấy combo, Chế độ in combo, Màu combo | Hủy (Ghost) / Áp dụng (Rounded) |
+| PrintSettingsWindow | ~720 | Bảng cấu hình in đầy đủ 2 cột (Trang & bản / Giấy & màu): page range, parity, copies, collation, duplex, paper, paper source, color, orientation, scale, per-sheet, quality, profile + nút native driver | Hủy (Ghost) / Áp dụng (Rounded) |
+| PresetManagerWindow | ~520 | Danh sách preset + đổi tên / xóa / áp dụng / xuất / nhập (`.printonator`) | Đóng (Rounded) |
+| WatchFolderWindow | ~460 | Danh sách thư mục theo dõi + Thêm/Xóa + auto-print | Đóng (Rounded) |
+| PrintConfirmWindow | ~480 | Xác nhận in trước khi chạy: số file, ước lượng trang, máy in | Hủy (Ghost) / In (Rounded) |
+| PrintDoneWindow | ~520 | "✓ Đã in xong": thống kê file in được, nút xóa khỏi queue, rate request | Đóng (Rounded) |
 
 **Pitfall:** mỗi dialog tự copy 2 style button (RoundedBtn/GhostBtn) — không dùng chung được qua StaticResource.
 
-## 8. TODO UI từ Penpot (chi tiết: docs/COMPARISON_PENPOT.md)
+## 8. i18n & Mode (đã làm)
 
-1. Progress bar (a nhắc)
-2. Toast/badge success khi add file (a nhắc)
-3. "Print all (N)" count
-4. Icon search ⌕ header
-5. ✓ done + ↻ Reloaded badge
-6. PageRangeDialog preview physical pages
-7. Màn Printer Config riêng (danh sách + trạng thái + paper + capabilities + scan)
-8. Default paper theo file type
-9. Màn Preset + MCP + Safety
-10. Security Warning
+- **i18n 5 ngôn ngữ**: vi (nguồn chuẩn) / en / zh / ru / ja — catalog `Localization/Strings.json` + `Localization/Keys.cs` (const tránh typo).
+  Chọn ngôn ngữ trong AboutWindow (`About.LanguageLabel` combo) → ghi registry → nhắc restart.
+  Gate script `tools/check_i18n.ps1` (parity 5 ngôn ngữ, placeholder {n}, flag "---" chưa dịch, flag tiếng Việt lọt sang en).
+- **Lite / Full mode**: `ModeResolver` đọc/ghi registry; combo trong AboutWindow (`Mode.ModeLabel`); Lite ẩn các tính năng nâng cao (ví dụ nút theo dõi thư mục), Full bật đủ.
+
+## 9. TODO UI từ Penpot (chi tiết: docs/COMPARISON_PENPOT.md)
+
+1. ✅ Progress bar (footer + taskbar)
+2. ✅ Toast/badge success khi add file
+3. ✅ "Print all (N)" count
+4. ✅ Icon search ⌕ header
+5. ✅ ✓ done + ↻ Reloaded badge
+6. ✅ PageRangeDialog preview physical pages
+7. ✅ Màn Printer Config riêng (danh sách + trạng thái + paper + capabilities + scan)
+8. ✅ Default paper theo file type
+9. ✅ Màn Preset (PresetManagerWindow) + nút duyệt job AwaitingApproval; màn MCP/Safety UI đầy đủ chưa làm
+10. ⚠️ Security Warning — có dòng "chưa xác thực chữ ký số" trong AboutWindow; màn đầy đủ theo Penpot chưa làm

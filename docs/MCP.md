@@ -1,7 +1,7 @@
 # Printonator — MCP Server ("AI in giùm")
 
 > Tài liệu dùng cho AI client (Claude Code/Desktop, Hermes...) kết nối Printonator để in file thay người.
-> Snapshot 2026-08-25 — code thật tại `src/Printonator.Mcp` + `src/Printonator.Spool`.
+> Snapshot 2026-08-30 — code thật tại `src/Printonator.Mcp` + `src/Printonator.Spool`.
 
 ## 1. Chạy server
 
@@ -14,6 +14,10 @@ dotnet run --project src/Printonator.Mcp -- --stdio
 ```
 
 - **Chỉ bind loopback** (`127.0.0.1`), không CORS — người khác trong LAN không ra lệnh in được.
+
+> **CLI wrapper:** file `tools/printonator.ps1` (wrapper gọi nhanh server bằng đường dẫn exe cố định) **chưa có** —
+> hiện chạy trực tiếp `dotnet run --project src/Printonator.Mcp` hoặc exe đã build như bên trên.
+> Shell verb "In với Printonator" gọi app chính (UI), không đi qua MCP server.
 
 ## Cấu hình client (đăng ký server)
 
@@ -54,9 +58,15 @@ claude mcp add printonator -t stdio -- <đường_dẫn>\Printonator.Mcp.exe --s
 | `get_guard_config` | Xem cấu hình an toàn đang áp dụng (AI có tự in được không) |
 | `get_error_reference` | Tra cứu bảng mã lỗi → nghĩa + AI nên làm gì (xem §4) |
 
-> Engine in: file Office (DOCX/XLSX/PPTX) in bằng **app gốc trên máy user** (Word/Excel/PowerPoint COM,
-> như Print Conductor) → fallback shell "printto" khi không có app đó hoặc định dạng khác (PDF, ảnh...).
-> Xem `src/Printonator.Spool/Printing/OfficeComPrintEngine.cs`.
+> Engine in (thứ tự đăng ký, engine đầu tiên `CanHandle` thắng — KHÔNG bundle lib):
+> 1. `OfficeComPrintEngine` — Word/Excel/PowerPoint COM nếu có trên máy (giữ page setup/section).
+> 2. `LibreOfficePrintEngine` — `soffice --headless --pt` nếu máy có LibreOffice.
+> 3. `BrowserPrintEngine` — Chrome/Edge headless (CDP printToPDF) cho PDF/ảnh/TXT: áp page range/scale/khổ giấy;
+>    PDF slicing qua `WindowsPdfRasterizer` (Windows.Data.Pdf, API có sẵn).
+> 4. `WatermarkPrintEngine` — engine bọc: có watermark text → render chèn dấu mờ, không thì chuyển thẳng xuống trong.
+> 5. `SpoolPrintEngine` — shell "printto" fallback mọi định dạng.
+> Gộp lô (merge) và trang bìa (cover) đi qua `MergePrintEngine` / `CoverPageRenderer` (HTML → browser → PDF tạm → in).
+> Xem `src/Printonator.Spool/Printing/`.
 
 Mọi tool trả JSON `{ok:true, ...}` hoặc `{ok:false, error:{code, category, message, hint, suggestedAction}}` —
 không ném, không lộ đường dẫn/Detail cho AI.
@@ -134,7 +144,8 @@ Mcp approve off → Enqueue thẳng như User
 
 ```bash
 dotnet build Printonator.sln
-dotnet test tests/Printonator.Core.Tests      # 78  (PrintGuard/Preset/Approve/Queue/error-routing)
+dotnet test tests/Printonator.Core.Tests      # 102 (PrintGuard/Preset/Approve/Queue/error-routing/history/queue-store)
 dotnet test tests/Printonator.Mcp.Tests       # 6   (tool shape, error reference, pick printer)
 dotnet test tests/Printonator.Spool.Tests     # 4   (E2E print-to-PDF)
+dotnet test tests/Printonator.UITests         # 27  (FlaUI — cần desktop)
 ```

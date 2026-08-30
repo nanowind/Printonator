@@ -44,15 +44,15 @@
 
 | Element trong Penpot | Trong app? | Ghi chú |
 |---|---|---|
-| **Presets list (Hop dong Lien doanh 4x/A4/2-sided/HP M404 + Delete + New preset)** | ⚠️ Một phần | **Model + MCP tools có** (PresetStore JSON + get_presets/save_preset/print_with_preset); **UI màn Preset CHƯA có** — làm tiếp |
-| **AI PRINT VIA MCP: Status Running, Endpoint http://localhost:3939/mcp, Tools list** | ⚠️ Một phần | **Server có** (Printonator.Mcp, HTTP/stdio, 8 tools, endpoint :3939/mcp — xem docs/MCP.md); **màn UI theo dõi MCP CHƯA có** |
-| **SAFETY: Approved printers only (5), Max pages/batch (200), Require approve (On), Audit (Yes)** | ⚠️ Một phần | **Guard có** (PrintGuard: allowlist, 200 trang/lô, RequireApprove=true mặc định, audit JSON); **màn UI Safety CHƯA có** |
+| **Presets list (Hop dong Lien doanh 4x/A4/2-sided/HP M404 + Delete + New preset)** | ✅ **Có (mới)** | `PresetManagerWindow` (danh sách, đổi tên, xóa, áp dụng) + PresetStore JSON + MCP get_presets/save_preset/print_with_preset; Print Settings có combo profile + Lưu/Xóa |
+| **AI PRINT VIA MCP: Status Running, Endpoint http://localhost:3939/mcp, Tools list** | ⚠️ Một phần | **Server có** (Printonator.Mcp, HTTP/stdio, 13 tools, endpoint :3939/mcp — xem docs/MCP.md); **màn UI theo dõi MCP CHƯA có** |
+| **SAFETY: Approved printers only (5), Max pages/batch (200), Require approve (On), Audit (Yes)** | ⚠️ Một phần | **Guard có** (PrintGuard: allowlist, 200 trang/lô, RequireApprove=true mặc định, audit JSON); **nút duyệt job `AwaitingApproval` có trên MainWindow (Approve all/Reject all)**; màn UI Safety đầy đủ CHƯA có |
 
 ## 4. Màn Security Warning (board 7)
 
 | Element | Trong app? | Ghi chú |
 |---|---|---|
-| **Cảnh báo "This build is NOT trusted..."** | ❌ Thiếu | CONCEPT §8b: phát hiện clone/signature (minisign/SHA-256) — cần hạ tầng ký bản phát hành trước; roadmap |
+| **Cảnh báo "This build is NOT trusted..."** | ⚠️ Một phần | AboutWindow đã có dòng "Bản build chưa xác thực chữ ký số" (About.SecurityNote, 5 ngôn ngữ); hạ tầng ký bản phát hành (minisign) đã có trong release.yml — màn warning đầy đủ theo Penpot chưa làm |
 
 ## 5. Tổng hợp nhanh — trạng thái sau đợt này
 
@@ -66,14 +66,18 @@
 7. **Màn Printer Config** — trạng thái + paper + capabilities + Scan + offline banner
 8. **Default paper theo loại file**
 9. **Sort theo cột** (Name/Pages/Settings/Status)
-10. **MCP server + guard** — 8 tools, allowlist/quota/approve/audit
+10. **MCP server + guard** — 13 tools, allowlist/quota/approve/audit
 11. **Engine app gốc Office** (Word/Excel/PPT COM) cho DOCX/XLSX/PPTX — fallback shell
 
+### ✅ Đã xong thêm (các đợt 2026-08-26..30):
+12. **Màn Preset UI** — `PresetManagerWindow` (list + đổi tên + xóa + áp dụng) + profile combo trong Print Settings
+13. **Nút duyệt job `AwaitingApproval`** — Approve all / Reject all trên MainWindow (host MCP in-process dùng chung PrintQueue)
+14. **PDF engine + LibreOffice** — `WindowsPdfRasterizer` (Windows.Data.Pdf, không cần PDFium) + `LibreOfficePrintEngine` + `BrowserPrintEngine`
+15. **Security Warning (bản nhẹ)** — dòng "chưa xác thực chữ ký số" trong AboutWindow (5 ngôn ngữ)
+
 ### ❌ Còn thiếu (thứ tự đề xuất):
-12. **Màn Preset UI** (list + New + Delete + Apply) — model đã sẵn sàng
-13. **Màn MCP/Safety UI** (Status/Endpoint/Tools + allowlist/quota/approve/audit + nút duyệt job `AwaitingApproval`) — Core đã có `ApproveJob`/`RejectJob`
-14. **PDF engine (PDFium) + LibreOffice cho máy không có MS Office** — Word/Excel/PPT COM đã có
-15. **Security Warning** (cần cơ chế ký bản phát hành)
+- **Màn MCP/Safety UI đầy đủ** (Status/Endpoint/Tools + allowlist/quota/approve/audit dạng bảng)
+- **Màn Security Warning đầy đủ theo Penpot** (phát hiện clone/signature thật sự — hiện mới có dòng thông báo)
 
 ## 6. Ghi chú cho AI thực hiện tiếp
 

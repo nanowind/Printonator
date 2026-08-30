@@ -27,6 +27,7 @@ public static class Keys
         public const string LanguageTooltip = "About.LanguageTooltip";
         public const string LicenseText = "About.LicenseText";
         public const string LicenseTitle = "About.LicenseTitle";
+        public const string SecurityNote = "About.SecurityNote";
         public const string VersionText = "About.VersionText";
         public const string WindowTitle = "About.WindowTitle";
     }

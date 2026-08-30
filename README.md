@@ -18,10 +18,13 @@ Printonator gom toàn bộ về một màn hình:
 - Cấu hình in áp cho cả lô hoặc riêng từng file: số bản, 2 mặt, khổ giấy, màu, khay, khoảng trang...
 - Bấm in một phát — app tự chọn cách in phù hợp nhất với phần mềm máy bạn đang có.
 - Nối với AI qua MCP để AI in giúp, kèm guardrail an toàn.
+- Giao diện 5 ngôn ngữ (Việt / English / 中文 / Русский / 日本語) — đổi trong cửa sổ Thông tin.
 
 ## Cài đặt
 
 Tải installer mới nhất từ [GitHub Releases](https://github.com/nanowind/Printonator/releases) rồi chạy. Setup tự cài .NET 8 Desktop Runtime nếu máy chưa có, không cần làm gì thêm.
+
+> **Bản beta chưa ký số** — SmartScreen có thể cảnh báo; nhấn "More info → Run anyway" nếu tin tác giả.
 
 ## Cách dùng
 
@@ -32,10 +35,16 @@ Tải installer mới nhất từ [GitHub Releases](https://github.com/nanowind/
 
 Mấy điểm hay nhớ:
 
-- **Chọn trang kiểu Word section**: gõ `2,5`, `3-4`, `S2:1-3` — có preview trước khi in, khỏi lo nhầm trang.
-- **Lưu preset**: bộ cấu hình hay dùng (ví dụ "Hợp đồng 2 mặt") lưu lại để dùng tiếp.
+- **Chọn trang kiểu Word section**: gõ `2,5`, `3-4`, `S2:1-3`, kể cả `last` (trang cuối) — có preview trước khi in, khỏi lo nhầm trang.
+- **Lưu preset**: bộ cấu hình hay dùng (ví dụ "Hợp đồng 2 mặt") lưu lại để dùng tiếp, xuất/nhập ra file để mang sang máy khác.
 - **Mở file xem/sửa**: double-click vào dòng, đóng file xong app tự nạp bản mới nhất.
 - **In lại file đã in**: chọn lại rồi in, không cần thêm lại.
+- **In từng file vào máy riêng**: mỗi dòng có combo chọn máy in.
+- **Gộp thành 1 bản in**: chọn nhiều file để in chung 1 lần đẩy xuống máy.
+- **Trang bìa**: in một trang bìa (tên lô, ngày, số file) trước lô.
+- **Dấu mờ (watermark)**: chèn chữ mờ vào bản in, chỉnh độ đậm nhạt.
+- **Theo dõi thư mục**: đặt một thư mục, file mới thả vào sẽ tự vào hàng đợi (và tự in nếu bật).
+- **Lịch sử in**: app nhớ các lần in gần đây; lần sau mở lại còn cả hàng đợi chưa in.
 
 ## In bằng gì trên máy
 
@@ -68,12 +77,12 @@ Cần .NET 8 SDK:
 
 ```bash
 dotnet build Printonator.sln                # build toàn bộ
-dotnet test Printonator.sln                 # ~72 test Core + 27 test UI
+dotnet test Printonator.sln                 # Core 102 + Spool 4 + Mcp 6 + UI 27 = 139 tests
 dotnet run --project src/Printonator.UI     # chạy app
 dotnet run --project src/Printonator.Mcp    # chạy MCP server
 ```
 
-Cấu trúc: `Printonator.Core` (hàng đợi, state machine, preset, guard an toàn) → `Printonator.Spool` (máy in + engine) → `Printonator.UI` (WPF) và `Printonator.Mcp`. Chi tiết ở [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) và [docs/COMPARISON_PRINT_CONDUCTOR.md](docs/COMPARISON_PRINT_CONDUCTOR.md).
+Cấu trúc: `Printonator.Core` (hàng đợi, state machine, preset, guard an toàn, lịch sử) → `Printonator.Spool` (máy in + engine: Office COM, LibreOffice, Chrome/Edge headless, watermark, gộp file, trang bìa, shell) → `Printonator.UI` (WPF, 5 ngôn ngữ, Lite/Full mode) và `Printonator.Mcp` (13 tools). Chi tiết ở [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) và [docs/COMPARISON_PRINT_CONDUCTOR.md](docs/COMPARISON_PRINT_CONDUCTOR.md).
 
 ## Từ tác giả
 
