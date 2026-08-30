@@ -276,7 +276,7 @@
                                               Click="ManagePresets_Click" Padding="12,6" Margin="0,0,8,0"
                                               AutomationProperties.AutomationId="ManagePresetsBtn"
                                               ToolTip="{l10n:Loc Main.ManagePresetsButton}"/>
-                                     <Button Content="{l10n:Loc Main.WatchButton}" Style="{StaticResource GhostBtn}"
+                                     <Button Content="{l10n:Loc Main.WatchButton}" x:Name="WatchFoldersBtn" Style="{StaticResource GhostBtn}"
                                               Click="WatchFolders_Click" Padding="12,6" Margin="0,0,8,0"
                                               AutomationProperties.AutomationId="WatchFoldersBtn"
                                               ToolTip="{l10n:Loc Main.WatchButton}"/>
@@ -354,8 +354,8 @@
                                             <ColumnDefinition Width="116"/>
                                             <ColumnDefinition Width="16"/>
                                             <ColumnDefinition Width="2.5*"/>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="16"/>
+                                            <ColumnDefinition Width="*" x:Name="ColPrinterWidth"/>
+                                            <ColumnDefinition Width="16" x:Name="ColPrinterSpacer"/>
                                             <ColumnDefinition Width="16"/>
                                             <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="16"/>

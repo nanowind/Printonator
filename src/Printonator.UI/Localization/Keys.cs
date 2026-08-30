@@ -230,6 +230,14 @@ public static class Keys
         public const string WindowTitle = "Main.WindowTitle";
     }
 
+    public static class Mode
+    {
+        public const string ModeLabel = "Mode.ModeLabel";
+        public const string LiteLabel = "Mode.LiteLabel";
+        public const string FullLabel = "Mode.FullLabel";
+        public const string RestartPrompt = "Mode.RestartPrompt";
+    }
+
     public static class Notify
     {
         public const string BatchDone = "Notify.BatchDone";

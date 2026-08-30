@@ -56,6 +56,12 @@
                       SelectionChanged="LanguageCombo_SelectionChanged"
                       ToolTip="{l10n:Loc About.LanguageTooltip}"/>
         </StackPanel>
+        <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+            <TextBlock Text="{l10n:Loc Mode.ModeLabel}" FontSize="11.5" Foreground="{StaticResource MutedBrush}"
+                       VerticalAlignment="Center" Margin="0,0,10,0"/>
+            <ComboBox x:Name="ModeCombo" Width="220" FontSize="12" VerticalAlignment="Center"
+                      SelectionChanged="ModeCombo_SelectionChanged"/>
+        </StackPanel>
     </StackPanel>
     </ScrollViewer>
 </Window>

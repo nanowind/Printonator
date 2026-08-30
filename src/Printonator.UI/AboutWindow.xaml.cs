@@ -22,6 +22,7 @@ public partial class AboutWindow : Window
         var v = Assembly.GetExecutingAssembly().GetName().Version;
         VersionText.Text = L10n.F(Keys.About.VersionText, v is null ? "1.0.0" : v.ToString(3));
         LoadLanguages();
+        LoadMode();
     }
 
     /// <summary>Nạp danh sách ngôn ngữ vào combo — hiển thị tên BẢN NGỮ (Tiếng Việt / English / 中文 / Русский / 日本語).</summary>
@@ -45,6 +46,42 @@ public partial class AboutWindow : Window
     }
 
     private static ComboBoxItem Item(object tag, string display) => new() { Content = display, Tag = tag };
+
+    /// <summary>Nạp danh sách chế độ (Lite/Full) vào combo — chọn chế độ hiện tại từ ModeResolver.</summary>
+    private void LoadMode()
+    {
+        var items = new ObservableCollection<ComboBoxItem>
+        {
+            Item(false, L10n.S(Keys.Mode.LiteLabel)),
+            Item(true, L10n.S(Keys.Mode.FullLabel)),
+        };
+        ModeCombo.ItemsSource = items;
+        foreach (var it in items)
+            if (it.Tag is bool full && full == ModeResolver.IsFull)
+            { ModeCombo.SelectedItem = it; break; }
+    }
+
+    /// <summary>Đổi chế độ giao diện (Lite/Full) → ghi registry + nhắc khởi động lại app để áp dụng.</summary>
+    private void ModeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox combo || combo.SelectedItem is not ComboBoxItem { Tag: bool full }) return;
+        if (full == ModeResolver.IsFull) return; // chọn cùng chế độ
+
+        ModeResolver.SetMode(full);
+
+        var ask = MessageBox.Show(S(Keys.Mode.RestartPrompt),
+                                  S(Keys.About.WindowTitle),
+                                  MessageBoxButton.YesNo, MessageBoxImage.Information);
+        if (ask == MessageBoxResult.Yes)
+        {
+            try
+            {
+                System.Diagnostics.Process.Start(System.Diagnostics.Process.GetCurrentProcess().MainModule!.FileName);
+            }
+            catch { }
+            Application.Current.Shutdown();
+        }
+    }
 
     /// <summary>Đổi ngôn ngữ → ghi registry + nhắc khởi động lại app để áp dụng.</summary>
     private void LanguageCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)

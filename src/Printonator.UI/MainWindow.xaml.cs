@@ -63,6 +63,18 @@ public partial class MainWindow : Window
         InitializeComponent();
         DataContext = this;
 
+        // ===== Chế độ Lite (mặc định): ẩn tính năng Phase 2 khỏi UI =====
+        if (!ModeResolver.IsFull)
+        {
+            // Cột máy in per-file (header + nội dung): collapse cột thật sự để hàng đợi dùng lại
+            // khoảng trống (Width=0 sẽ khiến TextBlock ColPrinter + combo per-file tự ẩn theo cột).
+            ColPrinterWidth.Width = new GridLength(0);
+            ColPrinterSpacer.Width = new GridLength(0);
+            ColPrinter.Visibility = Visibility.Collapsed;   // double safety — cột đã rộng 0
+            // Nút "Theo dõi" (Watch folder) — không hiện ở chế độ Lite.
+            WatchFoldersBtn.Visibility = Visibility.Collapsed;
+        }
+
         // ===== Refactor T0.1: batch orchestration + footer/banner/toast tách sang class riêng =====
         _footer = new FooterController(
             FooterStats, FooterProgress, ProgressText, TaskbarInfo, PrintMainBtn,
@@ -416,6 +428,19 @@ public partial class MainWindow : Window
     private void PrinterPerFile_Loaded(object sender, RoutedEventArgs e)
     {
         if (sender is not ComboBox combo) return;
+
+        // Chế độ Lite: collapse cột máy in per-file CỦA ROW NÀY (cột 8 content + 9 spacer — grid của
+        // ItemTemplate nằm trong namescope riêng nên phải xử lý theo từng row được dựng, giống PagesPopup).
+        if (!ModeResolver.IsFull)
+        {
+            if (combo.Parent is Grid rowGrid && rowGrid.ColumnDefinitions.Count > 9)
+            {
+                rowGrid.ColumnDefinitions[8].Width = new GridLength(0);
+                rowGrid.ColumnDefinitions[9].Width = new GridLength(0);
+            }
+            return; // combo đã ở cột rộng 0 — không cần chọn item
+        }
+
         if (combo.DataContext is not PrintJob job) return;
         SelectComboForJob(combo, job);
     }

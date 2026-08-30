@@ -22,6 +22,10 @@ public partial class App : Application
         var culture = CultureResolver.Resolve();
         L10n.ApplyCulture(culture);
 
+        // === BƯỚC 1b: Chế độ giao diện (Lite/Full) — đọc TRƯỚC khi tạo window để MainWindow
+        // biết ẩn/hiện tính năng Phase 2 ngay lúc load (không cần gọi lại sau này). ===
+        ModeResolver.Initialize();
+
         // === BƯỚC 2: Đăng ký menu chuột phải (HKCU — không cần admin) ===
         SingleInstance.RegisterShellMenu();
 

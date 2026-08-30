@@ -36,6 +36,13 @@ public partial class PrintSettingsWindow : Window
 
         InitializeComponent();
 
+        // ===== Chế độ Lite (mặc định): ẩn tính năng Phase 2 khỏi cửa sổ cấu hình =====
+        if (!ModeResolver.IsFull)
+        {
+            AdvancedBatchPanel.Visibility = Visibility.Collapsed;   // Cover page + Merge (tab Cơ bản)
+            WatermarkPanel.Visibility = Visibility.Collapsed;       // Watermark (tab Nâng cao)
+        }
+
         Title = _targets.Count == 1
             ? L10n.F(Keys.Settings.WindowTitleTarget, _targets[0].FileName)
             : L10n.F(Keys.Settings.WindowTitlePlural, _targets.Count);

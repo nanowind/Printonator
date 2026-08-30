@@ -209,11 +209,14 @@
                                 <CheckBox x:Name="AutoOrientationCheck" Content="{l10n:Loc Settings.AutoOrientationCheck}" FontSize="12" Margin="0,10,0,0"/>
                                 <TextBlock Text="{l10n:Loc Settings.HintAutoOrientation}" Style="{StaticResource HintText}"/>
 
-                                <CheckBox x:Name="CoverPageCheck" Content="{l10n:Loc Settings.CoverPage}" FontSize="12" Margin="0,10,0,0"/>
-                                <TextBlock Text="{l10n:Loc Settings.CoverPageHint}" Style="{StaticResource HintText}"/>
+                                <!-- ===== Phase 2 (Lite): Cài đặt lô — Cover page + Merge, ẩn cả khối ở chế độ Lite ===== -->
+                                <StackPanel x:Name="AdvancedBatchPanel">
+                                    <CheckBox x:Name="CoverPageCheck" Content="{l10n:Loc Settings.CoverPage}" FontSize="12" Margin="0,10,0,0"/>
+                                    <TextBlock Text="{l10n:Loc Settings.CoverPageHint}" Style="{StaticResource HintText}"/>
 
-                                <CheckBox x:Name="MergeCheck" Content="{l10n:Loc Settings.MergeIntoOne}" FontSize="12" Margin="0,10,0,0"/>
-                                <TextBlock Text="{l10n:Loc Settings.MergeHint}" Style="{StaticResource HintText}"/>
+                                    <CheckBox x:Name="MergeCheck" Content="{l10n:Loc Settings.MergeIntoOne}" FontSize="12" Margin="0,10,0,0"/>
+                                    <TextBlock Text="{l10n:Loc Settings.MergeHint}" Style="{StaticResource HintText}"/>
+                                </StackPanel>
                             </StackPanel>
                         </Grid>
 
@@ -337,20 +340,23 @@
                         </ComboBox>
                         <TextBlock Text="{l10n:Loc Settings.HintQuality}" Style="{StaticResource HintText}"/>
 
-                        <TextBlock Text="{l10n:Loc Settings.WatermarkText}" Style="{StaticResource OptionLabel}"/>
-                        <TextBox x:Name="WatermarkText" Width="200" FontSize="12" Padding="4,3"
-                                 HorizontalAlignment="Left" VerticalContentAlignment="Center"/>
-                        <TextBlock Text="{l10n:Loc Settings.WatermarkTextHint}" Style="{StaticResource HintText}"/>
+                        <!-- ===== Phase 2 (Lite): Watermark, ẩn cả khối ở chế độ Lite ===== -->
+                        <StackPanel x:Name="WatermarkPanel">
+                            <TextBlock Text="{l10n:Loc Settings.WatermarkText}" Style="{StaticResource OptionLabel}"/>
+                            <TextBox x:Name="WatermarkText" Width="200" FontSize="12" Padding="4,3"
+                                     HorizontalAlignment="Left" VerticalContentAlignment="Center"/>
+                            <TextBlock Text="{l10n:Loc Settings.WatermarkTextHint}" Style="{StaticResource HintText}"/>
 
-                        <TextBlock Text="{l10n:Loc Settings.WatermarkOpacity}" Style="{StaticResource OptionLabel}"/>
-                        <StackPanel Orientation="Horizontal">
-                            <Slider x:Name="WatermarkOpacitySlider" Width="220" Minimum="0.1" Maximum="1.0"
-                                    SmallChange="0.05" LargeChange="0.1" TickFrequency="0.05" IsSnapToTickEnabled="True"
-                                    ValueChanged="WatermarkOpacity_Changed" VerticalAlignment="Center"/>
-                            <TextBlock x:Name="WatermarkOpacityValue" Text="30%" FontSize="12" Foreground="#6B6B6B"
-                                       VerticalAlignment="Center" Margin="10,0,0,0"/>
+                            <TextBlock Text="{l10n:Loc Settings.WatermarkOpacity}" Style="{StaticResource OptionLabel}"/>
+                            <StackPanel Orientation="Horizontal">
+                                <Slider x:Name="WatermarkOpacitySlider" Width="220" Minimum="0.1" Maximum="1.0"
+                                        SmallChange="0.05" LargeChange="0.1" TickFrequency="0.05" IsSnapToTickEnabled="True"
+                                        ValueChanged="WatermarkOpacity_Changed" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="WatermarkOpacityValue" Text="30%" FontSize="12" Foreground="#6B6B6B"
+                                           VerticalAlignment="Center" Margin="10,0,0,0"/>
+                            </StackPanel>
+                            <TextBlock Text="{l10n:Loc Settings.WatermarkOpacityHint}" Style="{StaticResource HintText}"/>
                         </StackPanel>
-                        <TextBlock Text="{l10n:Loc Settings.WatermarkOpacityHint}" Style="{StaticResource HintText}"/>
                     </StackPanel>
                 </TabItem>
             </TabControl>

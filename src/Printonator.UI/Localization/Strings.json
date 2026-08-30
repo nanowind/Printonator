@@ -483,7 +483,11 @@
     "Main.WatchButton": "Theo dõi",
     "History.HistorySaved": "Đã lưu lịch sử in",
     "Shell.MenuText": "In với Printonator",
-    "Shell.PrintTaskName": "In từ menu chuột phải"
+    "Shell.PrintTaskName": "In từ menu chuột phải",
+    "Mode.ModeLabel": "Chế độ",
+    "Mode.LiteLabel": "Gọn (Lite)",
+    "Mode.FullLabel": "Đầy đủ (Full)",
+    "Mode.RestartPrompt": "Đổi chế độ cần khởi động lại Printonator. Khởi động lại ngay?"
   },
   "en": {
     "Common.ApplyButton": "Apply",
@@ -872,7 +876,11 @@
     "Main.WatchButton": "Watch",
     "History.HistorySaved": "Print history saved",
     "Shell.MenuText": "Print with Printonator",
-    "Shell.PrintTaskName": "Print from context menu"
+    "Shell.PrintTaskName": "Print from context menu",
+    "Mode.ModeLabel": "Mode",
+    "Mode.LiteLabel": "Simplified (Lite)",
+    "Mode.FullLabel": "Full features (Full)",
+    "Mode.RestartPrompt": "Changing mode requires restart. Restart now?"
   },
   "zh": {
     "Common.ApplyButton": "应用",
@@ -1261,7 +1269,11 @@
     "Main.WatchButton": "监视",
     "History.HistorySaved": "已保存打印历史",
     "Shell.MenuText": "用 Printonator 打印",
-    "Shell.PrintTaskName": "从右键菜单打印"
+    "Shell.PrintTaskName": "从右键菜单打印",
+    "Mode.ModeLabel": "模式",
+    "Mode.LiteLabel": "精简版 (Lite)",
+    "Mode.FullLabel": "完整版 (Full)",
+    "Mode.RestartPrompt": "更改模式需要重启。立即重启？"
   },
   "ru": {
     "Common.ApplyButton": "Применить",
@@ -1650,7 +1662,11 @@
     "Main.WatchButton": "Отслеживание",
     "History.HistorySaved": "История печати сохранена",
     "Shell.MenuText": "Печать через Printonator",
-    "Shell.PrintTaskName": "Печать из контекстного меню"
+    "Shell.PrintTaskName": "Печать из контекстного меню",
+    "Mode.ModeLabel": "Режим",
+    "Mode.LiteLabel": "Упрощённый (Lite)",
+    "Mode.FullLabel": "Полный (Full)",
+    "Mode.RestartPrompt": "Изменение режима требует перезапуска. Перезапустить сейчас?"
   },
   "ja": {
     "Common.ApplyButton": "適用",
@@ -2039,6 +2055,10 @@
     "Main.WatchButton": "監視",
     "History.HistorySaved": "印刷履歴を保存しました",
     "Shell.MenuText": "Printonator で印刷",
-    "Shell.PrintTaskName": "コンテキストメニューから印刷"
+    "Shell.PrintTaskName": "コンテキストメニューから印刷",
+    "Mode.ModeLabel": "モード",
+    "Mode.LiteLabel": "簡易版 (Lite)",
+    "Mode.FullLabel": "フル機能 (Full)",
+    "Mode.RestartPrompt": "モード変更には再起動が必要です。今すぐ再起動しますか？"
   }
 }
