@@ -125,4 +125,4 @@ Grid 7 rows:
 7. ✅ Màn Printer Config riêng (danh sách + trạng thái + paper + capabilities + scan)
 8. ✅ Default paper theo file type
 9. ✅ Màn Preset (PresetManagerWindow) + nút duyệt job AwaitingApproval; màn MCP/Safety UI đầy đủ chưa làm
-10. ⚠️ Security Warning — có dòng "chưa xác thực chữ ký số" trong AboutWindow; màn đầy đủ theo Penpot chưa làm
+10. ⚠️ Security Warning — có dòng "chưa xác thực chữ ký số" trong AboutWindow; **minisign ký installer đã hoạt động** (release.yml, asset `.minisig`); màn đầy đủ theo Penpot chưa làm

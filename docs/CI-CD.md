@@ -57,8 +57,7 @@ CI không in xuống máy thật (an toàn + runner không có máy in) — in t
   ```powershell
   dotnet publish src/Printonator.UI -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
   ```
-- **Ký bản phát hành** (minisign/SHA-256) là tiền đề cho màn **Security Warning** của design Penpot
-  (xem `docs/COMPARISON_PENPOT.md`) — build-nhiều môi trường sẽ bổ sung bước ký trong pipeline.
+- **Ký bản phát hành** (minisign/SHA-256) **đã hoạt động** — release.yml dùng minisign **0.12** (bắt buộc: secret key format mới `RWRTY0I` không đọc được bằng 0.11), zip giải nén vào `minisign-win64/x86_64/`, pass truyền qua stdin pipe. Khi đặt `MINISIGN_SECRET_KEY` + `MINISIGN_PASSPHRASE` → asset `printonator-setup.exe.minisig` xuất hiện (verify bằng public key nhúng trong `UpdateChecker.cs`).
 
 ## 6. Thêm test vào CI
 

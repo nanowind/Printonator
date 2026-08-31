@@ -52,7 +52,7 @@
 
 | Element | Trong app? | Ghi chú |
 |---|---|---|
-| **Cảnh báo "This build is NOT trusted..."** | ⚠️ Một phần | AboutWindow đã có dòng "Bản build chưa xác thực chữ ký số" (About.SecurityNote, 5 ngôn ngữ); hạ tầng ký bản phát hành (minisign) đã có trong release.yml — màn warning đầy đủ theo Penpot chưa làm |
+| **Cảnh báo "This build is NOT trusted..."** | ⚠️ Một phần | AboutWindow có dòng "Bản build chưa xác thực chữ ký số" (About.SecurityNote, 5 ngôn ngữ); **minisign ký installer đã HOẠT ĐỘNG** (release.yml dùng minisign 0.12, asset `.minisig` xuất hiện từ v0.2.0-test-sign) — bản kế tiếp release sẽ có chữ ký; màn warning đầy đủ theo Penpot chưa làm |
 
 ## 5. Tổng hợp nhanh — trạng thái sau đợt này
 
