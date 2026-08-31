@@ -69,26 +69,26 @@ public sealed class PrintQueue : IDisposable
     public void AddOnly(PrintJob job) => AddOnly(new[] { job });
 
     /// <summary>Xóa job khỏi danh sách UI an toàn (lock) — tránh race với DrainAsync.
-        /// Job ĐANG IN (Converting/Spooling) → cancel token thật để engine thoát sớm; job sẽ
-        /// chuyển Cancelled trong DrainLoopAsync (KHÔNG đánh dấu Done).</summary>
-        public bool RemoveJob(PrintJob job)
+    /// Job ĐANG IN (Converting/Spooling) → cancel token thật để engine thoát sớm; job sẽ
+    /// chuyển Cancelled trong DrainLoopAsync (KHÔNG đánh dấu Done).</summary>
+    public bool RemoveJob(PrintJob job)
+    {
+        lock (_sync)
         {
-            lock (_sync)
+            if (job is null) return false;
+            if (job.State == JobState.Queued)
             {
-                if (job is null) return false;
-                if (job.State == JobState.Queued)
-                {
-                    // Nếu đang chờ trong hàng đợi — gỡ luôn khỏi pending
-                    var pending = _pending.ToList();
-                    if (pending.Remove(job)) _pending = new Queue<PrintJob>(pending);
-                }
-                else if (job.State is JobState.Converting or JobState.Spooling)
-                {
-                    CancelJobLocked(job);
-                }
-                return Jobs.Remove(job);
+                // Nếu đang chờ trong hàng đợi — gỡ luôn khỏi pending
+                var pending = _pending.ToList();
+                if (pending.Remove(job)) _pending = new Queue<PrintJob>(pending);
             }
+            else if (job.State is JobState.Converting or JobState.Spooling)
+            {
+                CancelJobLocked(job);
+            }
+            return Jobs.Remove(job);
         }
+    }
 
     /// <summary>Đang tạm dừng lô in? (bấm Pause — dừng giữa các job; job chờ giữ Queued, job đang in chạy nốt)</summary>
     public bool IsPaused => _isPaused;
@@ -278,38 +278,38 @@ public sealed class PrintQueue : IDisposable
     }
 
     /// <summary>Hủy 1 job đang chờ (Queued) — MCP cancel_job dùng. Job ĐANG IN (Converting/Spooling)
-        /// cũng hủy được: cancel token thật → engine thoát sớm → DrainLoopAsync chuyển Cancelled
-        /// (KHÔNG đánh dấu Done). Trả true nếu job còn chưa về trạng thái cuối.</summary>
-        public bool CancelJob(PrintJob job)
+    /// cũng hủy được: cancel token thật → engine thoát sớm → DrainLoopAsync chuyển Cancelled
+    /// (KHÔNG đánh dấu Done). Trả true nếu job còn chưa về trạng thái cuối.</summary>
+    public bool CancelJob(PrintJob job)
+    {
+        lock (_sync)
         {
-            lock (_sync)
+            if (job is null) return false;
+            if (job.State == JobState.Queued)
             {
-                if (job is null) return false;
-                if (job.State == JobState.Queued)
-                {
-                    var pending = _pending.ToList();
-                    if (pending.Remove(job)) _pending = new Queue<PrintJob>(pending);
-                    SetState(job, JobState.Cancelled);
-                    return true;
-                }
-                if (job.State is JobState.Converting or JobState.Spooling)
-                {
-                    CancelJobLocked(job);
-                    return true;
-                }
-                return false; // Done/Error/Cancelled — không hủy được nữa
+                var pending = _pending.ToList();
+                if (pending.Remove(job)) _pending = new Queue<PrintJob>(pending);
+                SetState(job, JobState.Cancelled);
+                return true;
             }
+            if (job.State is JobState.Converting or JobState.Spooling)
+            {
+                CancelJobLocked(job);
+                return true;
+            }
+            return false; // Done/Error/Cancelled — không hủy được nữa
         }
+    }
 
-        /// <summary>Cancel token của job đang in (gọi TRONG lock(_sync)). Engine nhận token ở điểm chờ
-        /// sẽ ném OperationCanceledException → DrainLoopAsync chuyển job sang Cancelled thay vì Done.</summary>
-        private void CancelJobLocked(PrintJob job)
+    /// <summary>Cancel token của job đang in (gọi TRONG lock(_sync)). Engine nhận token ở điểm chờ
+    /// sẽ ném OperationCanceledException → DrainLoopAsync chuyển job sang Cancelled thay vì Done.</summary>
+    private void CancelJobLocked(PrintJob job)
+    {
+        if (_jobCts.TryGetValue(job, out var cts))
         {
-            if (_jobCts.TryGetValue(job, out var cts))
-            {
-                try { cts.Cancel(); } catch { }
-            }
+            try { cts.Cancel(); } catch { }
         }
+    }
 
     /// <summary>
     /// Thêm job từ AI qua MCP vào hàng đợi CHỜ DUYỆT (state AwaitingApproval) — chưa in.
