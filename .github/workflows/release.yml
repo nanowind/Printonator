@@ -139,8 +139,9 @@ jobs:
           fi
           MSIG=$(command -v minisign || echo /tmp/minisign-win64/x86_64/minisign.exe)
           # LƯU Ý: không dùng process substitution <(...) cho Windows exe (không đọc được /dev/fd/*).
-          # Ghi secret key (chỉ dòng base64 từ GitHub secret) ra file tạm, ký xong xóa sạch.
-          printf '%s\n' "$MINISIGN_SECRET_KEY" > /tmp/ms-secret.key
+          # File secret key minisign cần ĐỦ 2 dòng: "untrusted comment: ..." + dòng base64.
+          # GitHub secret chỉ chứa DÒNG BASE64 (dòng 2 của secret.key) — CI tự dựng lại header.
+          { printf 'untrusted comment: minisign encrypted secret key\n'; printf '%s\n' "$MINISIGN_SECRET_KEY"; } > /tmp/ms-secret.key
           printf '%s\n' "$MINISIGN_PASSPHRASE" > /tmp/ms-pass
           "$MSIG" -S -s /tmp/ms-secret.key \
                  -t /tmp/ms-pass -m setup/printonator-setup.exe
