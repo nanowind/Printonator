@@ -131,16 +131,16 @@ jobs:
             echo "MINISIGN_SECRET_KEY chưa đặt — bỏ qua ký (release chỉ có SHA-256)."
             exit 0
           fi
-          # Cài minisign (tạm) và ký
+          # Cài minisign (tạm) và ký — DÙNG BẢN 0.12 (phải khớp phiên bản đã tạo secret key:
+          # key bắt đầu 'RWRTY0I' là format MỚI, minisign 0.11 KHÔNG đọc được → 'Error while loading the secret key file').
           if command -v minisign >/dev/null 2>&1; then :; else
-            curl -sL -o /tmp/minisign.zip https://github.com/jedisct1/minisign/releases/download/0.11/minisign-0.11-win64.zip
+            curl -sL -o /tmp/minisign.zip https://github.com/jedisct1/minisign/releases/download/0.12/minisign-0.12-win64.zip
             (cd /tmp && unzip -o minisign.zip)
           fi
           MSIG=$(command -v minisign || echo /tmp/minisign-win64/minisign.exe)
           # LƯU Ý: không dùng process substitution <(...) cho Windows exe (không đọc được /dev/fd/*).
-          # Minisign yêu cầu file key có ĐỦ 2 dòng: "untrusted comment: ..." + dòng base64.
-          # GitHub secret chỉ chứa DÒNG BASE64 (dòng 2 của secret.key) — CI tự dựng lại header.
-          { printf 'untrusted comment: minisign encrypted secret key\n'; printf '%s\n' "$MINISIGN_SECRET_KEY"; } > /tmp/ms-secret.key
+          # Ghi secret key (chỉ dòng base64 từ GitHub secret) ra file tạm, ký xong xóa sạch.
+          printf '%s\n' "$MINISIGN_SECRET_KEY" > /tmp/ms-secret.key
           printf '%s\n' "$MINISIGN_PASSPHRASE" > /tmp/ms-pass
           "$MSIG" -S -s /tmp/ms-secret.key \
                  -t /tmp/ms-pass -m setup/printonator-setup.exe
