@@ -137,7 +137,7 @@ jobs:
             curl -sL -o /tmp/minisign.zip https://github.com/jedisct1/minisign/releases/download/0.12/minisign-0.12-win64.zip
             (cd /tmp && unzip -o minisign.zip)
           fi
-          MSIG=$(command -v minisign || echo /tmp/minisign-win64/minisign.exe)
+          MSIG=$(command -v minisign || echo /tmp/minisign-win64/x86_64/minisign.exe)
           # LƯU Ý: không dùng process substitution <(...) cho Windows exe (không đọc được /dev/fd/*).
           # Ghi secret key (chỉ dòng base64 từ GitHub secret) ra file tạm, ký xong xóa sạch.
           printf '%s\n' "$MINISIGN_SECRET_KEY" > /tmp/ms-secret.key
