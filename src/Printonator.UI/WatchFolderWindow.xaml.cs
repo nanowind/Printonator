@@ -1,75 +1,70 @@
 using System.Windows;
-using System.Windows.Controls;
+using System.Windows.Media;
 using Printonator.UI.Localization;
 
 namespace Printonator.UI;
 
 /// <summary>
-/// Cửa sổ quản lý thư mục theo dõi (T2.6): xem danh sách, thêm, xóa, đặt cờ tự in.
-/// Mọi thay đổi (thêm/xóa/đổi autoPrint) tác động ngay lên WatchFolderService.
-/// Khi đóng cửa sổ → lưu snapshot vào watch.json.
+/// Cửa sổ theo dõi thư mục (T2.6): chọn 1 folder làm printing server — mọi file mới
+/// thả vào được tự động đưa vào hàng đợi in. Duy nhất 1 folder đang watch.
+/// Khi đóng cửa sổ → lưu snapshot (folder + enabled) vào watch.json.
 /// </summary>
 public partial class WatchFolderWindow : Window
 {
     private readonly WatchFolderService _service;
-    private readonly Dictionary<string, bool> _items;   // folder → autoPrint (hiển thị trong ListBox)
+
+    private static readonly Brush ActiveBrush = new SolidColorBrush(Color.FromRgb(0x16, 0xA3, 0x4A));
+    private static readonly Brush InactiveBrush = new SolidColorBrush(Color.FromRgb(0xDC, 0x26, 0x26));
+    private static readonly Brush WarningBrush = new SolidColorBrush(Color.FromRgb(0xCA, 0x8A, 0x04));
 
     public WatchFolderWindow(WatchFolderService service)
     {
         _service = service;
         InitializeComponent();
-        _items = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
         Loaded += (_, _) => Reload();
     }
 
     private void Reload()
     {
-        _items.Clear();
-        foreach (var kv in _service.Snapshot())
-            _items[kv.Key] = kv.Value;
+        var folder = _service.Folder;
+        var watching = _service.IsWatching;
+        var failed = _service.WatcherFailed;
 
-        // ListBox hiển thị cặp KeyValuePair<string,bool> — template chỉ show Key (đường dẫn)
-        WatchList.ItemsSource = _items.ToList();
-        EmptyText.Visibility = _items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        SyncButtons();
-    }
-
-    private KeyValuePair<string, bool>? Current
-    {
-        get
+        if (string.IsNullOrWhiteSpace(folder))
         {
-            if (WatchList.SelectedItem is KeyValuePair<string, bool> kv) return kv;
-            return null;
+            CurrentFolderText.Text = L10n.S(Keys.Watch.NoFolder);
+            CurrentFolderText.ToolTip = null;
         }
-    }
-
-    private void SyncButtons()
-    {
-        var hasSelection = Current is not null;
-        RemoveBtn.IsEnabled = hasSelection;
-        if (hasSelection)
-            AutoPrintCheck.IsChecked = Current.Value.Value;
         else
-            AutoPrintCheck.IsChecked = false;
+        {
+            CurrentFolderText.Text = folder;
+            CurrentFolderText.ToolTip = folder;
+        }
+
+        if (watching)
+        {
+            StatusText.Text = L10n.S(Keys.Watch.StatusActive);
+            StatusText.Foreground = ActiveBrush;
+        }
+        else if (failed)
+        {
+            // Folder đã chọn nhưng watcher KHÔNG mở được (mất quyền/chưa tồn tại, retry cạn) — báo vàng.
+            StatusText.Text = L10n.S(Keys.Watch.StatusWarning);
+            StatusText.Foreground = WarningBrush;
+        }
+        else
+        {
+            StatusText.Text = L10n.S(Keys.Watch.StatusInactive);
+            StatusText.Foreground = InactiveBrush;
+        }
+        StopWatchBtn.IsEnabled = watching;
     }
 
-    private void WatchList_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        => SyncButtons();
-
-    private void AutoPrint_Changed(object sender, RoutedEventArgs e)
-    {
-        var sel = Current;
-        if (sel is null) return;
-        var autoPrint = AutoPrintCheck.IsChecked == true;
-        _service.StartWatch(sel.Value.Key, autoPrint);
-        _items[sel.Value.Key] = autoPrint;
-    }
-
-    private void Add_Click(object sender, RoutedEventArgs e)
+    private void SelectFolder_Click(object sender, RoutedEventArgs e)
     {
         var dlg = new Microsoft.Win32.OpenFolderDialog
         {
-            Title = L10n.S(Keys.Watch.AddButton),
+            Title = L10n.S(Keys.Watch.SelectFolder),
             Multiselect = false,
         };
         if (dlg.ShowDialog(this) != true) return;
@@ -77,38 +72,25 @@ public partial class WatchFolderWindow : Window
         if (string.IsNullOrWhiteSpace(folder)) return;
         var full = System.IO.Path.GetFullPath(folder);
 
-        if (_items.ContainsKey(full))
-        {
-            // Đã có → chọn lại trong danh sách
-            var existing = _items.First(kv => kv.Key.Equals(full, StringComparison.OrdinalIgnoreCase));
-            WatchList.SelectedItem = existing;
-            return;
-        }
-
-        var autoPrint = AutoPrintCheck.IsChecked == true;
-        _service.StartWatch(full, autoPrint);
-        _items[full] = autoPrint;
-        WatchList.ItemsSource = _items.ToList();
-        EmptyText.Visibility = Visibility.Collapsed;
-        WatchList.SelectedItem = _items.First(kv => kv.Key.Equals(full, StringComparison.OrdinalIgnoreCase));
-        SyncButtons();
+        _service.StartWatch(full);
+        Reload();
     }
 
-    private void Remove_Click(object sender, RoutedEventArgs e)
+    private void StopWatch_Click(object sender, RoutedEventArgs e)
     {
-        var sel = Current;
-        if (sel is null) return;
-        _service.StopWatch(sel.Value.Key);
-        _items.Remove(sel.Value.Key);
-        WatchList.ItemsSource = _items.ToList();
-        EmptyText.Visibility = _items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        SyncButtons();
+        _service.StopWatch();
+        Reload();
     }
 
     private void Close_Click(object sender, RoutedEventArgs e)
     {
         // Lưu snapshot trước khi đóng — gọi im lặng (không làm hỏng đóng cửa sổ)
-        try { WatchFolderService.SaveWatches(WatchFolderService.FilePath, _service.Snapshot()); } catch { }
+        try
+        {
+            WatchFolderService.SaveConfig(WatchFolderService.FilePath,
+                new WatchFolderService.WatchConfig { Folder = _service.Folder, Enabled = _service.IsConfigured });
+        }
+        catch { }
         DialogResult = true;
         Close();
     }

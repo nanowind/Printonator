@@ -112,7 +112,7 @@ public partial class MainWindow : Window
         {
             try { QueueStore.Save(_queue.Jobs); }
             catch { /* Đóng app: lưu lỗi (disk full, file bị khóa...) không đáng để phá shutdown — cleanup dưới vẫn phải chạy */ }
-            try { if (_watchService is not null) WatchFolderService.SaveWatches(WatchFolderService.FilePath, _watchService.Snapshot()); }
+            try { if (_watchService is not null) WatchFolderService.SaveConfig(WatchFolderService.FilePath, new WatchFolderService.WatchConfig { Folder = _watchService.Folder, Enabled = _watchService.IsConfigured }); }
             catch { /* lưu watch config lỗi — không đáng phá shutdown */ }
             _watchService?.Dispose();
             _lifeCts.Cancel();
@@ -172,12 +172,15 @@ public partial class MainWindow : Window
     {
         try
         {
+            WatchFolderService.MigrateIfNeeded();
+            var cfg = WatchFolderService.LoadConfig();
+            if (cfg is null || string.IsNullOrWhiteSpace(cfg.Folder) || !cfg.Enabled) { /* không có gì để watch */ }
             _watchService = new WatchFolderService(_queue, Dispatcher, _lifeCts.Token);
-            _watchService.Toast = ShowToast;   // file mới từ thư mục theo dõi → toast
-            foreach (var kv in WatchFolderService.LoadWatches())
-                _watchService.StartWatch(kv.Key, kv.Value);
+            _watchService.Toast = ShowToast;
+            if (cfg is not null && !string.IsNullOrWhiteSpace(cfg.Folder) && cfg.Enabled)
+                _watchService.StartWatch(cfg.Folder);
         }
-        catch { _watchService = null; /* watch lỗi (mất quyền...) — app vẫn chạy bình thường */ }
+        catch { _watchService = null; }
     }
 
     /// <summary>
@@ -1272,36 +1275,49 @@ public partial class MainWindow : Window
                 try
                 {
                     HistoryStore.Append(new HistoryEntry(job.FileName, job.FilePath, job.State, job.Error?.Code,
-                        job.FinishedAt.Value, job.StartedAt, job.Config.Copies, job.PageCount));
+                        job.FinishedAt.Value, job.StartedAt, job.Config.Copies, job.PageCount, job.Source));
+                    // Printing server: máy dùng chung — báo 1 file in xong ngay lập tức (không chờ cả lô).
+                    if (job.Source == JobSource.WatchFolder && job.State == JobState.Done)
+                        AddNotification(NotificationKind.Done,
+                            L10n.F(Keys.Watch.PrintedTitle, job.FileName),
+                            L10n.F(Keys.Watch.PrintedDetail, DateTime.Now.ToString("HH:mm")));
                 }
                 catch { /* lưu lịch sử lỗi (disk full, file bị khóa...) — không làm hỏng vòng đời job */ }
             }
+            // Máy chung tự động: job watch in xong → GỠ NGAY khỏi hàng đợi (không ở lại vô hạn,
+            // không chặn dedup file in lại). Job người dùng KHÔNG bị xóa — popup 'In xong' quyết.
+            if (job.Source == JobSource.WatchFolder && job.State == JobState.Done)
+                _queue.RemoveJob(job);
             // Refresh dòng để binding trạng thái (✓ Done / màu lỗi) cập nhật — PrintJob không INPC
             JobList.Items.Refresh();
             UpdateFooter();
             UpdateApprovalBar();
-            // (Xóa file đã in khỏi hàng đợi do popup 'In xong' quyết — không tự xóa âm thầm nữa)
         });
     }
 
-    private void OnAllCompleted(int done)
+    private void OnAllCompleted(IReadOnlyList<PrintJob> completed)
     {
         // Dùng BeginInvoke (bất đồng bộ, KHÔNG block) — completion fire từ threadpool/waiter.
         Dispatcher.BeginInvoke(new Action(() =>
         {
+            var done = completed.Count;
             // Thông báo vào danh sách bell (KHÔNG còn card đơn bị ghi đè — mỗi lô một item).
             AddNotification(NotificationKind.Done,
                 L10n.F(Keys.Notify.BatchDone, done),
                 $"{DateTime.Now:HH:mm}");
             ShowToast(L10n.F(Keys.Toast.BatchDone, done));
 
-            // Popup hoàn tất — user quyết có xóa file đã in không (không tự xóa âm thầm).
-            var remove = PrintDoneWindow.Show(this, done, Jobs.ToList(), AppVersion);
-            if (remove)
+            // Chỉ hiện popup "In xong" nếu không phải watch job (máy chung tự động — không cần xác nhận xóa file).
+            var allWatch = completed.All(j => j.Source == JobSource.WatchFolder);
+            if (!allWatch)
             {
-                var removes = Jobs.Where(j => j.State == JobState.Done).ToList();
-                foreach (var j in removes) _queue.RemoveJob(j);
-                JobList.Items.Refresh();
+                var remove = PrintDoneWindow.Show(this, done, Jobs.ToList(), AppVersion);
+                if (remove)
+                {
+                    var removes = Jobs.Where(j => j.State == JobState.Done).ToList();
+                    foreach (var j in removes) _queue.RemoveJob(j);
+                    JobList.Items.Refresh();
+                }
             }
 
             UpdateFooter();

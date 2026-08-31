@@ -17,6 +17,7 @@ public enum JobSource
 {
     User,
     Mcp,
+    WatchFolder,
 }
 
 /// <summary>Chiều giấy in — có thêm "theo file / theo máy" như Print Conductor (không ép chiều).</summary>

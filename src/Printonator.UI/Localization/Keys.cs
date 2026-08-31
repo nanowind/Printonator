@@ -471,11 +471,16 @@ public static class Keys
 
     public static class Watch
     {
-        public const string AddButton = "Watch.AddButton";
-        public const string AutoPrint = "Watch.AutoPrint";
         public const string FileAdded = "Watch.FileAdded";
-        public const string NoneConfigured = "Watch.NoneConfigured";
-        public const string RemoveButton = "Watch.RemoveButton";
+        public const string InfoNote = "Watch.InfoNote";
+        public const string NoFolder = "Watch.NoFolder";
+        public const string PrintedDetail = "Watch.PrintedDetail";
+        public const string PrintedTitle = "Watch.PrintedTitle";
+        public const string SelectFolder = "Watch.SelectFolder";
+        public const string StatusActive = "Watch.StatusActive";
+        public const string StatusInactive = "Watch.StatusInactive";
+        public const string StatusWarning = "Watch.StatusWarning";
+        public const string StopWatching = "Watch.StopWatching";
         public const string WindowTitle = "Watch.WindowTitle";
     }
 

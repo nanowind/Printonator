@@ -95,4 +95,5 @@ public sealed record HistoryEntry(
     DateTimeOffset FinishedAt,
     DateTimeOffset? StartedAt,
     int Copies,
-    int PageCount);
+    int PageCount,
+    JobSource Source = JobSource.User);

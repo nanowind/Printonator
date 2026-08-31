@@ -58,6 +58,31 @@ public class HistoryStoreTests
     }
 
     [Fact]
+    public void Append_Load_Roundtrip_SourceWatchFolder()
+    {
+        var path = TempPath();
+
+        var entry = new HistoryEntry(
+            FileName: "wf.pdf",
+            FilePath: "C:\\watched\\wf.pdf",
+            State: JobState.Done,
+            ErrorCode: null,
+            FinishedAt: new DateTimeOffset(2026, 2, 1, 12, 0, 0, TimeSpan.FromHours(7)),
+            StartedAt: new DateTimeOffset(2026, 2, 1, 11, 59, 0, TimeSpan.FromHours(7)),
+            Copies: 2,
+            PageCount: 3,
+            Source: JobSource.WatchFolder);
+        HistoryStore.Append(path, entry);
+
+        var loaded = HistoryStore.Load(path);
+
+        var a = Assert.Single(loaded);
+        Assert.Equal(JobSource.WatchFolder, a.Source);
+
+        if (File.Exists(path)) File.Delete(path);
+    }
+
+    [Fact]
     public void Append_TrimsOldest_OverLimit()
     {
         var path = TempPath();

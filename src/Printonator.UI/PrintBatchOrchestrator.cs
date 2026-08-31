@@ -20,8 +20,8 @@ public sealed class PrintBatchOrchestrator
     private readonly Func<PrinterInfo?> _selectedPrinterGetter;
     private readonly Window _owner;
 
-    /// <summary>Fire khi lô in hoàn tất — tham số = số file đã in xong.</summary>
-    public event Action<int>? AllCompleted;
+    /// <summary>Fire khi lô in hoàn tất — tham số = danh sách job đã về trạng thái cuối (Done/Error/Cancelled) trong lô.</summary>
+    public event Action<IReadOnlyList<PrintJob>>? AllCompleted;
 
     /// <summary>Fire khi lô in bị dừng do lỗi — tham số = (số file đã in xong, job lỗi).</summary>
     public event Action<int, PrintJob?>? BatchStopped;
@@ -236,8 +236,8 @@ public sealed class PrintBatchOrchestrator
             return;
         }
 
-        var doneCount = batch.Count(j => j.State == JobState.Done);
-        try { await _dispatcher.BeginInvoke(new Action(() => AllCompleted?.Invoke(doneCount))); }
+        var completed = batch.Where(j => terminal.Contains(j.State)).ToList();
+        try { await _dispatcher.BeginInvoke(new Action(() => AllCompleted?.Invoke(completed))); }
         catch { }
     }
 }
