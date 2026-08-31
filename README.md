@@ -26,6 +26,12 @@ Tải installer mới nhất từ [GitHub Releases](https://github.com/nanowind/
 
 > **Bản beta chưa ký số** — SmartScreen có thể cảnh báo; nhấn "More info → Run anyway" nếu tin tác giả.
 
+## Hướng dẫn sử dụng
+
+Xem hướng dẫn đầy đủ kèm hình minh họa: **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)** — các bước cơ bản (kéo thả, chọn máy, cấu hình in), preset, theo dõi thư mục (máy in dùng chung), duyệt in từ AI, lịch sử in, chế độ Lite/Full, 5 ngôn ngữ.
+
+![Giao diện chính](docs/screenshots/main_full_highlight.png)
+
 ## Cách dùng
 
 1. Kéo thả file vào cửa sổ (hoặc Ctrl+V, hoặc nút Add files).
@@ -43,7 +49,7 @@ Mấy điểm hay nhớ:
 - **Gộp thành 1 bản in**: chọn nhiều file để in chung 1 lần đẩy xuống máy.
 - **Trang bìa**: in một trang bìa (tên lô, ngày, số file) trước lô.
 - **Dấu mờ (watermark)**: chèn chữ mờ vào bản in, chỉnh độ đậm nhạt.
-- **Theo dõi thư mục**: đặt một thư mục, file mới thả vào sẽ tự vào hàng đợi (và tự in nếu bật).
+- **Theo dõi thư mục (máy in dùng chung)**: cài trên máy chung phòng ban, chọn 1 thư mục qua LAN — ai ném file vào là tự in ngay vào máy in mặc định, cấu hình theo file, có thông báo "Đã in" kèm tên file.
 - **Lịch sử in**: app nhớ các lần in gần đây; lần sau mở lại còn cả hàng đợi chưa in.
 
 ## In bằng gì trên máy
@@ -77,7 +83,7 @@ Cần .NET 8 SDK:
 
 ```bash
 dotnet build Printonator.sln                # build toàn bộ
-dotnet test Printonator.sln                 # Core 102 + Spool 4 + Mcp 6 + UI 27 = 139 tests
+dotnet test Printonator.sln                 # Core 103 + Spool 4 + Mcp 6 + UI 27 = 140 tests
 dotnet run --project src/Printonator.UI     # chạy app
 dotnet run --project src/Printonator.Mcp    # chạy MCP server
 ```
