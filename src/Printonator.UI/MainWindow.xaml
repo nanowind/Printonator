@@ -258,12 +258,18 @@
                 <Ellipse x:Name="PrinterStatusDot" Width="10" Height="10" Fill="{StaticResource ReadyBrush}"
                          VerticalAlignment="Center" Margin="12,0,12,0" Stroke="#FFFFFF" StrokeThickness="1.5"
                          ToolTip="{l10n:Loc Main.PrinterStatusTooltip}" RenderOptions.EdgeMode="Aliased"/>
-                <!-- Nhắc khi khởi động: xác nhận đã chọn đúng máy in (tránh in lộn máy) — tự ẩn sau vài giây -->
+                <!-- Nhắc khi khởi động: xác nhận đã chọn đúng máy in (tránh in lộn máy) — hiện ổn định, chỉ bấm ✕ mới tắt -->
                 <Border x:Name="PrinterReminder" Background="#FFF9ED" BorderBrush="#EAB308" BorderThickness="1"
                         CornerRadius="6" Padding="8,4" Margin="0,0,8,0" VerticalAlignment="Center" Visibility="Collapsed"
                         ToolTip="{l10n:Loc Main.PrinterReminderTooltip}">
-                    <TextBlock Text="{l10n:Loc Main.PrinterReminderText}" FontSize="11" Foreground="#92400E" FontWeight="SemiBold"
-                                                       TextWrapping="Wrap" MaxWidth="320"/>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="{l10n:Loc Main.PrinterReminderText}" FontSize="11" Foreground="#92400E"
+                                   FontWeight="SemiBold" TextWrapping="Wrap" MaxWidth="320" VerticalAlignment="Center"/>
+                        <Button x:Name="PrinterReminderClose" Content="✕" Style="{StaticResource GhostBtn}"
+                                FontSize="10" Padding="4,0" Margin="8,0,0,0" VerticalAlignment="Center" Cursor="Hand"
+                                Click="PrinterReminderClose_Click" AutomationProperties.AutomationId="PrinterReminderCloseBtn"
+                                ToolTip="{l10n:Loc About.CloseButton}"/>
+                    </StackPanel>
                 </Border>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
 <Button Content="{l10n:Loc Main.PrintSettingsButton}" Style="{StaticResource GhostBtn}" Click="PrintSettings_Click"

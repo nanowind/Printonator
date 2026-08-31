@@ -353,7 +353,6 @@ public partial class MainWindow : Window
             SelectedPrinter = kept;
             PrinterCombo.SelectedItem = kept;
             UpdatePrinterDot();
-            ShowPrinterReminder();
             return;
         }
 
@@ -372,21 +371,20 @@ public partial class MainWindow : Window
         ShowPrinterReminder();
     }
 
-    // Nhắc khi khởi động: hiện "Kiểm tra máy in ✓" cạnh hộp chọn, tự ẩn sau 6s.
+    // Nhắc khi khởi động: hiện "Kiểm tra máy in ✓" cạnh hộp chọn — hiện ổn định, KHÔNG tự ẩn theo thời gian,
+    // chỉ ẩn khi user bấm ✕ (cờ _printerReminderDismissed để không hiện lại trong phiên).
+    private bool _printerReminderDismissed;
     private void ShowPrinterReminder()
     {
-        if (PrinterReminder is null) return;
+        if (PrinterReminder is null || _printerReminderDismissed) return;
         PrinterReminder.Visibility = System.Windows.Visibility.Visible;
         PrinterReminder.Opacity = 1;
-        var t = new DispatcherTimer { Interval = TimeSpan.FromSeconds(6) };
-        t.Tick += (_, _) =>
-        {
-            t.Stop();
-            PrinterReminder.BeginAnimation(System.Windows.Controls.Control.OpacityProperty,
-                new System.Windows.Media.Animation.DoubleAnimation(0, TimeSpan.FromMilliseconds(600)));
-            PrinterReminder.Visibility = System.Windows.Visibility.Collapsed;
-        };
-        t.Start();
+    }
+
+    private void PrinterReminderClose_Click(object sender, RoutedEventArgs e)
+    {
+        _printerReminderDismissed = true;
+        if (PrinterReminder is not null) PrinterReminder.Visibility = System.Windows.Visibility.Collapsed;
     }
 
     private void UpdatePrinterDot()
