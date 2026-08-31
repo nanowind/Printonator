@@ -142,11 +142,12 @@ jobs:
           # File secret key minisign cần ĐỦ 2 dòng: "untrusted comment: ..." + dòng base64.
           # GitHub secret chỉ chứa DÒNG BASE64 (dòng 2 của secret.key) — CI tự dựng lại header.
           { printf 'untrusted comment: minisign encrypted secret key\n'; printf '%s\n' "$MINISIGN_SECRET_KEY"; } > /tmp/ms-secret.key
-          printf '%s\n' "$MINISIGN_PASSPHRASE" > /tmp/ms-pass
-          "$MSIG" -S -s /tmp/ms-secret.key \
-                 -t /tmp/ms-pass -m setup/printonator-setup.exe
+          # Pass truyền qua STDIN pipe (minisign hỏi "Password:" trên stdin — không có TTY trong CI).
+          # KHÔNG dùng `-t` (đó là trusted comment, không phải pass file) và không dùng env MINISIGN_PASSWORD.
+          printf '%s\n' "$MINISIGN_PASSPHRASE" | "$MSIG" -S -s /tmp/ms-secret.key \
+                 -m setup/printonator-setup.exe
           ls -la setup/printonator-setup.exe.minisig
-          rm -f /tmp/ms-secret.key /tmp/ms-pass
+          rm -f /tmp/ms-secret.key
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
