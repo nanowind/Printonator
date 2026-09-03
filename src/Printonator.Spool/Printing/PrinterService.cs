@@ -88,6 +88,19 @@ public sealed class PrinterService
         return Result<List<PrinterInfo>>.Ok(printers);
     }
 
+    /// <summary>Máy in mặc định Windows có phải máy ảo (PDF/XPS/OneNote...) không?
+    /// Watch folder dùng để chặn LOOP: auto-in qua máy ảo sẽ xuất PDF ngay trong folder watch → watcher
+    /// kích hoạt → tự in → vô hạn. Watch folder KHÔNG được auto-in khi default printer là ảo.</summary>
+    public static bool IsDefaultPrinterVirtual()
+    {
+        try
+        {
+            var def = SpoolPrintEngine.GetDefaultPrinterName();
+            return !string.IsNullOrWhiteSpace(def) && IsVirtualPrinter(def);
+        }
+        catch { return false; }
+    }
+
     /// <summary>Trạng thái 1 máy in — dùng để hiện dấu chấm xanh/đỏ trong UI và cho MCP.</summary>
     public Result<PrinterInfo> GetPrinter(string name)
     {
@@ -286,6 +299,7 @@ public sealed class PrinterService
     /// Máy in ẢO (PDF/XPS...) → đường dẫn xuất PDF cạnh file gốc (cùng tên, đổi .pdf), để engine
     /// KHÔNG đẩy vào spooler PDF printer (mở hộp "Save As" vô hình → "báo xong không ra file") mà
     /// lưu thẳng file xuất. Máy vật lý → null (in bình thường).
+    /// LƯU Ý: file gốc đã là .pdf → thêm "_printonator" vào tên (tránh copy chính nó lỗi SPOOLER_FAILED).
     /// </summary>
     internal static string? PdfOutputPath(PrintJob job)
     {
@@ -293,6 +307,9 @@ public sealed class PrinterService
         if (string.IsNullOrWhiteSpace(printer) || !IsVirtualPrinter(printer)) return null;
         var dir = System.IO.Path.GetDirectoryName(job.FilePath) ?? System.IO.Path.GetTempPath();
         var name = System.IO.Path.GetFileNameWithoutExtension(job.FilePath) ?? "printonator";
-        return System.IO.Path.Combine(dir, name + ".pdf");
+        // File đã là .pdf → thêm "_printonator" để tránh copy trùng file gốc.
+        var ext = System.IO.Path.GetExtension(job.FilePath) ?? "";
+        var suffix = ext.Equals(".pdf", StringComparison.OrdinalIgnoreCase) ? "_printonator" : "";
+        return System.IO.Path.Combine(dir, name + suffix + ".pdf");
     }
 }

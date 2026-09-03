@@ -199,6 +199,8 @@ public sealed class PrintBatchOrchestrator
                 var pending = toWait.Where(j => !terminal.Contains(j.State)).ToList();
                 if (pending.Count == 0) break;
 
+                // Stop-on-error: 1 file lỗi → queue pause, các file sau vẫn Queued → ngắt lô
+                // (không chờ vô hạn, không báo "in xong").
                 if (_queue.IsPaused && _queue.StoppedByError)
                 {
                     interrupted = true;
@@ -237,6 +239,17 @@ public sealed class PrintBatchOrchestrator
         }
 
         var completed = batch.Where(j => terminal.Contains(j.State)).ToList();
+        // Batch có job lỗi nhưng không kịp set interrupted (vd 1 file duy nhất lỗi ngay) →
+        // không fire "In xong" mà fire "dừng do lỗi" để UI báo đúng.
+        if (!interrupted && completed.Any(j => j.State == JobState.Error))
+        {
+            var done = completed.Count(j => j.State == JobState.Done);
+            var failed = completed.FirstOrDefault(j => j.State == JobState.Error);
+            try { await _dispatcher.BeginInvoke(new Action(() => BatchStopped?.Invoke(done, failed))); }
+            catch { }
+            return;
+        }
+
         try { await _dispatcher.BeginInvoke(new Action(() => AllCompleted?.Invoke(completed))); }
         catch { }
     }

@@ -21,6 +21,21 @@ public static class WindowsPdfRasterizer
     /// <summary>DPI render mặc định — đủ sắc cho in, cân bằng kích thước (150dpi ≈ chất lượng photo).</summary>
     public const double DefaultRenderDpi = 150;
 
+    /// <summary>Đếm số trang của file PDF (1-based) — dùng để resolve page-range/parity đúng TRƯỚC khi render.
+    /// File hỏng/khoá/mã hoá → trả -1 (caller fallback in cả file/engine khác).</summary>
+    public static async Task<int> PdfPageCountAsync(string filePath, CancellationToken ct)
+    {
+        try
+        {
+            var storage = await StorageFile.GetFileFromPathAsync(filePath).AsTask(ct);
+            var doc = await PdfDocument.LoadFromFileAsync(storage).AsTask(ct);
+            if (doc is null) return -1;
+            return (int)doc.PageCount;
+        }
+        catch (OperationCanceledException) { throw; }
+        catch { return -1; }
+    }
+
     /// <summary>Render các trang (1-based) thành PNG với DPI cho sẵn. Lỗi → Result.Fail(PrintError).</summary>
     public static async Task<Result<IReadOnlyList<RenderedPdfPage>>> RenderPagesAsync(
         string filePath, IReadOnlyList<int> pages /* 1-based */, CancellationToken ct, int renderDpi = 150)

@@ -171,12 +171,34 @@ public sealed class FooterController
         _toast.BeginAnimation(UIElement.OpacityProperty, anim);
     }
 
+    /// <summary>Mã lỗi → tên nút retry (null = không retry được). MainWindow đọc Button.Tag để quyết hành động.</summary>
+    internal static string? RetryButtonLabel(string? code)
+    {
+        if (code is null) return null;
+        return code switch
+        {
+            ErrorCodes.SpoolerFailed => L10n.S(Keys.Main.BannerRetryButton),
+            ErrorCodes.PrinterNotFound => L10n.S(Keys.Main.BannerRetryButton),
+            _ => null,
+        };
+    }
+
     public void ShowBanner(string? code, string message, string detail)
     {
         _errorBannerText.Text = detail.Length > 0
             ? L10n.F(Keys.Main.BannerErrorFormat, message, detail)
             : message;
-        _retryBtn.Visibility = IsRetryable(code) ? Visibility.Visible : Visibility.Collapsed;
+        _retryBtn.Content = null;
+        _retryBtn.Visibility = Visibility.Collapsed;
+
+        // Cấu hình nút retry theo mã lỗi — Tag chứa code để MainWindow quyết hành động
+        var label = RetryButtonLabel(code);
+        if (label is not null)
+        {
+            _retryBtn.Content = label;
+            _retryBtn.Tag = code;
+            _retryBtn.Visibility = Visibility.Visible;
+        }
 
         if (code is null || WarningBannerCodes.Contains(code))
             ResetBannerToWarn();
@@ -204,9 +226,6 @@ public sealed class FooterController
             if (_errorBannerIcon is not null) _errorBannerIcon.Foreground = err;
         }
     }
-
-    private static bool IsRetryable(string? code)
-        => code is ErrorCodes.SpoolerFailed or ErrorCodes.PrinterNotFound;
 
     public void HideBanner() => _errorBanner.Visibility = Visibility.Collapsed;
 

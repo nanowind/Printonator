@@ -2,7 +2,7 @@
 ; Build: ISCC.exe setup\printonator.iss
 
 #define MyAppName "Printonator"
-#define MyAppVersion "0.2.1"
+#define MyAppVersion "0.2.2"
 #define MyAppPublisher "Phuc Nguyen"
 #define MyAppExeName "Printonator.UI.exe"
 #define MyAppURL "https://github.com/nanowind/Printonator"
@@ -35,6 +35,11 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 ; Yêu cầu Windows 10/11
 MinVersion=10.0.17763
+; Tự động đóng app đang chạy trước khi ghi đè file (không báo lỗi "file in use").
+CloseApplications=force
+; Mutex để Inno nhận diện app đang chạy — trùng tên Mutex khai báo trong code app.
+; Printonator.UI dùng SingleInstance.cs: Mutex "Printonator_SingleInstance" + NamedPipe.
+AppMutex=Printonator_SingleInstance
 
 [Languages]
 ; Vietnamese.isl copy vào repo (setup\Vietnamese.isl) — bản Inno Setup trên CI (choco 6.7.1) KHÔNG ship
@@ -78,6 +83,8 @@ Source: "app\Printonator.UI.deps.json"; DestDir: "{app}"; Flags: ignoreversion
 ; Các dependency Windows/WinRT — Windows.Data.Pdf (PDF slicing) cần bộ SDK runtime này
 Source: "app\Microsoft.Windows.SDK.NET.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "app\WinRT.Runtime.dll"; DestDir: "{app}"; Flags: ignoreversion
+; System.Drawing.Common — engine in PDF bằng ảnh GDI (GdiPrintEngine) dùng PrintDocument/Graphics
+Source: "app\System.Drawing.Common.dll"; DestDir: "{app}"; Flags: ignoreversion
 ; .NET Desktop Runtime KHÔNG gói vào installer (giữ installer NHẸ ~6MB) — download on-demand lúc cài
 ; khi máy chưa có runtime (xem [Code]). Máy đã có .NET Desktop 8/9/10 → cài thẳng, không cần mạng.
 

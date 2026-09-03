@@ -4,14 +4,21 @@ SHA256: {HASH}
 
 ### Mới
 
-- **Theo dõi thư mục — chế độ máy in dùng chung (Printing Server)**: cài Printonator trên máy chung phòng ban, chọn 1 thư mục dùng chung qua LAN. Ai ném file vào → tự động in ngay vào máy in mặc định Windows, cấu hình theo file (không ép A4/dọc/2 mặt). Có thông báo "Đã in" kèm tên file trên app — biết ai in gì.
+- **In PDF trực tiếp không cần app PDF**: máy in không có handler cho file .pdf (UserChoice lỗi, không có printto) — trước báo "Không in được", giờ in ảnh GDI thẳng vào máy in, không cần chương trình đọc PDF.
+- **Engine GDI mới**: hỗ trợ in 2 mặt (LongEdge/ShortEdge), ép màu/đen trắng, in nhiều trang/tờ (N-up 2,4,6,9,16). PDF in trực tiếp qua GDI, không qua browser/shell.
+- **Watch folder chặn loop**: khi máy in mặc định là máy PDF ảo (Print to PDF), app không auto-in để tránh vòng lặp (xuất PDF → watcher thấy → tự in → vô hạn). File PDF trong watch folder cũng giữ lại chờ người dùng bấm in.
 
 ### Cải tiến
 
-- **Nhắc máy in khởi động**: thay badge tự ẩn 6s (lúc hiện lúc ẩn) bằng hint có nút ✕ — bạn chủ động đóng khi thấy ổn.
-- **Ký số bản phát hành (minisign)**: từ bản này installer được ký bằng chữ ký số, public key nhúng trong app — xác thực được bản cập nhật chính chủ. Hết cảnh báo SmartScreen (hoặc giảm nhiều).
-- 397 bài kiểm tra tự động (Core 103 + Spool 4 + Mcp 6 + UI 24/27).
+- **Banner lỗi thông minh hơn**: nút hành động chỉ hiện cho đúng loại lỗi có thể retry (SpoolerFailed/PrinterNotFound), không còn hiện "Thử kết nối lại" khi lỗi file hỏng/hết giấy.
+- **Popover thông báo compact + scroll**: khi in nhiều file, danh sách thông báo có thanh cuộn, item co gọn hơn.
+- **DPI in PDF tăng 150→300**: rõ nét hơn khi in ra giấy.
+- **Không mất chữ mép phải**: vẽ ảnh trong vùng in được của driver (trừ hard margin), không bị clip.
+- **Installer tự đóng app**: không cần tắt tay trước khi cài bản mới.
+- **Máy ảo xuất PDF sạch**: file PDF copy trực tiếp, không qua browser — không còn chụp UI viewer vào file xuất.
 
 ### Đã sửa
 
-- Lỗi CI format verify (whitespace) — CI xanh trở lại.
+- Lỗi in PDF "không tìm thấy máy in" qua watch folder (sentinel "mặc định" không resolve được).
+- Lỗi "in xong" hiện popup dù file lỗi — giờ báo "dừng do lỗi" đúng.
+- Lỗi in PDF tới máy ảo (Microsoft Print to PDF) báo lỗi không xác định (File.Copy trùng file gốc).

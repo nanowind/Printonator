@@ -1,2 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">  <PropertyGroup>    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>    <ImplicitUsings>enable</ImplicitUsings>    <Nullable>enable</Nullable>    <UseWPF>true</UseWPF>    <RootNamespace>Printonator.Spool</RootNamespace>  </PropertyGroup>  <ItemGroup>    <ProjectReference Include="..\Printonator.Core\Printonator.Core.csproj" />  </ItemGroup>  <ItemGroup>    <!-- E2E tests (tests/Printonator.Spool.Tests) cần truy cập internal: IsVirtualPrinter/PdfOutputPath -->
-    <InternalsVisibleTo Include="Printonator.Spool.Tests" />  </ItemGroup></Project>
+    <InternalsVisibleTo Include="Printonator.Spool.Tests" />  </ItemGroup>  <ItemGroup>
+  <PackageReference Include="System.Drawing.Common" Version="8.0.12" />
+</ItemGroup></Project>

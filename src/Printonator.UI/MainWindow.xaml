@@ -156,7 +156,8 @@
                                                             HorizontalAlignment="Right"/>
                                                 </DockPanel>
                                                 <!-- Danh sách thông báo (thay thế card đơn cũ) — dùng DataTrigger theo Kind để chọn màu, không cần converter -->
-                                                <ItemsControl ItemsSource="{Binding Notifications}" MaxHeight="300">
+                                                <ScrollViewer MaxHeight="360" VerticalScrollBarVisibility="Auto">
+                                                <ItemsControl ItemsSource="{Binding Notifications}">
                                                     <ItemsControl.ItemsPanel>
                                                         <ItemsPanelTemplate>
                                                             <StackPanel/>
@@ -174,7 +175,7 @@
                                                                             <Setter.Value>
                                                                                 <ControlTemplate TargetType="Button">
                                                                                     <Grid Background="{TemplateBinding Background}">
-                                                                                        <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center" Margin="14,10"/>
+                                                                                        <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center" Margin="12,6"/>
                                                                                         <Border BorderBrush="#F0F0F0" BorderThickness="0,0,0,1" VerticalAlignment="Bottom"/>
                                                                                     </Grid>
                                                                                 </ControlTemplate>
@@ -189,7 +190,7 @@
                                                                 </Button.Style>
                                                                 <StackPanel>
                                                                     <StackPanel Orientation="Horizontal">
-                                                                        <Border CornerRadius="5" Padding="7,2" VerticalAlignment="Top">
+                                                                        <Border CornerRadius="4" Padding="5,1" VerticalAlignment="Top">
                                                                             <Border.Style>
                                                                                 <Style TargetType="Border">
                                                                                     <Setter Property="Background" Value="#DCFCE7"/>  <!-- Done: xanh -->
@@ -203,7 +204,7 @@
                                                                                     </Style.Triggers>
                                                                                 </Style>
                                                                             </Border.Style>
-                                                                            <TextBlock FontSize="9" FontWeight="SemiBold" TextAlignment="Center">
+                                                                            <TextBlock FontSize="8" FontWeight="SemiBold" TextAlignment="Center">
                                                                                 <TextBlock.Style>
                                                                                     <Style TargetType="TextBlock">
                                                                                         <Setter Property="Text" Value="{l10n:Loc Main.NotifBadgeDone}"/>
@@ -222,19 +223,20 @@
                                                                                 </TextBlock.Style>
                                                                             </TextBlock>
                                                                         </Border>
-                                                                        <TextBlock Text="{Binding Title}" FontSize="12" FontWeight="Medium"
-                                                                                   Foreground="{StaticResource TextBrush}" Margin="10,0,0,0" VerticalAlignment="Center"
+                                                                        <TextBlock Text="{Binding Title}" FontSize="11.5" FontWeight="Medium"
+                                                                                   Foreground="{StaticResource TextBrush}" Margin="8,0,0,0" VerticalAlignment="Center"
                                                                                    TextTrimming="CharacterEllipsis"/>
                                                                     </StackPanel>
-                                                                    <TextBlock Text="{Binding Detail}" FontSize="10" Foreground="{StaticResource MutedBrush}"
-                                                                               Margin="0,4,0,0" TextWrapping="Wrap" MaxWidth="300"/>
-                                                                    <TextBlock Text="{Binding TimeText}" FontSize="9" Foreground="{StaticResource FaintBrush}"
-                                                                               Margin="0,4,0,0" HorizontalAlignment="Right"/>
+                                                                    <TextBlock Text="{Binding Detail}" FontSize="9.5" Foreground="{StaticResource MutedBrush}"
+                                                                               Margin="0,2,0,0" TextWrapping="Wrap" MaxWidth="300"/>
+                                                                    <TextBlock Text="{Binding TimeText}" FontSize="8.5" Foreground="{StaticResource FaintBrush}"
+                                                                               Margin="0,2,0,0" HorizontalAlignment="Right"/>
                                                                 </StackPanel>
                                                             </Button>
                                                         </DataTemplate>
                                                     </ItemsControl.ItemTemplate>
                                                 </ItemsControl>
+                                                </ScrollViewer>
                                                 <!-- Vùng trống khi chưa có thông báo nào -->
                                                 <TextBlock x:Name="NotifEmptyText" Text="{l10n:Loc Main.NotifEmpty}" FontSize="11"
                                                            Foreground="{StaticResource FaintBrush}" Margin="16,6,0,14"
@@ -309,9 +311,11 @@
                 <Button Content="✕" DockPanel.Dock="Right" Style="{StaticResource GhostBtn}" Padding="8,2"
                         Margin="0,0,4,0" VerticalAlignment="Center" Click="BannerClose_Click"
                         ToolTip="{l10n:Loc Main.BannerCloseTooltip}"/>
-                <Button Content="{l10n:Loc Main.BannerRetryButton}" x:Name="RetryBtn" DockPanel.Dock="Right" Margin="0,0,10,0"
+                <!-- Nút retry: nhãn + Tag (mã lỗi) được FooterController.ShowBanner đặt theo loại lỗi -->
+                <Button x:Name="RetryBtn" DockPanel.Dock="Right" Margin="0,0,10,0"
                         Background="Transparent" BorderThickness="0" Foreground="{StaticResource WarnBrush}"
-                        FontWeight="SemiBold" Cursor="Hand" Click="RetryConnection_Click"/>
+                        FontWeight="SemiBold" Cursor="Hand" Click="RetryConnection_Click"
+                        Visibility="Collapsed"/>
             </DockPanel>
         </Border>
 

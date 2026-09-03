@@ -149,9 +149,12 @@ public partial class MainWindow : Window
     private async Task InitializeAsync()
     {
         // Engine ưu tiên (dynamic theo máy user — KHÔNG bundle lib, app nhẹ):
-        // 1) MS Office COM → 2) LibreOffice (soffice nếu máy có) → 3) Browser render (Edge/Chrome headless — PDF/ảnh/TXT đúng page range/scale/khổ giấy) → 4) shell printto fallback
+        // 1) MS Office COM → 2) LibreOffice (soffice nếu máy có) → 3) GDI (PDF → ảnh → spooler, không cần print handler)
+        // → 4) Watermark bọc Browser render (Edge/Chrome headless — PDF/ảnh/TXT đúng page range/scale/khổ giấy)
+        // → 5) shell printto fallback
         _queue.RegisterEngine(new OfficeComPrintEngine());
         _queue.RegisterEngine(new LibreOfficePrintEngine());
+        _queue.RegisterEngine(new GdiPrintEngine());
         // Watermark decorator bọc BrowserPrintEngine — không có watermark → delegate inner Browser.
         // KHÔNG đăng ký BrowserPrintEngine riêng (nếu đăng ký cả 2, các format browser sẽ qua
         // Watermark trước vì CanHandle giống Browser — dư 1 lớp nên chỉ giữ bản decorator).
@@ -1207,7 +1210,21 @@ public partial class MainWindow : Window
 
     private void RetryConnection_Click(object sender, RoutedEventArgs e)
     {
-        LoadPrinters();
+        if (sender is FrameworkElement fe && fe.Tag is string code)
+        {
+            switch (code)
+            {
+                case ErrorCodes.SpoolerFailed:
+                case ErrorCodes.PrinterNotFound:
+                    LoadPrinters();
+                    break;
+                // Các mã lỗi sau này có thể thêm handler riêng
+            }
+        }
+        else
+        {
+            LoadPrinters(); // fallback: quét máy in
+        }
         HideBanner();
     }
 

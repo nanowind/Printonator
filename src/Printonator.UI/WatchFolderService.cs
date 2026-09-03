@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Windows.Threading;
 using Printonator.Core;
 using Printonator.Core.Models;
+using Printonator.Spool.Printing;
 using Printonator.UI.Localization;
 
 namespace Printonator.UI;
@@ -356,7 +357,18 @@ public sealed class WatchFolderService : IDisposable
                         Source = JobSource.WatchFolder,
                         HasPerFilePrinter = true,   // không bị ApplySelectedPrinter ép máy toolbar
                     };
-                    _queue.Enqueue(job);   // LUÔN tự in (chế độ printing server) — không còn autoPrint/AddOnly
+                    // Nếu máy in mặc định Windows là máy ảo (PDF/XPS/OneNote...), in ra nó sẽ xuất
+                    // file PDF ngay trong folder watch → watcher kích hoạt → tự in → LOOP VÔ HẠN.
+                    // Chặn triệt để: KHÔNG auto-in file nào (kể cả docx) khi default printer là ảo.
+                    // User phải chọn máy in giấy thủ công rồi bấm in.
+                    if (IsDefaultPrinterVirtual())
+                    {
+                        _queue.AddOnly(job);
+                    }
+                    else if (fmt == "PDF")
+                        _queue.AddOnly(job);   // PDF: giữ lại chờ user chọn máy in
+                    else
+                        _queue.Enqueue(job);   // auto-in bình thường
                     added++;
                 }
                 catch { /* 1 file lỗi cá biệt (đang khóa/không đọc được) — không làm hỏng cả lô */ }
@@ -377,6 +389,11 @@ public sealed class WatchFolderService : IDisposable
             try { t.Stop(); t.Dispose(); } catch { }
         }
     }
+
+    /// <summary>Máy in mặc định Windows có phải máy ảo (PDF/XPS/OneNote...) không?
+    /// Nếu phải → auto-in qua watch folder sẽ xuất PDF ngay trong folder watch → LOOP. Watch phải dừng auto-in.</summary>
+    private static bool IsDefaultPrinterVirtual()
+        => PrinterService.IsDefaultPrinterVirtual();
 
     private static void CloseEntry(WatchEntry entry)
     {

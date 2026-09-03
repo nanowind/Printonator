@@ -65,7 +65,7 @@ jobs:
           # Stage fresh Release binaries vào setup\app
           $bin = "src\Printonator.UI\bin\Release\net8.0-windows10.0.19041.0"
           New-Item -ItemType Directory -Force -Path "setup\app" | Out-Null
-          Copy-Item "$bin\Printonator.UI.exe","$bin\Printonator.UI.dll","$bin\Printonator.UI.pdb","$bin\Printonator.Core.dll","$bin\Printonator.Core.pdb","$bin\Printonator.Spool.dll","$bin\Printonator.Spool.pdb","$bin\Printonator.UI.runtimeconfig.json","$bin\Printonator.UI.deps.json","$bin\Microsoft.Windows.SDK.NET.dll","$bin\WinRT.Runtime.dll" "setup\app\"
+          Copy-Item "$bin\Printonator.UI.exe","$bin\Printonator.UI.dll","$bin\Printonator.UI.pdb","$bin\Printonator.Core.dll","$bin\Printonator.Core.pdb","$bin\Printonator.Spool.dll","$bin\Printonator.Spool.pdb","$bin\Printonator.UI.runtimeconfig.json","$bin\Printonator.UI.deps.json","$bin\Microsoft.Windows.SDK.NET.dll","$bin\WinRT.Runtime.dll","$bin\System.Drawing.Common.dll" "setup\app\"
           # Download .NET 8 Desktop Runtime (gitignored — chỉ để verify SHA ở bước kế)
           New-Item -ItemType Directory -Force -Path "setup\runtime" | Out-Null
           Invoke-WebRequest -Uri "https://dotnetcli.blob.core.windows.net/dotnet/WindowsDesktop/8.0.30/windowsdesktop-runtime-8.0.30-win-x64.exe" -OutFile "setup\runtime\windowsdesktop-runtime-8.0.30-win-x64.exe"
