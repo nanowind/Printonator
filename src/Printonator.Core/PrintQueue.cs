@@ -102,6 +102,15 @@ public sealed class PrintQueue : IDisposable
     {
         _isPaused = false;
         _stoppedByError = false;   // user tiếp tục lô — xóa dấu "dừng do lỗi"
+        // Re-enqueue các job Queued còn lại (có thể không còn trong _pending do drain đã exit)
+        // → đảm bảo drain tiếp tục in các file chưa in.
+        lock (_sync)
+        {
+            foreach (var j in Jobs)
+                if (j.State == JobState.Queued && !_pending.Contains(j))
+                    _pending.Enqueue(j);
+        }
+        KickDrain();               // kích hoạt lại drain — job chờ trong _pending sẽ được tiếp tục
     }
 
     /// <summary>Yêu cầu có đúng MỘT vòng drain chạy cho mọi job đang chờ. In TUẦN TỰ (MaxConcurrency=1

@@ -62,7 +62,8 @@ public static class CoverPageRenderer
         }
     }
 
-    /// <summary>Ghi PDF trang bìa tạm + in qua SpoolPrintEngine tới máy đã chọn (dọn tempdir sau).</summary>
+    /// <summary>Ghi PDF trang bìa tạm + in qua GDI engine (ảnh GDI thẳng máy in — KHÔNG cần print handler
+    /// cho .pdf, máy này không có printto PDF). Dọn tempdir sau. Máy vật lý in bìa trước lô như bình thường.</summary>
     public static async Task<Result<bool>> PrintCoverAsync(string base64Pdf, string printerName, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(base64Pdf))
@@ -88,7 +89,8 @@ public static class CoverPageRenderer
                 Format = "PDF",
                 Config = new PrintConfig { PrinterName = printerName, Copies = 1 },
             };
-            return await new SpoolPrintEngine().PrintAsync(coverJob, ct);
+            // GdiPrintEngine: in ảnh trực tiếp, không phụ thuộc app/handler PDF trên máy.
+            return await new GdiPrintEngine().PrintAsync(coverJob, ct);
         }
         finally
         {

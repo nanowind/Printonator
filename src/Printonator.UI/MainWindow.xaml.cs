@@ -50,6 +50,10 @@ public partial class MainWindow : Window
     /// <summary>Máy in cho cột per-file: item 0 = "Theo máy thanh công cụ", sau đó là máy in thật.</summary>
     public ObservableCollection<PrinterInfo> Printers { get; } = new() { ToolbarDefaultPrinter };
 
+    /// <summary>Item hiển thị cho TOOLBAR combo (riêng biệt với Printers — Printers dùng cho cột per-file,
+    /// không được trộn lệnh ⚙🖨🔄 vào đó). = "Theo máy" + các máy in + 3 lệnh cuối.</summary>
+    private readonly ObservableCollection<PrinterInfo> _toolbarPrinters = new();
+
     /// <summary>Cấu hình mặc định cho FILE MỚI (thay thế bảng Paper setup cũ) — áp khi thêm file.</summary>
     private readonly PrintConfig _defaultConfig = new();
 
@@ -103,7 +107,9 @@ public partial class MainWindow : Window
         JobList.SelectionChanged += OnSelectionChanged;
         _queue.JobStateChanged += OnJobStateChanged;
 
-        PrinterCombo.SelectionChanged += (_, _) => UpdatePrinterDot();
+        UpdatePresetButton();   // nhãn nút Preset theo profile đang áp
+
+        PrinterCombo.SelectionChanged += PrinterCombo_SelectionChanged;
         PreviewMouseLeftButtonDown += Window_PreviewMouseLeftButtonDown;   // bấm ngoài → đóng popup Pages
         // Chuyển sang app KHÁC (main window mất focus) → đóng popup (Popup là cửa sổ riêng, LUÔN nổi trên
         // mọi app nếu không đóng — user chuyển app vẫn thấy panel, khó chịu).
@@ -331,10 +337,16 @@ public partial class MainWindow : Window
                 ShowBanner(err.Code, err.Message, err.Hint);
             return;
         }
-        PrinterCombo.ItemsSource = printers;
         Printers.Clear();
         Printers.Add(ToolbarDefaultPrinter);
         foreach (var p in printers) Printers.Add(p);
+
+        // Toolbar combo: máy in thật + lệnh 🔄 scan cuối list (⚙🖨 giờ nằm inline từng hàng).
+        _toolbarPrinters.Clear();
+        foreach (var p in printers) _toolbarPrinters.Add(p);
+        _toolbarPrinters.Add(CmdScanItem);
+        PrinterCombo.ItemsSource = _toolbarPrinters;
+
         RefreshPerFileComboSelections();
 
         // Máy in bị treo / bị firewall chặn → vẫn hiện (mục "Không phản hồi…") + báo vàng để user biết
@@ -388,6 +400,45 @@ public partial class MainWindow : Window
     {
         _printerReminderDismissed = true;
         if (PrinterReminder is not null) PrinterReminder.Visibility = System.Windows.Visibility.Collapsed;
+    }
+
+    /// <summary>Cập nhật nhãn nút Preset: hiển thị tên profile đang áp (nếu có), ngược lại tên mặc định.
+    /// Gọi sau khi áp preset / đổi default config / mở app.</summary>
+    private void UpdatePresetButton()
+    {
+        var name = _defaultConfig?.ProfileName;
+        PresetBtn.Content = string.IsNullOrWhiteSpace(name)
+            ? L10n.S(Keys.Main.ManagePresetsButton)
+            : $"{L10n.S(Keys.Main.ManagePresetsButton)}: {name}";
+    }
+
+    // ===== Lệnh máy in gộp vào dropdown (giảm nút toolbar) — 1 mục ảo cuối list =====
+    // Là PrinterInfo sentinel (cùng ObservableCollection → binding giữ nguyên); IsVirtual=true → ẩn ⚙🖨 inline.
+    private static readonly PrinterInfo CmdScanItem = new()
+    {
+        Name = "🔄 Scan printers…", IsAvailable = true, IsVirtual = true, StatusDetail = "",
+    };
+
+    private void PrinterCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        var item = PrinterCombo.SelectedItem;
+
+        // Mục lệnh 🔄 (sentinel) → chạy scan, rồi khôi phục máy đang chọn (không đổi SelectedPrinter).
+        if (ReferenceEquals(item, CmdScanItem))
+        {
+            PrinterCombo.SelectedItem = SelectedPrinter;
+            ScanPrinters_Click(this, new RoutedEventArgs());
+        }
+        else if (item is PrinterInfo p)
+        {
+            // Máy in THẬT (hoặc "Theo máy") → đây là lựa chọn của user → cập nhật SelectedPrinter.
+            SelectedPrinter = ReferenceEquals(p, ToolbarDefaultPrinter) ? null : p;
+            UpdatePrinterDot();
+        }
+        else
+        {
+            UpdatePrinterDot();
+        }
     }
 
     private void UpdatePrinterDot()
@@ -883,6 +934,7 @@ public partial class MainWindow : Window
         else
         {
             dlg.Result.CopyInto(_defaultConfig);
+            UpdatePresetButton();   // profile mới áp làm mặc định → nhãn nút Preset cập nhật
             ShowToast(L10n.S(Keys.Toast.DefaultConfig));
         }
     }
@@ -1071,6 +1123,15 @@ public partial class MainWindow : Window
     // Nút print duy nhất (ngữ cảch): có chọn → in các file Selected đang Queued; không chọn → in tất cả Queued.
     private void PrintMain_Click(object sender, RoutedEventArgs e)
     {
+        // Chưa xác nhận máy in (banner "Kiểm tra máy in" còn hiển thị) → KHÔNG cho in.
+        // Bắt buộc bấm ✕ tắt reminder trước (tránh in lộn máy khi máy mặc định bị đổi).
+        if (PrinterReminder.Visibility == System.Windows.Visibility.Visible)
+        {
+            ShowBanner(ErrorCodes.PrinterNotFound, L10n.S(Keys.Main.PrinterReminderRequired), L10n.S(Keys.Main.PrinterReminderRequiredHint));
+            PrinterReminderClose.Focus();
+            return;
+        }
+
         // Nút 3 trạng thái: đang tạm dừng → Resume; đang in → Pause (lỡ bấm in thì dừng ngay); rảnh → in
         if (_queue.IsPaused)
         {
@@ -1228,11 +1289,32 @@ public partial class MainWindow : Window
         HideBanner();
     }
 
-    private void Printers_Click(object sender, RoutedEventArgs e)
+    /// <summary>Nút 🔄 Scan trong dropdown: quét lại máy in nền, đổ thẳng vào toolbar combo
+    /// (trạng thái + khả năng + giữ máy đang chọn đều do ApplyPrinterList lo — không cần cửa sổ riêng).</summary>
+    private void ScanPrinters_Click(object sender, RoutedEventArgs e) => LoadPrinters();
+
+    /// <summary>Nút ⚙ Printing Preferences (inline mỗi hàng dropdown): mở dialog driver cho CHÍNH máy in của hàng đó.</summary>
+    private void PrinterPrefs_Click(object sender, RoutedEventArgs e)
     {
-        var dlg = new PrinterConfigWindow { Owner = this };
-        dlg.ShowDialog();
-        LoadPrinters(); // sau khi đóng — nạp lại trạng thái mới
+        if ((sender as FrameworkElement)?.DataContext is not PrinterInfo p)
+        {
+            ShowBanner(ErrorCodes.PrinterNotFound, L10n.S(Keys.Main.PrinterStatusDotNoPrinter), "");
+            return;
+        }
+        var r = PrinterDialogs.OpenPrintingPreferences(p.Name);
+        if (!r.IsSuccess) ShowBanner(r.Error!.Code, r.Error.Message, r.Error.Hint);
+    }
+
+    /// <summary>Nút 🖨 Printer Properties (inline mỗi hàng dropdown): mở cửa sổ properties cho CHÍNH máy in của hàng đó.</summary>
+    private void PrinterProps_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not PrinterInfo p)
+        {
+            ShowBanner(ErrorCodes.PrinterNotFound, L10n.S(Keys.Main.PrinterStatusDotNoPrinter), "");
+            return;
+        }
+        var r = PrinterDialogs.OpenPrinterProperties(p.Name);
+        if (!r.IsSuccess) ShowBanner(r.Error!.Code, r.Error.Message, r.Error.Hint);
     }
 
     /// <summary>T2.6: mở cửa sổ quản lý thư mục theo dõi.</summary>
@@ -1249,14 +1331,27 @@ public partial class MainWindow : Window
     {
         var dlg = new PresetManagerWindow { Owner = this };
         dlg.ShowDialog();
+
+        // "No profile" → BỎ preset: reset config mặc định về trống (không còn áp profile nào).
+        if (dlg.ClearProfile)
+        {
+            new PrintConfig().CopyInto(_defaultConfig);
+            UpdatePresetButton();
+            var targets = JobList.SelectedItems.OfType<PrintJob>().ToList();
+            foreach (var job in targets) new PrintConfig().CopyInto(job.Config);
+            JobList.Items.Refresh();
+            ShowToast(L10n.S(Keys.Preset.NoProfileApplied));
+            return;
+        }
         if (dlg.SelectedPreset is null) return;
 
         var cfg = dlg.SelectedPreset.ToPrintConfig();
         cfg.CopyInto(_defaultConfig);
-        var targets = JobList.SelectedItems.OfType<PrintJob>().ToList();
-        if (targets.Count > 0)
+        UpdatePresetButton();   // hiển thị tên preset vừa áp lên nút
+        var selected = JobList.SelectedItems.OfType<PrintJob>().ToList();
+        if (selected.Count > 0)
         {
-            foreach (var job in targets)
+            foreach (var job in selected)
                 cfg.CopyInto(job.Config);
             JobList.Items.Refresh();
         }

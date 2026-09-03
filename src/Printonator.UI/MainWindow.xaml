@@ -14,6 +14,36 @@
     <Window.Resources>
         <!-- Converters dùng riêng MainWindow (palette + RoundedBtn/GhostBtn đã chuyển lên App.Resources) -->
         <ui:FolderLeafConverter x:Key="FolderLeaf"/>
+        <!-- Nút ⚙/🖨 inline mỗi hàng dropdown máy in: tròn, hover rõ, không chiếm chỗ như nút thường -->
+        <Style x:Key="PrinterCmdBtn" TargetType="Button">
+            <Setter Property="Width" Value="24"/>
+            <Setter Property="Height" Value="22"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="2,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="#6B6B6B"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="5"
+                                BorderThickness="0">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#EEEEEE"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#E0E0E0"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
                                      <!-- ===== Context menu: popup bo góc + đổ bóng, item icon + hover tròn, xóa màu đỏ ===== -->
                                     <Style TargetType="ContextMenu">
                                         <Setter Property="Background" Value="White"/>
@@ -252,10 +282,76 @@
         <Border Grid.Row="1" BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,0,0,1" Background="#FFFFFF">
             <DockPanel Margin="16,8">
                 <Button Content="{l10n:Loc Main.AddFilesButton}" Style="{StaticResource RoundedBtn}" Padding="16,7" Click="AddFiles_Click" ToolTip="{l10n:Loc Main.AddFilesButton}"/>
-                <ComboBox x:Name="PrinterCombo" Width="240" Margin="16,0,0,0" VerticalAlignment="Center"
-                          DisplayMemberPath="Name"
-                          SelectedItem="{Binding SelectedPrinter, Mode=TwoWay}"
-                          ToolTip="{Binding SelectedItem.Name, RelativeSource={RelativeSource Self}}"/>
+                <ComboBox x:Name="PrinterCombo" Width="340" Margin="16,0,0,0" VerticalAlignment="Center"
+                          ToolTip="{Binding SelectedItem.Name, RelativeSource={RelativeSource Self}}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid VerticalAlignment="Center" Height="28">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <!-- Cột 1: chấm trạng thái + tên máy + trạng thái -->
+                                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <!-- Chấm health CHỈ cho máy in vật lý/mạng — máy ảo (PDF/XPS) và hàng lệnh 🔄
+                                         luôn available nên chấm vô nghĩa, ẩn đi (IsVirtual=true) -->
+                                    <Ellipse Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,8,0">
+                                        <Ellipse.Style>
+                                            <Style TargetType="Ellipse">
+                                                <Setter Property="Fill" Value="#DC2626"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsAvailable}" Value="True">
+                                                        <Setter Property="Fill" Value="#16A34A"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding IsVirtual}" Value="True">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Ellipse.Style>
+                                    </Ellipse>
+                                    <TextBlock Text="{Binding Name}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                    <!-- Trạng thái máy: bind trực tiếp StatusText (không StringFormat/không Run —
+                                         bind qua style trên property read-only gây TwoWay → crash khi mở template) -->
+                                    <TextBlock Text="{Binding StatusText}" FontSize="10"
+                                               Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"
+                                               Margin="6,0,0,0" TextTrimming="CharacterEllipsis"/>
+                                </StackPanel>
+                                <!-- Cột 2: ⚙ Printing Preferences (của CHÍNH máy in dòng này) -->
+                                <Button Grid.Column="1" Content="⚙" Click="PrinterPrefs_Click"
+                                        ToolTip="Printing Preferences…"
+                                        AutomationProperties.AutomationId="PrinterPrefsBtn">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource PrinterCmdBtn}">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsVirtual}" Value="True">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                                <!-- Cột 3: 🖨 Printer Properties (của CHÍNH máy in dòng này) -->
+                                <Button Grid.Column="2" Content="🖨" Click="PrinterProps_Click"
+                                        ToolTip="Printer Properties…"
+                                        AutomationProperties.AutomationId="PrinterPropsBtn">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource PrinterCmdBtn}">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsVirtual}" Value="True">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                            </Grid>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
                 <!-- Status dot: dot màu + padding đều 2 bên (status chi tiết ở tooltip) -->
                 <Ellipse x:Name="PrinterStatusDot" Width="10" Height="10" Fill="{StaticResource ReadyBrush}"
                          VerticalAlignment="Center" Margin="12,0,12,0" Stroke="#FFFFFF" StrokeThickness="1.5"
@@ -277,10 +373,7 @@
 <Button Content="{l10n:Loc Main.PrintSettingsButton}" Style="{StaticResource GhostBtn}" Click="PrintSettings_Click"
                                               Padding="14,6" Margin="0,0,8,0" AutomationProperties.AutomationId="PrintSettingsBtn"
                                               ToolTip="{l10n:Loc Main.PrintSettingsTooltip}"/>
-                                     <Button Content="{l10n:Loc Main.PrintersButton}" Style="{StaticResource GhostBtn}"
-                                              Click="Printers_Click" Padding="12,6" Margin="0,0,8,0"
-                                              ToolTip="{l10n:Loc Main.PrintersButton}"/>
-                                     <Button Content="{l10n:Loc Main.ManagePresetsButton}" Style="{StaticResource GhostBtn}"
+                                     <Button x:Name="PresetBtn" Content="{l10n:Loc Main.ManagePresetsButton}" Style="{StaticResource GhostBtn}"
                                               Click="ManagePresets_Click" Padding="12,6" Margin="0,0,8,0"
                                               AutomationProperties.AutomationId="ManagePresetsBtn"
                                               ToolTip="{l10n:Loc Main.ManagePresetsButton}"/>

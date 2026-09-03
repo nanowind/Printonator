@@ -311,7 +311,9 @@ public partial class PrintSettingsWindow : Window
         _loadingProfile = true;
         try
         {
-            var current = SelectedTag(ProfileCombo);
+            // Pre-select profile theo config đang mở (ProfileName) — không phải combo hiện tại (rỗng lúc
+            // mới mở → luôn về "No profile" dù config đã áp preset "phuc1"...).
+            var current = SelectedTag(ProfileCombo) ?? _source.ProfileName;
             ProfileCombo.Items.Clear();
             ProfileCombo.Items.Add(Item(L10n.S(Keys.Settings.ProfileNone), ""));
             var presets = _store.Load().OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase).ToList();
@@ -333,7 +335,13 @@ public partial class PrintSettingsWindow : Window
     {
         if (_loadingProfile) return;
         var name = SelectedTag(ProfileCombo);
-        if (string.IsNullOrEmpty(name)) return;
+        // "No profile" → BỎ preset: reset mọi field về cấu hình mặc định (không phải giữ giá trị preset
+        // rồi chỉ xóa tên — trước đây chọn xong không về default được, field vẫn mang cấu hình phuc1).
+        if (string.IsNullOrEmpty(name))
+        {
+            LoadFromConfig(new PrintConfig());
+            return;
+        }
         var preset = _store.Load().FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
         if (preset is not null) LoadFromConfig(preset.ToPrintConfig());
     }

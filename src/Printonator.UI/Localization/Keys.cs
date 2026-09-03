@@ -214,6 +214,8 @@ public static class Keys
         public const string PrinterDefaultName = "Main.PrinterDefaultName";
         public const string PrinterReminderText = "Main.PrinterReminderText";
         public const string PrinterReminderTooltip = "Main.PrinterReminderTooltip";
+        public const string PrinterReminderRequired = "Main.PrinterReminderRequired";
+        public const string PrinterReminderRequiredHint = "Main.PrinterReminderRequiredHint";
         public const string PrinterStatusDotNoPrinter = "Main.PrinterStatusDotNoPrinter";
         public const string PrinterStatusReady = "Main.PrinterStatusReady";
         public const string PrinterStatusTooltip = "Main.PrinterStatusTooltip";
@@ -312,25 +314,8 @@ public static class Keys
         public const string Deleted = "Preset.Deleted";
         public const string Renamed = "Preset.Renamed";
         public const string Applied = "Preset.Applied";
-    }
-
-    public static class Printers
-    {
-        public const string AvailableBadge = "Printers.AvailableBadge";
-        public const string BackButton = "Printers.BackButton";
-        public const string Header = "Printers.Header";
-        public const string HeaderSubDefault = "Printers.HeaderSubDefault";
-        public const string HeaderSubError = "Printers.HeaderSubError";
-        public const string HeaderSubSummary = "Printers.HeaderSubSummary";
-        public const string OfflineBanner = "Printers.OfflineBanner";
-        public const string OfflineErrorFormat = "Printers.OfflineErrorFormat";
-        public const string PrefsButton = "Printers.PrefsButton";
-        public const string PrefsTooltip = "Printers.PrefsTooltip";
-        public const string PropsButton = "Printers.PropsButton";
-        public const string PropsTooltip = "Printers.PropsTooltip";
-        public const string ScanButton = "Printers.ScanButton";
-        public const string VirtualBadge = "Printers.VirtualBadge";
-        public const string WindowTitle = "Printers.WindowTitle";
+        public const string NoProfileButton = "Preset.NoProfileButton";
+        public const string NoProfileApplied = "Preset.NoProfileApplied";
     }
 
     public static class Range

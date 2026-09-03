@@ -2,7 +2,7 @@
 ; Build: ISCC.exe setup\printonator.iss
 
 #define MyAppName "Printonator"
-#define MyAppVersion "0.2.2"
+#define MyAppVersion "0.2.3"
 #define MyAppPublisher "Phuc Nguyen"
 #define MyAppExeName "Printonator.UI.exe"
 #define MyAppURL "https://github.com/nanowind/Printonator"
@@ -36,10 +36,10 @@ ArchitecturesInstallIn64BitMode=x64compatible
 ; Yêu cầu Windows 10/11
 MinVersion=10.0.17763
 ; Tự động đóng app đang chạy trước khi ghi đè file (không báo lỗi "file in use").
+; KHÔNG dùng AppMutex — Inno sẽ hiện dialog "Setup has detected that Printonator is currently
+; running" chờ user bấm OK. Bỏ AppMutex → Inno không detect → không dialog; force tự đóng im
+; lặng nếu file bị khóa bởi app đang chạy.
 CloseApplications=force
-; Mutex để Inno nhận diện app đang chạy — trùng tên Mutex khai báo trong code app.
-; Printonator.UI dùng SingleInstance.cs: Mutex "Printonator_SingleInstance" + NamedPipe.
-AppMutex=Printonator_SingleInstance
 
 [Languages]
 ; Vietnamese.isl copy vào repo (setup\Vietnamese.isl) — bản Inno Setup trên CI (choco 6.7.1) KHÔNG ship
@@ -139,8 +139,6 @@ english.ShellMenuPrint=Print with Printonator
 chinesesimp.ShellMenuPrint=用 Printonator 打印
 russian.ShellMenuPrint=Печать через Printonator
 japanese.ShellMenuPrint=Printonatorで印刷
-
-[Code]
 
 [Code]
 // === Map tên ngôn ngữ Inno (Name trong [Languages]) → culture tag chuẩn .NET để app đọc registry.

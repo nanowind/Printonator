@@ -17,6 +17,9 @@ public partial class PresetManagerWindow : Window
     /// <summary>Preset người dùng chọn "Áp dụng" — null nếu đóng cửa sổ không áp dụng.</summary>
     public Preset? SelectedPreset { get; private set; }
 
+    /// <summary>User bấm "No profile" — muốn BỎ preset, về cấu hình mặc định (không chọn preset nào).</summary>
+    public bool ClearProfile { get; private set; }
+
     public PresetManagerWindow()
     {
         InitializeComponent();
@@ -97,6 +100,14 @@ public partial class PresetManagerWindow : Window
         if (preset is null) { ShowStatus(L10n.S(Keys.Preset.NoneSelected)); return; }
 
         SelectedPreset = preset;
+        DialogResult = true;
+        Close();
+    }
+
+    /// <summary>"No profile": bỏ preset đang áp — về cấu hình mặc định (ClearProfile=true để MainWindow reset).</summary>
+    private void NoProfile_Click(object sender, RoutedEventArgs e)
+    {
+        ClearProfile = true;
         DialogResult = true;
         Close();
     }
