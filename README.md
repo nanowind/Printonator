@@ -30,7 +30,7 @@ Tải installer mới nhất từ [GitHub Releases](https://github.com/nanowind/
 
 Xem hướng dẫn đầy đủ kèm hình minh họa: **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)** — các bước cơ bản (kéo thả, chọn máy, cấu hình in), preset, theo dõi thư mục (máy in dùng chung), duyệt in từ AI, lịch sử in, chế độ Lite/Full, 5 ngôn ngữ.
 
-![Giao diện chính](docs/screenshots/main_full_highlight.png)
+![Giao diện chính](docs/screenshots/main_full.png)
 
 ## Cách dùng
 

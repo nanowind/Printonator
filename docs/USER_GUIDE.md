@@ -12,8 +12,8 @@
 | Số | Nút | Chức năng |
 |---|---|---|
 | 1 | **Thêm file** | Mở hộp thoại chọn file (hỗ trợ PDF, DOCX, XLSX, PPTX, ảnh, TXT). Cũng có thể **kéo thả** file vào cửa sổ hoặc **dán (Ctrl+V)** đường dẫn/clipboard. |
-| 2 | **Cài đặt in** | Mở cửa sổ cấu hình in cho các file đang chọn (số bản, khổ giấy, 2 mặt, màu, trang, dấu mờ...). |
-| 3 | **Máy in** | Mở danh sách máy in + trạng thái (online/offline), nút mở cài đặt driver máy in. |
+| 2 | **Máy in** | Chọn máy in cho cả lô, xem trạng thái (online/offline), nút mở cài đặt driver máy in. |
+| 3 | **Cài đặt in** | Mở cửa sổ cấu hình in cho các file đang chọn (số bản, khổ giấy, 2 mặt, màu, trang, dấu mờ...). |
 | 4 | **Theo dõi** | **Printing Server**: chọn 1 thư mục dùng chung — ai ném file vào → tự in ngay vào máy in mặc định. Xem tiếp [mục 6](#6-theo-dõi-thư-mục-printing-server). |
 | 5 | **In tất cả** | In toàn bộ file trong hàng đợi. Nếu có file được chọn → nút hiện "In (N)". |
 
