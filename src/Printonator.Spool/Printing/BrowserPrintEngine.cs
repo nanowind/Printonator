@@ -1,6 +1,8 @@
 using System.IO;
 using Printonator.Core;
+using Printonator.Core.IO;
 using Printonator.Core.Models;
+using Printonator.Core.Printing;
 
 namespace Printonator.Spool.Printing;
 
@@ -39,22 +41,10 @@ public sealed class BrowserPrintEngine : IPrintEngine
     {
         var browser = GetBrowser();
         if (browser is not { } b)
-            return Result<bool>.Fail(new PrintError
-            {
-                Code = ErrorCodes.EngineNotFound,
-                Category = PrintErrorCategory.App,
-                Message = $"Không tìm thấy Edge/Chrome để render {job.FileName}.",
-                Hint = "Máy cần có Microsoft Edge hoặc Google Chrome (mặc định Windows 10/11 có sẵn).",
-            });
+            return Result<bool>.Fail(PrintErrorFactory.EngineNotFound("Edge/Chrome để render " + job.FileName));
 
         if (!File.Exists(job.FilePath))
-            return Result<bool>.Fail(new PrintError
-            {
-                Code = ErrorCodes.FileNotFound,
-                Category = PrintErrorCategory.System,
-                Message = $"File không tồn tại: {job.FilePath}",
-                Hint = "File bị xóa hoặc di chuyển — kiểm tra lại đường dẫn.",
-            });
+            return Result<bool>.Fail(PrintErrorFactory.FileNotFound(job.FilePath));
 
         // Máy in ẢO (PDF/XPS...) → luôn render rồi LƯU PDF cạnh file gốc, KHÔNG đẩy spooler
         // (shell printto tới PDF printer mở hộp "Save As" vô hình → "báo xong không ra file").
@@ -67,9 +57,8 @@ public sealed class BrowserPrintEngine : IPrintEngine
         if (pdfOut is null && !NeedsBrowserRender(job))
             return await _fallback.PrintAsync(job, ct);
 
-        var tempDir = Path.Combine(Path.GetTempPath(), $"printonator-browser-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(tempDir);
-        try
+        using var temp = TempDir.Create("printonator-browser");
+        var tempDir = temp.FullPath; // keep existing variable name to minimize changes
         {
             var url = new Uri(job.FilePath).AbsoluteUri;
             var isPdf = job.Format.Equals("PDF", StringComparison.OrdinalIgnoreCase);
@@ -159,14 +148,6 @@ public sealed class BrowserPrintEngine : IPrintEngine
             // Số trang thực tế đã probe (để state/progress chính xác)
             if (job.PageCount <= 0) job.PageCount = ResolveCount(job);
             return Result<bool>.Ok(true);
-        }
-        finally
-        {
-            try
-            {
-                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, recursive: true);
-            }
-            catch { }
         }
     }
 

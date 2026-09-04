@@ -100,7 +100,7 @@ public static class PrintTools
     {
         try
         {
-            var presets = new PresetStore().Load();
+            var presets = PresetStore.Default.Load();
             return new Dictionary<string, object?> { ["ok"] = true, ["presets"] = presets.Select(PresetDto) };
         }
         catch (Exception ex) { return Fail(Err(ex, "Không đọc được danh sách preset.")); }
@@ -129,19 +129,13 @@ public static class PrintTools
                 PrinterName = printer,
                 ColorMode = color ? PrintColorMode.Color : PrintColorMode.Grayscale,
             };
-            var ok = new PresetStore().Save(preset);
+            var ok = PresetStore.Default.Save(preset);
             if (ok)
             {
                 AppServices.GuardInstance.Audit("save_preset", "ok", new Dictionary<string, object?> { ["presetName"] = name, ["ok"] = true });
                 return new Dictionary<string, object?> { ["ok"] = true, ["preset"] = PresetDto(preset) };
             }
-            return Fail(new PrintError
-            {
-                Code = ErrorCodes.InvalidPreset,
-                Category = PrintErrorCategory.Config,
-                Message = "Tên preset không hợp lệ.",
-                Hint = "Tên không được để trống.",
-            });
+            return Fail(PrintErrorFactory.InvalidPreset("Tên preset không hợp lệ."));
         }
         catch (Exception ex) { return Fail(Err(ex, "Lưu preset thất bại.")); }
     }
@@ -152,35 +146,14 @@ public static class PrintTools
         [Description("Đường dẫn các file cần in")] string[] paths,
         [Description("Ghi đè máy in (bỏ trống = dùng máy trong preset)")] string? printer = null)
     {
-        var preset = new PresetStore().Load().FirstOrDefault(p => p.Name.Equals(presetName, StringComparison.OrdinalIgnoreCase));
+        var preset = PresetStore.Default.Load().FirstOrDefault(p => p.Name.Equals(presetName, StringComparison.OrdinalIgnoreCase));
         if (preset is null)
-            return Fail(new PrintError
-            {
-                Code = ErrorCodes.PresetNotFound,
-                Category = PrintErrorCategory.Config,
-                Message = $"Không tìm thấy preset \"{presetName}\".",
-                Hint = "Xem danh sách preset bằng get_presets.",
-            });
+            return Fail(PrintErrorFactory.PresetNotFound(presetName));
         var effectivePrinter = string.IsNullOrWhiteSpace(printer) ? preset.PrinterName : printer;
         return await BuildAndQueue(paths, effectivePrinter, cfg =>
         {
-            cfg.Copies = preset.Copies;
-            // Prefer enum khi preset mới đã lưu chiều lật; legacy chỉ có bool Duplex → true = LongEdge;
-            // còn lại giữ AsPrinter ("theo máy in") — KHÔNG ép Simplex (Major #1 fix, khớp Preset.ToPrintConfig)
-            cfg.DuplexMode = preset.DuplexMode != PrintDuplexMode.AsPrinter
-                ? preset.DuplexMode
-                : (preset.Duplex ? PrintDuplexMode.LongEdge : preset.DuplexMode);
-            cfg.PaperSize = preset.PaperSize;
-            cfg.ColorMode = preset.ColorMode;
-            cfg.PageRange = preset.PageRange;
-            cfg.PaperSource = preset.PaperSource;
-            cfg.ScaleMode = preset.ScaleMode;
-            cfg.ScalePercent = preset.ScalePercent;
-            cfg.PagesPerSheet = preset.PagesPerSheet;
-            cfg.Booklet = preset.Booklet;
-            cfg.Collation = preset.Collation;
-            cfg.Parity = preset.Parity;
-            cfg.Quality = preset.Quality;
+            // Use Preset.ToPrintConfig() — single source of truth for preset → config mapping
+            preset.ToPrintConfig().CopyInto(cfg);
             if (!string.IsNullOrWhiteSpace(printer)) cfg.PrinterName = printer;
         }, "print_with_preset");
     }

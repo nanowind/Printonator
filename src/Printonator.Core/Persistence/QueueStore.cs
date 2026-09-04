@@ -13,9 +13,7 @@ namespace Printonator.Core.Persistence;
 public static class QueueStore
 {
     /// <summary>Đường dẫn mặc định: %APPDATA%\Printonator\queue.json</summary>
-    public static string FilePath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "Printonator", "queue.json");
+    public static string FilePath => Path.Combine(JsonFileStore.AppDataDir, "queue.json");
 
     /// <summary>DTO phẳng cho serialize — tránh phụ thuộc vào init-only properties của PrintJob.
     /// HasPerFilePrinter mặc định false để file queue.json CŨ (thiếu field) vẫn đọc được.</summary>
@@ -39,21 +37,7 @@ public static class QueueStore
             .Select(j => new QueueEntry(j.FilePath, j.FileName, j.Format, j.Source, j.Config, j.CreatedAt, j.HasPerFilePrinter))
             .ToList();
 
-        if (entries.Count == 0)
-        {
-            if (File.Exists(path)) File.Delete(path);
-            return;
-        }
-
-        var dir = Path.GetDirectoryName(path);
-        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-
-        var json = JsonSerializer.Serialize(entries, new JsonSerializerOptions
-        {
-            WriteIndented = true,
-            Converters = { new JsonStringEnumConverter() },
-        });
-        File.WriteAllText(path, json);
+        JsonFileStore.Save(path, entries);
     }
 
     /// <summary>Đọc danh sách job chờ từ file (đường dẫn mặc định). Trả rỗng nếu không có / file hỏng.</summary>
@@ -62,25 +46,6 @@ public static class QueueStore
     /// <summary>Đọc từ path cụ thể (test dùng). File hỏng → rename .corrupt-ts, trả rỗng.</summary>
     public static List<QueueEntry> Load(string path)
     {
-        try
-        {
-            if (!File.Exists(path)) return new List<QueueEntry>();
-            var json = File.ReadAllText(path);
-            return JsonSerializer.Deserialize<List<QueueEntry>>(json, new JsonSerializerOptions
-            {
-                Converters = { new JsonStringEnumConverter() },
-            }) ?? new List<QueueEntry>();
-        }
-        catch
-        {
-            // File hỏng → đổi tên dự phòng (không ghi đè mất dữ liệu), trả rỗng
-            try
-            {
-                if (File.Exists(path))
-                    File.Move(path, $"{path}.corrupt-{DateTimeOffset.Now:yyyyMMddHHmmss}");
-            }
-            catch { }
-            return new List<QueueEntry>();
-        }
+        return JsonFileStore.Load<QueueEntry>(path);
     }
 }

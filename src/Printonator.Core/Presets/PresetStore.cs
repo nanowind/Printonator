@@ -1,45 +1,32 @@
 using System.Text.Json;
 using Printonator.Core.Models;
+using Printonator.Core.Persistence;
 
 namespace Printonator.Core.Presets;
 
 /// <summary>
 /// Lưu/đọc danh sách preset dạng JSON cục bộ.
 /// Mặc định đặt tại %APPDATA%\Printonator\presets.json — truyền path khác trong test.
+/// Singleton Default instance — 6 places creating new PresetStore() now use one shared instance.
 /// </summary>
 public sealed class PresetStore
 {
+    /// <summary>Shared singleton instance — use this instead of creating new PresetStore().</summary>
+    public static PresetStore Default { get; } = new();
+
     private readonly string _path;
     private readonly object _sync = new();
 
     public PresetStore(string? path = null)
     {
-        _path = path ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Printonator", "presets.json");
+        _path = path ?? Path.Combine(JsonFileStore.AppDataDir, "presets.json");
     }
 
     public List<Preset> Load()
     {
         lock (_sync)
         {
-            try
-            {
-                if (!File.Exists(_path)) return new List<Preset>();
-                var json = File.ReadAllText(_path);
-                return JsonSerializer.Deserialize<List<Preset>>(json) ?? new List<Preset>();
-            }
-            catch
-            {
-                // File hỏng → đổi tên dự phòng (không ghi đè mất dữ liệu), trả danh sách rỗng
-                try
-                {
-                    if (File.Exists(_path))
-                        File.Move(_path, $"{_path}.corrupt-{DateTimeOffset.Now:yyyyMMddHHmmss}");
-                }
-                catch { }
-                return new List<Preset>();
-            }
+            return JsonFileStore.Load<Preset>(_path);
         }
     }
 
@@ -54,7 +41,7 @@ public sealed class PresetStore
             all.RemoveAll(p => p.Name.Equals(preset.Name, StringComparison.OrdinalIgnoreCase));
             all.Add(preset);
             all.Sort((a, b) => string.CompareOrdinal(a.Name, b.Name));
-            WriteAll(all);
+            JsonFileStore.Save(_path, all);
             return true;
         }
     }
@@ -66,15 +53,8 @@ public sealed class PresetStore
             var all = Load();
             var removed = all.RemoveAll(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
             if (removed == 0) return false;
-            WriteAll(all);
+            JsonFileStore.Save(_path, all);
             return true;
         }
-    }
-
-    private void WriteAll(List<Preset> presets)
-    {
-        var dir = Path.GetDirectoryName(_path);
-        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-        File.WriteAllText(_path, JsonSerializer.Serialize(presets, new JsonSerializerOptions { WriteIndented = true }));
     }
 }

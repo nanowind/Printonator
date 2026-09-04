@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using Printonator.Core;
 using Printonator.Core.Models;
+using Printonator.Core.Printing;
 
 namespace Printonator.Spool.Printing;
 
@@ -15,7 +16,7 @@ namespace Printonator.Spool.Printing;
 public sealed class LibreOfficePrintEngine : IPrintEngine
 {
     private const int TimeoutSeconds = 120;
-    private static readonly string[] OfficeFormats = ["DOCX", "DOC", "RTF", "XLSX", "XLS", "XLSM", "CSV", "PPTX", "PPT", "PPSX", "PPS"];
+    private static readonly string[] OfficeFormats = FileFormatRegistry.OfficeFormats;
 
     private readonly Func<string?> _sofficeResolver;
 
@@ -51,11 +52,7 @@ public sealed class LibreOfficePrintEngine : IPrintEngine
                 Hint = "File bị xóa hoặc di chuyển — kiểm tra lại đường dẫn.",
             });
 
-        var printer = job.Config.PrinterName;
-        if (string.IsNullOrEmpty(printer)
-            || printer.Equals("mặc định", StringComparison.OrdinalIgnoreCase)
-            || printer.Equals("default", StringComparison.OrdinalIgnoreCase))
-            printer = null;
+        var printer = DefaultPrinter.Resolve(job.Config.PrinterName);
 
         // -p            → in ra máy in MẶC ĐỊNH của Windows (tài liệu chính thức LibreOffice)
         // --pt "Tên máy" → in ra máy chỉ định, đóng file sau khi in

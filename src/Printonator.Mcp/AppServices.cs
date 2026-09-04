@@ -32,14 +32,7 @@ public static class AppServices
         lock (Sync)
         {
             if (_engineRegistered) return;
-            // Engine ưu tiên (dynamic theo máy user — KHÔNG bundle lib):
-            // 1) MS Office COM → 2) LibreOffice (soffice nếu máy có) → 3) GDI PDF → 4) Watermark bọc Browser
-            // (Edge/Chrome — PDF/ảnh/TXT đúng options) → 5) SpoolPrintEngine (fallback)
-            Queue.RegisterEngine(new OfficeComPrintEngine());
-            Queue.RegisterEngine(new LibreOfficePrintEngine());
-            Queue.RegisterEngine(new GdiPrintEngine());
-            Queue.RegisterEngine(new WatermarkPrintEngine(new BrowserPrintEngine()));
-            Queue.RegisterEngine(new SpoolPrintEngine());
+            EngineRegistry.RegisterAll(Queue);
             _engineRegistered = true;
         }
     }

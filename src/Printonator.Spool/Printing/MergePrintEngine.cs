@@ -1,6 +1,8 @@
 using System.IO;
 using Printonator.Core;
+using Printonator.Core.IO;
 using Printonator.Core.Models;
+using Printonator.Core.Printing;
 
 namespace Printonator.Spool.Printing;
 
@@ -28,65 +30,20 @@ public sealed class MergePrintEngine : IPrintEngine
         if (string.IsNullOrWhiteSpace(printer))
             return FailCoverEmpty("Chưa chọn máy in để gộp.", "Chọn máy in ở thanh công cụ rồi in lại.");
 
-        var tempDir = Path.Combine(Path.GetTempPath(), $"printonator-merge-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(tempDir);
-        try
+        using var temp = TempDir.Create("printonator-merge");
+        var tempDir = temp.FullPath;
         {
             var html = await BuildMergeHtmlAsync(jobs, ct);
             if (string.IsNullOrWhiteSpace(html))
-                return Result<bool>.Fail(new PrintError
-                {
-                    Code = ErrorCodes.UnsupportedFormat,
-                    Category = PrintErrorCategory.Config,
-                    Message = "Không có file PDF/ảnh/TXT/CSV nào gộp được trong lô.",
-                    Hint = "Gộp file chỉ hỗ trợ PDF, ảnh, TXT và CSV. Bỏ những file khác hoặc tắt gộp.",
-                });
+                return Result<bool>.Fail(PrintErrorFactory.UnsupportedFormat("lô không có file hợp lệ"));
 
-            var browser = new BrowserLocator().ResolveBrowser();
-            if (browser is not { } b)
-                return Result<bool>.Fail(new PrintError
-                {
-                    Code = ErrorCodes.EngineNotFound,
-                    Category = PrintErrorCategory.App,
-                    Message = "Không tìm thấy Edge/Chrome để gộp file.",
-                    Hint = "Máy cần có Microsoft Edge hoặc Google Chrome (mặc định Windows 10/11 có sẵn).",
-                });
-
-            var htmlPath = Path.Combine(tempDir, "merge.html");
-            await File.WriteAllTextAsync(htmlPath, html, ct);
-
-            var (ok, base64, err) = await DevToolsPrintClient.PrintPdfAsync(
-                b.Path,
-                new Uri(htmlPath).AbsoluteUri,
+            return await BrowserPrintPipeline.RenderAndSpoolAsync(
+                html,
                 CdpPrintParams.Build(jobs.First().Config, null),
-                Path.Combine(tempDir, "profile"),
+                jobs.First(),
+                " (gộp)",
+                tempDir,
                 ct);
-
-            if (!ok || string.IsNullOrEmpty(base64))
-                return Result<bool>.Fail(new PrintError
-                {
-                    Code = ErrorCodes.SpoolerFailed,
-                    Category = PrintErrorCategory.App,
-                    Message = $"Không dựng được PDF gộp: {err ?? "lỗi không rõ"}",
-                    Hint = "Kiểm tra browser có chạy headless được không, rồi in lại.",
-                    Detail = err,
-                });
-
-            var outPdf = Path.Combine(tempDir, "out.pdf");
-            await File.WriteAllBytesAsync(outPdf, Convert.FromBase64String(base64), ct);
-
-            var merged = new PrintJob
-            {
-                FilePath = outPdf,
-                FileName = "Gộp cả lô",
-                Format = "PDF",
-                Config = new PrintConfig { PrinterName = printer, Copies = Math.Max(jobs.First().Config.Copies, 1) },
-            };
-            return await new SpoolPrintEngine().PrintAsync(merged, ct);
-        }
-        finally
-        {
-            try { if (Directory.Exists(tempDir)) Directory.Delete(tempDir, recursive: true); } catch { }
         }
     }
 

@@ -1,7 +1,9 @@
 using System.Globalization;
 using System.IO;
 using Printonator.Core;
+using Printonator.Core.IO;
 using Printonator.Core.Models;
+using Printonator.Core.Printing;
 
 namespace Printonator.Spool.Printing;
 
@@ -42,9 +44,8 @@ public static class CoverPageRenderer
         if (browser is not { } b)
             return (false, null);
 
-        var tempDir = Path.Combine(Path.GetTempPath(), $"printonator-cover-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(tempDir);
-        try
+        using var temp = TempDir.Create("printonator-cover");
+        var tempDir = temp.FullPath;
         {
             var htmlPath = Path.Combine(tempDir, "cover.html");
             await File.WriteAllTextAsync(htmlPath, html, ct);
@@ -56,10 +57,6 @@ public static class CoverPageRenderer
                 ct);
             return (ok, base64);
         }
-        finally
-        {
-            try { if (Directory.Exists(tempDir)) Directory.Delete(tempDir, recursive: true); } catch { }
-        }
     }
 
     /// <summary>Ghi PDF trang bìa tạm + in qua GDI engine (ảnh GDI thẳng máy in — KHÔNG cần print handler
@@ -67,17 +64,10 @@ public static class CoverPageRenderer
     public static async Task<Result<bool>> PrintCoverAsync(string base64Pdf, string printerName, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(base64Pdf))
-            return Result<bool>.Fail(new PrintError
-            {
-                Code = ErrorCodes.SpoolerFailed,
-                Category = PrintErrorCategory.App,
-                Message = "Trang bìa rỗng — không in được.",
-                Hint = "Kiểm tra lại cấu hình in trang bìa.",
-            });
+            return Result<bool>.Fail(PrintErrorFactory.SpoolerFailed("Trang bìa rỗng — không in được."));
 
-        var tempDir = Path.Combine(Path.GetTempPath(), $"printonator-cover-out-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(tempDir);
-        try
+        using var temp = TempDir.Create("printonator-cover-out");
+        var tempDir = temp.FullPath;
         {
             var outPdf = Path.Combine(tempDir, "out.pdf");
             await File.WriteAllBytesAsync(outPdf, Convert.FromBase64String(base64Pdf), ct);
@@ -91,10 +81,6 @@ public static class CoverPageRenderer
             };
             // GdiPrintEngine: in ảnh trực tiếp, không phụ thuộc app/handler PDF trên máy.
             return await new GdiPrintEngine().PrintAsync(coverJob, ct);
-        }
-        finally
-        {
-            try { if (Directory.Exists(tempDir)) Directory.Delete(tempDir, recursive: true); } catch { }
         }
     }
 }

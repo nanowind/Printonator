@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Printonator.Core.Models;
+using Printonator.Core.Printing;
 
 namespace Printonator.Spool.Printing;
 
@@ -18,22 +19,9 @@ public static class CdpPrintParams
     /// <summary>Nén danh sách trang rời rạc thành chuỗi range CDP: [1,2,3,5,8,9] → "1-3, 5, 8-9".</summary>
     public static string CompactRanges(IEnumerable<int> pages)
     {
-        var sorted = pages.Distinct().OrderBy(p => p).ToList();
-        if (sorted.Count == 0) return "";
-        var parts = new List<string>();
-        var start = sorted[0];
-        var prev = sorted[0];
-        for (var i = 1; i <= sorted.Count; i++)
-        {
-            var cur = i < sorted.Count ? sorted[i] : int.MinValue;
-            if (i == sorted.Count || cur != prev + 1)
-            {
-                parts.Add(start == prev ? start.ToString() : $"{start}-{prev}");
-                if (i < sorted.Count) { start = cur; prev = cur; }
-            }
-            else prev = cur;
-        }
-        return string.Join(", ", parts);
+        var sorted = pages.Distinct().OrderBy(p => p).ToArray();
+        if (sorted.Length == 0) return "";
+        return PageGrouping.CompactRanges(sorted);
     }
 
     /// <summary>
@@ -147,9 +135,6 @@ public static class CdpPrintParams
         return p;
     }
 
-    public static string Serialize(Dictionary<string, object?> p)
-        => JsonSerializer.Serialize(p);
-
     /// <summary>
     /// Params để in HTML ẢNH đã cắt (mỗi trang 1 ảnh khớp khổ giấy gốc PDF):
     /// khổ giấy = inch từ DIPs/96 của trang PDF gốc, margin 0, scale 1 — ảnh lấp đầy tờ.
@@ -172,4 +157,7 @@ public static class CdpPrintParams
         };
         return p;
     }
+
+    public static string Serialize(Dictionary<string, object?> p)
+        => JsonSerializer.Serialize(p);
 }

@@ -16,9 +16,7 @@ public static class HistoryStore
     public const int MaxEntries = 1000;
 
     /// <summary>Đường dẫn mặc định: %APPDATA%\Printonator\history.json</summary>
-    public static string FilePath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "Printonator", "history.json");
+    public static string FilePath => Path.Combine(JsonFileStore.AppDataDir, "history.json");
 
     /// <summary>Thêm 1 dòng lịch sử (đường dẫn mặc định). Giữ tối đa MaxEntries bản mới nhất.</summary>
     public static void Append(HistoryEntry entry) => Append(FilePath, entry);
@@ -27,11 +25,11 @@ public static class HistoryStore
     public static void Append(string path, HistoryEntry entry)
     {
         if (entry is null) return;
-        var list = Load(path);
+        var list = JsonFileStore.Load<HistoryEntry>(path);
         list.Add(entry);
         if (list.Count > MaxEntries)
             list.RemoveRange(0, list.Count - MaxEntries);   // bỏ N bản cũ nhất giữ 1000 mới nhất
-        Write(path, list);
+        JsonFileStore.Save(path, list);
     }
 
     /// <summary>Đọc toàn bộ lịch sử (đường dẫn mặc định). File mất/hỏng → rỗng.</summary>
@@ -40,25 +38,7 @@ public static class HistoryStore
     /// <summary>Đọc từ path cụ thể (test dùng). File hỏng → rename .corrupt-ts, trả rỗng.</summary>
     public static List<HistoryEntry> Load(string path)
     {
-        try
-        {
-            if (!File.Exists(path)) return new List<HistoryEntry>();
-            var json = File.ReadAllText(path);
-            return JsonSerializer.Deserialize<List<HistoryEntry>>(json, new JsonSerializerOptions
-            {
-                Converters = { new JsonStringEnumConverter() },
-            }) ?? new List<HistoryEntry>();
-        }
-        catch
-        {
-            try
-            {
-                if (File.Exists(path))
-                    File.Move(path, $"{path}.corrupt-{DateTimeOffset.Now:yyyyMMddHHmmss}");
-            }
-            catch { }
-            return new List<HistoryEntry>();
-        }
+        return JsonFileStore.Load<HistoryEntry>(path);
     }
 
     /// <summary>Xóa toàn bộ lịch sử (đường dẫn mặc định).</summary>
@@ -67,22 +47,7 @@ public static class HistoryStore
     /// <summary>Xóa lịch sử ở path cụ thể (test dùng).</summary>
     public static void Clear(string path)
     {
-        if (File.Exists(path))
-        {
-            try { File.Delete(path); } catch { }
-        }
-    }
-
-    private static void Write(string path, List<HistoryEntry> list)
-    {
-        var dir = Path.GetDirectoryName(path);
-        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-        var json = JsonSerializer.Serialize(list, new JsonSerializerOptions
-        {
-            WriteIndented = true,
-            Converters = { new JsonStringEnumConverter() },
-        });
-        File.WriteAllText(path, json);
+        JsonFileStore.Delete(path);
     }
 }
 

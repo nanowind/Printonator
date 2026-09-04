@@ -1,7 +1,9 @@
 using System.Globalization;
 using System.IO;
 using Printonator.Core;
+using Printonator.Core.IO;
 using Printonator.Core.Models;
+using Printonator.Core.Printing;
 
 namespace Printonator.Spool.Printing;
 
@@ -25,35 +27,17 @@ public sealed class WatermarkPrintEngine : IPrintEngine
     public async Task<Result<bool>> PrintAsync(PrintJob job, CancellationToken ct)
     {
         if (job is null)
-            return Result<bool>.Fail(new PrintError
-            {
-                Code = ErrorCodes.FileNotFound,
-                Category = PrintErrorCategory.System,
-                Message = "Job rỗng — không in được.",
-                Hint = "Kiểm tra lại file cần in.",
-            });
+            return Result<bool>.Fail(PrintErrorFactory.FileNotFound("job rỗng"));
 
         // Không có dấu mờ → in nguyên bản qua engine trong (không tốn render/browser).
         if (string.IsNullOrWhiteSpace(job.Config?.WatermarkText))
             return await _inner.PrintAsync(job, ct);
 
         if (string.IsNullOrEmpty(job.FilePath))
-            return Result<bool>.Fail(new PrintError
-            {
-                Code = ErrorCodes.FileNotFound,
-                Category = PrintErrorCategory.System,
-                Message = "File rỗng — không in được.",
-                Hint = "Kiểm tra lại file cần in.",
-            });
+            return Result<bool>.Fail(PrintErrorFactory.FileNotFound("file rỗng"));
 
         if (!File.Exists(job.FilePath))
-            return Result<bool>.Fail(new PrintError
-            {
-                Code = ErrorCodes.FileNotFound,
-                Category = PrintErrorCategory.System,
-                Message = $"File không tồn tại: {job.FilePath}",
-                Hint = "File bị xóa hoặc di chuyển — kiểm tra lại đường dẫn.",
-            });
+            return Result<bool>.Fail(PrintErrorFactory.FileNotFound(job.FilePath));
 
         var fmt = (job.Format ?? "").ToUpperInvariant();
         if (!SupportedFormats.Contains(fmt))
@@ -61,64 +45,22 @@ public sealed class WatermarkPrintEngine : IPrintEngine
 
         var printer = job.Config.PrinterName;
         if (string.IsNullOrWhiteSpace(printer))
-            return Result<bool>.Fail(new PrintError
-            {
-                Code = ErrorCodes.PrinterNotFound,
-                Category = PrintErrorCategory.Config,
-                Message = "Chưa chọn máy in.",
-                Hint = "Chọn máy in ở thanh công cụ rồi in lại.",
-            });
+            return Result<bool>.Fail(PrintErrorFactory.PrinterNotFound(printer));
 
-        var tempDir = Path.Combine(Path.GetTempPath(), $"printonator-watermark-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(tempDir);
-        try
+        using var temp = TempDir.Create("printonator-watermark");
+        var tempDir = temp.FullPath;
         {
             var html = await BuildWatermarkHtmlAsync(job, fmt, ct);
             if (string.IsNullOrEmpty(html))
                 return await _inner.PrintAsync(job, ct);
 
-            var browser = new BrowserLocator().ResolveBrowser();
-            if (browser is not { } b)
-                return Result<bool>.Fail(new PrintError
-                {
-                    Code = ErrorCodes.EngineNotFound,
-                    Category = PrintErrorCategory.App,
-                    Message = "Không tìm thấy Edge/Chrome để in dấu mờ.",
-                    Hint = "Máy cần có Microsoft Edge hoặc Google Chrome (mặc định Windows 10/11 có sẵn).",
-                });
-
-            var htmlPath = Path.Combine(tempDir, "wm.html");
-            await File.WriteAllTextAsync(htmlPath, html, ct);
-
-            var (ok, base64, err) = await DevToolsPrintClient.PrintPdfAsync(
-                b.Path,
-                new Uri(htmlPath).AbsoluteUri,
+            return await BrowserPrintPipeline.RenderAndSpoolAsync(
+                html,
                 CdpPrintParams.Build(job.Config, null),
-                Path.Combine(tempDir, "profile"),
+                job,
+                " (dấu mờ)",
+                tempDir,
                 ct);
-
-            if (!ok || string.IsNullOrEmpty(base64))
-                return await _inner.PrintAsync(job, ct); // render fail → rớt mềm in file gốc
-
-            var outPdf = Path.Combine(tempDir, "out.pdf");
-            await File.WriteAllBytesAsync(outPdf, Convert.FromBase64String(base64), ct);
-
-            var wmJob = new PrintJob
-            {
-                FilePath = outPdf,
-                FileName = job.FileName + " (dấu mờ)",
-                Format = "PDF",
-                Config = new PrintConfig
-                {
-                    PrinterName = printer,
-                    Copies = Math.Max(job.Config.Copies, 1),
-                },
-            };
-            return await new SpoolPrintEngine().PrintAsync(wmJob, ct);
-        }
-        finally
-        {
-            try { if (Directory.Exists(tempDir)) Directory.Delete(tempDir, recursive: true); } catch { }
         }
     }
 

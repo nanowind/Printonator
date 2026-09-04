@@ -143,6 +143,10 @@ public sealed class PrintQueue : IDisposable
                 if (_pending.Count == 0)
                 {
                     _drainRunning = false;   // ra ngoài lock nhả cờ — Enqueue/ProcessBatch sau sẽ mở vòng mới
+                    // Reset pause state khi lô in xong — tránh UI kẹt ở trạng thái "Resume"
+                    // (user pause rồi in hết trước khi bấm Resume).
+                    _isPaused = false;
+                    _stoppedByError = false;
                     if (_activeWorkers == 0) AllJobsCompleted?.Invoke();
                     return;
                 }

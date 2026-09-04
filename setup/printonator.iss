@@ -2,7 +2,7 @@
 ; Build: ISCC.exe setup\printonator.iss
 
 #define MyAppName "Printonator"
-#define MyAppVersion "0.2.3"
+#define MyAppVersion "0.2.4"
 #define MyAppPublisher "Phuc Nguyen"
 #define MyAppExeName "Printonator.UI.exe"
 #define MyAppURL "https://github.com/nanowind/Printonator"
@@ -100,8 +100,9 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChang
 ; Dùng trong [Code] MsgBox .NET runtime. Các thông báo khác của setup (Next/Browse/Install...) do .isl lo.
 DotNetMissing=Không tìm thấy .NET 8 Desktop Runtime
 DotNetDownloadQuestion=Máy này chưa có .NET 8 Desktop Runtime
-DotNetDownloadDetail=Setup sẽ tải và cài .NET 8 Desktop Runtime (~55MB, cần mạng)
-DotNetContinuePrompt=Bấm OK để tiếp tục.
+DotNetDownloadDetail=Setup sẽ tải và cài .NET 8 Desktop Runtime (~55MB, cần mạng).
+DotNetDownloadDetail2=Bạn sẽ thấy 2 bước hiện tiến trình: (1) tải về (thanh phần trăm), (2) cài đặt (cửa sổ .NET hiện thanh tiến trình). ĐỪNG đóng cửa sổ nào cho tới khi xong.
+DotNetContinuePrompt=Bấm OK để tải và cài đặt.
 DotNetInstallError=Cài đặt .NET 8 Runtime gặp lỗi (mã %1). Cài thủ công: https://dotnet.microsoft.com/download/dotnet/8.0 rồi chạy lại setup.
 DotNetLaunchError=Không khởi động được trình cài đặt .NET 8 Runtime. Cài thủ công: https://dotnet.microsoft.com/download/dotnet/8.0 rồi chạy lại setup.
 DotNetDownloadError=Không tải được .NET 8 Desktop Runtime (lỗi mạng hoặc SHA không khớp). Cài thủ công: https://dotnet.microsoft.com/download/dotnet/8.0 rồi chạy lại setup.
@@ -110,25 +111,29 @@ DotNetDownloadError=Không tải được .NET 8 Desktop Runtime (lỗi mạng h
 ;      Vi = mặc định ở trên. Inno tự chọn entry đúng ngôn ngữ khi hiển thị CustomMessage. ====
 english.DotNetDownloadQuestion=This computer doesn't have .NET 8 Desktop Runtime installed.
 english.DotNetDownloadDetail=Setup will download and install .NET 8 Desktop Runtime (~55MB, requires internet).
-english.DotNetContinuePrompt=Press OK to continue.
+english.DotNetDownloadDetail2=You will see 2 progress steps: (1) download (percentage bar), (2) install (.NET window shows progress). Do NOT close any window until finished.
+english.DotNetContinuePrompt=Press OK to download and install.
 english.DotNetInstallError=Failed to install .NET 8 Runtime (code %1). Install manually: https://dotnet.microsoft.com/download/dotnet/8.0 then run setup again.
 english.DotNetLaunchError=Could not launch the .NET 8 Runtime installer. Install manually: https://dotnet.microsoft.com/download/dotnet/8.0 then run setup again.
 english.DotNetDownloadError=Failed to download .NET 8 Desktop Runtime (network error or SHA mismatch). Install manually: https://dotnet.microsoft.com/download/dotnet/8.0 then run setup again.
 chinesesimp.DotNetDownloadQuestion=此电脑尚未安装 .NET 8 桌面运行时。
 chinesesimp.DotNetDownloadDetail=安装程序将下载并安装 .NET 8 桌面运行时（约 55MB，需要联网）。
-chinesesimp.DotNetContinuePrompt=点击“确定”继续。
+chinesesimp.DotNetDownloadDetail2=您将看到 2 个进度步骤：(1) 下载（百分比条），(2) 安装（.NET 窗口显示进度）。完成前请不要关闭任何窗口。
+chinesesimp.DotNetContinuePrompt=点击“确定”开始下载并安装。
 chinesesimp.DotNetInstallError=安装 .NET 8 运行时失败（代码 %1）。请手动安装：https://dotnet.microsoft.com/download/dotnet/8.0 然后重新运行安装程序。
 chinesesimp.DotNetLaunchError=无法启动 .NET 8 运行时安装程序。请手动安装：https://dotnet.microsoft.com/download/dotnet/8.0 然后重新运行安装程序。
 chinesesimp.DotNetDownloadError=无法下载 .NET 8 桌面运行时（网络错误或校验不一致）。请手动安装：https://dotnet.microsoft.com/download/dotnet/8.0 然后重新运行安装程序。
 russian.DotNetDownloadQuestion=На этом компьютере не установлена среда выполнения .NET 8 Desktop Runtime.
 russian.DotNetDownloadDetail=Программа установки загрузит и установит .NET 8 Desktop Runtime (~55 МБ, требуется интернет).
-russian.DotNetContinuePrompt=Нажмите OK для продолжения.
+russian.DotNetDownloadDetail2=Вы увидите 2 этапа прогресса: (1) загрузка (полоса процентов), (2) установка (окно .NET показывает прогресс). НЕ закрывайте ни одно окно до завершения.
+russian.DotNetContinuePrompt=Нажмите OK, чтобы загрузить и установить.
 russian.DotNetInstallError=Не удалось установить .NET 8 Runtime (код %1). Установите вручную: https://dotnet.microsoft.com/download/dotnet/8.0 и запустите установку заново.
 russian.DotNetLaunchError=Не удалось запустить установщик .NET 8 Runtime. Установите вручную: https://dotnet.microsoft.com/download/dotnet/8.0 и запустите установку заново.
 russian.DotNetDownloadError=Не удалось загрузить .NET 8 Desktop Runtime (ошибка сети или несоответствие SHA). Установите вручную: https://dotnet.microsoft.com/download/dotnet/8.0 и запустите установку заново.
 japanese.DotNetDownloadQuestion=.NET 8 デスクトップ ランタイムがインストールされていません。
 japanese.DotNetDownloadDetail=セットアップが .NET 8 デスクトップ ランタイム（約55MB、インターネット接続が必要）をダウンロードしてインストールします。
-japanese.DotNetContinuePrompt=続行するには [OK] を押してください。
+japanese.DotNetDownloadDetail2=2つの進捗ステップが表示されます：(1) ダウンロード（パーセントバー）、(2) インストール（.NETウィンドウが進捗を表示）。完了するまでウィンドウを閉じないでください。
+japanese.DotNetContinuePrompt=[OK]を押してダウンロードとインストールを開始します。
 japanese.DotNetInstallError=.NET 8 ランタイムのインストールに失敗しました（コード %1）。手動でインストールしてください：https://dotnet.microsoft.com/download/dotnet/8.0 の後、セットアップを再実行してください。
 japanese.DotNetLaunchError=.NET 8 ランタイムのインストーラーを起動できませんでした。手動でインストールしてください：https://dotnet.microsoft.com/download/dotnet/8.0 の後、セットアップを再実行してください。
 japanese.DotNetDownloadError=.NET 8 デスクトップ ランタイムをダウンロードできませんでした（ネットワークエラーまたは SHA 不一致）。手動でインストールしてください：https://dotnet.microsoft.com/download/dotnet/8.0 の後、セットアップを再実行してください。
@@ -189,6 +194,7 @@ begin
 
     if MsgBox(CustomMessage('DotNetDownloadQuestion') + #13#10 +
               CustomMessage('DotNetDownloadDetail') + #13#10 +
+              CustomMessage('DotNetDownloadDetail2') + #13#10 +
               CustomMessage('DotNetContinuePrompt'),
               mbInformation, MB_OKCANCEL) <> IDOK then
       Abort();
@@ -196,9 +202,11 @@ begin
     try
       DownloadTemporaryFile(DotNetRuntimeUrl, DotNetRuntimeFile, DotNetRuntimeSha256, nil);
       RuntimeExe := ExpandConstant('{tmp}\' + DotNetRuntimeFile);
-      // /norestart để không khởi động lại máy giữa chừng. Lỗi cài runtime → CẢNH BÁO + link cài tay,
-      // KHÔNG abort (user có thể tự cài .NET sau; lỗi này không nên chặn cả quá trình cài app).
-      if Exec(RuntimeExe, '/install /quiet /norestart', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+      // /passive → cửa sổ .NET installer HIỆN THỊ thanh tiến trình (user thấy đang tải/cài, không tưởng
+      // bị kẹt/lỗi). SW_SHOWNORMAL để cửa sổ hiện đúng foreground. /norestart để không khởi động lại máy
+      // giữa chừng. Lỗi cài runtime → CẢNH BÁO + link cài tay, KHÔNG abort (user có thể tự cài .NET sau;
+      // lỗi này không nên chặn cả quá trình cài app).
+      if Exec(RuntimeExe, '/install /passive /norestart', '', SW_SHOWNORMAL, ewWaitUntilTerminated, ResultCode) then
       begin
         if ResultCode <> 0 then
           MsgBox(FmtMessage(CustomMessage('DotNetInstallError'), [IntToStr(ResultCode)]),

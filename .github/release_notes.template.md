@@ -4,16 +4,12 @@ SHA256: {HASH}
 
 ### Mới
 
-- **Tùy chọn máy in ngay trên dropdown**: mỗi máy in trong danh sách có nút ⚙ (Tùy chọn in) và 🖨 (Thuộc tính) ngay bên cạnh — không cần mở thêm cửa sổ riêng.
+- **Cài đặt dễ hiểu hơn khi máy chưa có .NET**: giờ hiện rõ tiến trình tải và cài đặt — bạn biết máy đang làm gì, không còn tưởng bị kẹt.
 
 ### Cải tiến
 
-- **Dropdown máy in gọn hơn**: mỗi hàng hiển thị tên máy + trạng thái + nút thao tác, bấm 🔄 Scan quét lại danh sách ngay tại chỗ.
-- **Preset linh hoạt hơn**: có nút "Không dùng preset" để về cấu hình mặc định; khi mở Print Settings sẽ thấy đúng profile đang áp dụng.
-- **Xóa cửa sổ "Máy in & khổ giấy"**: tất cả thao tác máy in đã gộp vào dropdown toolbar, không còn cửa sổ riêng.
+- **Làm lại phần lõi cho ổn định**: gộp những đoạn mã trùng lặp, sửa chỗ này sẽ không sót chỗ kia, dễ bảo trì lâu dài.
 
 ### Đã sửa
 
-- Lỗi mở Print Settings luôn hiện "No profile" dù đã chọn preset — giờ hiển thị đúng profile đang áp.
-- Lỗi chọn "No profile" trong Print Settings không reset về cấu hình mặc định.
-- Lỗi app crash khi mở dropdown máy in (binding lỗi trên property chỉ đọc).
+- Lỗi bấm Tạm dừng (Pause) rồi lô in kết thúc trước khi bấm Tiếp tục — nút in không trả về "In tất cả" mà kẹt ở trạng thái "Tiếp tục". Giờ tự trở về bình thường khi in xong.

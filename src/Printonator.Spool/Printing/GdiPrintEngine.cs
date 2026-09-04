@@ -4,6 +4,7 @@ using System.Drawing.Printing;
 using System.IO;
 using Printonator.Core;
 using Printonator.Core.Models;
+using Printonator.Core.Printing;
 
 namespace Printonator.Spool.Printing;
 
@@ -60,10 +61,8 @@ public sealed class GdiPrintEngine : IPrintEngine
             return await _watermarkEngine.PrintAsync(job, ct);
 
         var printer = job.Config.PrinterName;
-        if (string.IsNullOrEmpty(printer)
-            || printer.Equals("mặc định", StringComparison.OrdinalIgnoreCase)
-            || printer.Equals("default", StringComparison.OrdinalIgnoreCase))
-            printer = SpoolPrintEngine.GetDefaultPrinterName(); // resolve máy default Windows NGAY (báo lỗi rõ nếu rỗng)
+        if (DefaultPrinter.IsDefault(printer))
+            printer = DefaultPrinter.GetWindowsDefaultPrinterName(); // resolve máy default Windows NGAY (báo lỗi rõ nếu rỗng)
 
         if (string.IsNullOrWhiteSpace(printer))
         {

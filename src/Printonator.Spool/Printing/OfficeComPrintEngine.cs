@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using Printonator.Core;
 using Printonator.Core.Models;
+using Printonator.Core.Printing;
 
 namespace Printonator.Spool.Printing;
 
@@ -16,7 +17,7 @@ public sealed class OfficeComPrintEngine : IPrintEngine
 {
     private const int TimeoutSeconds = 60;
     private const string PrinterUnsetMarker = "[PRINTER_UNSET]";
-    private static readonly string[] OfficeFormats = ["DOCX", "DOC", "RTF", "XLSX", "XLS", "XLSM", "CSV", "PPTX", "PPT", "PPSX", "PPS"];
+    private static readonly string[] OfficeFormats = FileFormatRegistry.OfficeFormats;
 
     /// <summary>Kiểm tra app gốc — tách ra để test (máy CI không có Office).</summary>
     private readonly Func<string, OfficeAppKind> _appDetector;
@@ -160,10 +161,7 @@ public sealed class OfficeComPrintEngine : IPrintEngine
             });
 
         var pn = job.Config.PrinterName!; // đã guard non-empty ở trên
-        var printer = pn.Equals("mặc định", StringComparison.OrdinalIgnoreCase)
-            || pn.Equals("default", StringComparison.OrdinalIgnoreCase)
-            ? null
-            : pn;
+        var printer = DefaultPrinter.Resolve(pn);
 
         OfficeLog($"PrintOnSta kind={kind} jobPrinter='{job.Config.PrinterName}' resolved={(printer ?? "NULL(->mặc định OS)")} file={job.FileName}");
 
@@ -420,8 +418,8 @@ public sealed class OfficeComPrintEngine : IPrintEngine
                         sheetPages.Add((sheet, n, offset));
                         offset += n;
                     }
-                    var mapped = MapGlobalPages(pages, sheetPages);
-                    OfficeLog($"Excel range '{job.Config.PageRange}' → " + string.Join("; ", mapped.Select(m => $"'{m.Item1.Name}' pages {string.Join(",", m.Item2.Select(g => $"{g.From}-{g.To}"))}")));
+                    var mapped = PageGrouping.MapGlobalPages(pages, sheetPages);
+                    OfficeLog($"Excel range '{job.Config.PageRange}' → " + string.Join("; ", mapped.Select(m => $"'{m.Sheet.Name}' pages {string.Join(",", m.Groups.Select(g => $"{g.From}-{g.To}"))}")));
                     foreach (var (sheet, groups) in mapped)
                         foreach (var (f, t) in groups)
                             sheet.PrintOut(From: f, To: t, Copies: copies, Collate: true);
@@ -558,7 +556,7 @@ public sealed class OfficeComPrintEngine : IPrintEngine
             }
             if (hasRange && pages is not null)
             {
-                foreach (var g in GroupPages(pages))
+                foreach (var g in PageGrouping.GroupConsecutive(pages))
                     pres.PrintOut(From: g.From, To: g.To, Copies: copies, Collate: true);
             }
             else
@@ -801,42 +799,5 @@ public sealed class OfficeComPrintEngine : IPrintEngine
             return n > 0 ? n : 1;
         }
         catch { return 1; }
-    }
-
-    /// <summary>Map range (số trang GLOBAL) → (sheet, nhóm trang cục bộ). "1-3,5" với Form=5 trang + CMC=1 trang
-    /// → Form in (1,3),(5,5); CMC KHÔNG in (global 6 ngoài range) — đúng ý "trang 1,2,3,5 của cả file".</summary>
-    private static List<(dynamic Sheet, List<(int From, int To)> Groups)> MapGlobalPages(
-        int[] pages, List<(dynamic Sheet, int Pages, int Start)> sheetPages)
-    {
-        var result = new List<(dynamic, List<(int, int)>)>();
-        foreach (var sp in sheetPages)
-        {
-            var local = new List<int>();
-            foreach (var p in pages)
-            {
-                var l = p - sp.Start;
-                if (l >= 1 && l <= sp.Pages) local.Add(l);
-            }
-            if (local.Count == 0) continue;
-            result.Add((sp.Sheet, GroupPages(local.ToArray())));
-        }
-        return result;
-    }
-
-    /// <summary>Nhóm trang LIÊN TIẾP thành các khoảng — vì Excel/PowerPoint PrintOut(From,To) chỉ in dãy
-    /// liên tục. "1-2,4" (bỏ trang 3) → [[1,2],[4]] → in (1,2) rồi (4,4) để đúng range.</summary>
-    private static List<(int From, int To)> GroupPages(int[] pages)
-    {
-        var groups = new List<(int, int)>();
-        if (pages.Length == 0) return groups;
-        int start = pages[0], prev = pages[0];
-        for (var i = 1; i < pages.Length; i++)
-        {
-            if (pages[i] == prev + 1) { prev = pages[i]; continue; }
-            groups.Add((start, prev));
-            start = pages[i]; prev = pages[i];
-        }
-        groups.Add((start, prev));
-        return groups;
     }
 }
