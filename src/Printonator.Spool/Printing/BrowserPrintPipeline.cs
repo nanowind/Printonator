@@ -80,12 +80,17 @@ public static class BrowserPrintPipeline
             FilePath = pdfPath,
             FileName = originalJob.FileName + outputLabel,
             Format = "PDF",
-            Config = new PrintConfig
-            {
-                PrinterName = originalJob.Config.PrinterName,
-                Copies = Math.Max(originalJob.Config.Copies, 1),
-            },
+            // Giữ duplex/color/paper của job gốc — PDF tạm in qua SpoolPrintEngine rồi GdiPrintEngine
+            // ép đúng 1/2 mặt. (Bug cũ: chỉ PrinterName+Copies → in theo driver, user chọn 1 mặt vẫn ra 2 mặt.)
+            Config = BuildSpoolConfig(originalJob),
         };
         return await new SpoolPrintEngine().PrintAsync(spoolJob, ct);
+    }
+
+    private static PrintConfig BuildSpoolConfig(PrintJob job)
+    {
+        var cfg = new PrintConfig { PrinterName = job.Config.PrinterName, Copies = Math.Max(job.Config.Copies, 1) };
+        job.Config.CopyInto(cfg);
+        return cfg;
     }
 }

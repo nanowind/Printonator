@@ -407,7 +407,10 @@ public partial class MainWindow : Window
     // Là PrinterInfo sentinel (cùng ObservableCollection → binding giữ nguyên); IsVirtual=true → ẩn ⚙🖨 inline.
     private static readonly PrinterInfo CmdScanItem = new()
     {
-        Name = "🔄 Scan printers…", IsAvailable = true, IsVirtual = true, StatusDetail = "",
+        Name = "🔄 Scan printers…",
+        IsAvailable = true,
+        IsVirtual = true,
+        StatusDetail = "",
     };
 
     private void PrinterCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1270,7 +1273,7 @@ public partial class MainWindow : Window
                 case ErrorCodes.PrinterNotFound:
                     LoadPrinters();
                     break;
-                // Các mã lỗi sau này có thể thêm handler riêng
+                    // Các mã lỗi sau này có thể thêm handler riêng
             }
         }
         else

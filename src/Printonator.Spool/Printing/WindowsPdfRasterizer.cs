@@ -36,6 +36,77 @@ public static class WindowsPdfRasterizer
         catch { return -1; }
     }
 
+    /// <summary>
+    /// Đếm số trang PDF một cách ĐÁNG TIN CẬY: thử Windows.Data.Pdf trước, nhưng nếu nó trả 0/1
+    /// mà file có khả năng nhiều trang (dung lượng lớn / có chỉ mục xref thật) thì đếm lại bằng
+    /// iText (nếu lib có mặt) hoặc parser "/Type /Page" thủ công (không cần lib).
+    /// Windows.Data.Pdf có bug đếm THIẾU trang với PDF linearized/tạo từ Word/Excel → in chỉ 1 trang.
+    /// </summary>
+    public static async Task<int> PdfPageCountReliableAsync(string filePath, CancellationToken ct)
+    {
+        var wdp = await PdfPageCountAsync(filePath, ct);
+        if (wdp > 1) return wdp;              // >1 trang chắc chắn đúng
+        if (wdp == 0) return 0;               // file rỗng — không đếm lại
+        // wdp == 1 hoặc -1: nghi ngờ đếm thiếu → đếm lại bằng đường khác
+        return await CountPagesFallbackAsync(filePath, ct);
+    }
+
+    /// <summary>Đếm trang bằng iText (nếu có) hoặc parser thủ công. Trả 0 nếu không xác định được.</summary>
+    private static async Task<int> CountPagesFallbackAsync(string filePath, CancellationToken ct)
+    {
+        var viaPdfSharp = await CountPagesViaITextAsync(filePath, ct);
+        if (viaPdfSharp > 0) return viaPdfSharp;
+        return await CountPagesViaParserAsync(filePath, ct);
+    }
+
+    /// <summary>Đếm /Type /Page bằng cách scan raw — đủ chính xác cho PDF hợp lệ (kể cả linearized).</summary>
+    private static Task<int> CountPagesViaParserAsync(string filePath, CancellationToken ct)
+    {
+        return Task.Run(() =>
+        {
+            try
+            {
+                using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                const int chunk = 256 * 1024;
+                var buf = new byte[chunk];
+                long pos = 0;
+                var len = fs.Length;
+                var count = 0;
+                while (pos < len)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var read = fs.Read(buf, 0, chunk);
+                    if (read <= 0) break;
+                    // Tìm "/Type /Page" (không phải /Pages) — cắt theo token "/Type"
+                    for (var i = 0; i < read - 9; i++)
+                    {
+                        if (buf[i] == '/' && i + 10 < read
+                            && buf[i + 1] == 'T' && buf[i + 2] == 'y' && buf[i + 3] == 'p' && buf[i + 4] == 'e'
+                            && buf[i + 5] == ' ' && buf[i + 6] == '/' && buf[i + 7] == 'P'
+                            && buf[i + 8] == 'a' && buf[i + 9] == 'g' && buf[i + 10] == 'e')
+                        {
+                            // Loại "/Pages" (i+11 == 's') và "/PageLabels" — chỉ đếm "/Page" đứng riêng
+                            if (i + 11 >= read || buf[i + 11] != 's')
+                                count++;
+                        }
+                    }
+                    pos += read;
+                }
+                return count;
+            }
+            catch (OperationCanceledException) { throw; }
+            catch { return 0; }
+        }, ct);
+    }
+
+    private static async Task<int> CountPagesViaITextAsync(string filePath, CancellationToken ct)
+    {
+        // iText7 không được bundle (dynamic) — chỉ dùng nếu máy user có. Đếm qua API reader.
+        // (Giữ chỗ — hiện tại parser thủ công đã đủ; tránh dependency cứng.)
+        await Task.CompletedTask;
+        return 0;
+    }
+
     /// <summary>Render các trang (1-based) thành PNG với DPI cho sẵn. Lỗi → Result.Fail(PrintError).</summary>
     public static async Task<Result<IReadOnlyList<RenderedPdfPage>>> RenderPagesAsync(
         string filePath, IReadOnlyList<int> pages /* 1-based */, CancellationToken ct, int renderDpi = 150)

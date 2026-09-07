@@ -122,12 +122,17 @@ public sealed class BrowserPrintEngine : IPrintEngine
 
             // In PDF tạm N bản qua shell printto (in đúng máy đã chọn; bỏ qua page range vì đã cắt trong PDF)
             var copies = Math.Max(job.Config.Copies, 1);
+            // QUAN TRỌNG: bản sao config PHẢI giữ duplex/color/paper của job gốc để GdiPrintEngine
+            // (trong chuỗi engine khi in PDF tạm) ép đúng 1/2 mặt. (Bug cũ: chỉ PrinterName+Copies
+            // → in theo driver, user chọn 1 mặt vẫn ra 2 mặt.)
+            var tmpCfg = new PrintConfig { PrinterName = job.Config.PrinterName, Copies = 1 };
+            job.Config.CopyInto(tmpCfg);   // giữ duplex/color/paper của job gốc (CopyInto không đụng Copies đã set)
             var tmp = new PrintJob
             {
                 FilePath = outPdf,
                 FileName = Path.GetFileName(job.FilePath) + " (render)",
                 Format = "PDF",
-                Config = new PrintConfig { PrinterName = job.Config.PrinterName, Copies = 1 },
+                Config = tmpCfg,
                 PageCount = 1,
             };
 
@@ -183,6 +188,11 @@ public sealed class BrowserPrintEngine : IPrintEngine
 
         // Chất lượng khác driver → cần rasterize đúng DPI
         if (cfg.Quality != PrintQuality.AsPrinter)
+            return true;
+
+        // 2 mặt: Simplex/LongEdge/ShortEdge → cần render (GDI ép đúng 1/2 mặt qua ảnh).
+        // Shell printto in theo driver — user chọn 1 mặt vẫn ra 2 mặt nếu driver đang 2 mặt.
+        if (cfg.DuplexMode != PrintDuplexMode.AsPrinter)
             return true;
 
         // Ép chiều ngang (dọc = theo file, không cần render)

@@ -177,8 +177,15 @@ public class BrowserEngineTests
         var pdf = MakeJob(new PrintConfig { PageRange = "2-4" }, 10);
         Assert.True(BrowserPrintEngine.NeedsBrowserRender(pdf)); // PDF + range → slice
 
-        var pdfAll = MakeJob(new PrintConfig(), 10);
-        Assert.False(BrowserPrintEngine.NeedsBrowserRender(pdfAll)); // PDF + All + A4/dọc → shell
+        var pdfAll = MakeJob(new PrintConfig { PaperSize = "A4" }, 10);
+        Assert.False(BrowserPrintEngine.NeedsBrowserRender(pdfAll)); // PDF + All + A4/dọc + AsPrinter → shell
+
+        // Duplex khác "theo máy" (Simplex/LongEdge/ShortEdge) → render để GDI ép 1/2 mặt đúng
+        // (shell printto in theo driver — user chọn 1 mặt vẫn ra 2 mặt nếu driver đang 2 mặt)
+        var pdfSimplex = MakeJob(new PrintConfig { DuplexMode = PrintDuplexMode.Simplex }, 10);
+        Assert.True(BrowserPrintEngine.NeedsBrowserRender(pdfSimplex));
+        var pdfDuplex = MakeJob(new PrintConfig { DuplexMode = PrintDuplexMode.LongEdge }, 10);
+        Assert.True(BrowserPrintEngine.NeedsBrowserRender(pdfDuplex));
 
         var pdfA3 = MakeJob(new PrintConfig { PaperSize = "A3" }, 10);
         Assert.True(BrowserPrintEngine.NeedsBrowserRender(pdfA3)); // khổ khác A4 → render

@@ -132,7 +132,7 @@ public sealed class GdiPrintEngine : IPrintEngine
                 }
                 if (job.PageCount <= 0)
                 {
-                    var n = await WindowsPdfRasterizer.PdfPageCountAsync(job.FilePath, ct);
+                    var n = await WindowsPdfRasterizer.PdfPageCountReliableAsync(job.FilePath, ct);
                     if (n > 0) job.PageCount = n;
                 }
                 GdiLog($"GdiPrintEngine: máy ảo '{printer}' + PDF → copy thẳng ra '{outPdf}'");
@@ -143,9 +143,11 @@ public sealed class GdiPrintEngine : IPrintEngine
         }
 
         // Đếm số trang PDF TRƯỚC — ResolveSelectedPages cần PageCount để lọc range/parity đúng.
+        // Dùng PdfPageCountReliableAsync: Windows.Data.Pdf đếm THIẾU trang với PDF linearized/tạo
+        // từ Word/Excel (bug v0.2.4: file 3 trang in ra 1 trang) → fallback parser "/Type /Page".
         if (job.PageCount <= 0)
         {
-            var n = await WindowsPdfRasterizer.PdfPageCountAsync(job.FilePath, ct);
+            var n = await WindowsPdfRasterizer.PdfPageCountReliableAsync(job.FilePath, ct);
             GdiLog($"GdiPrintEngine: PdfPageCount='{job.FileName}' → {n}");
             if (n > 0) job.PageCount = n;
         }

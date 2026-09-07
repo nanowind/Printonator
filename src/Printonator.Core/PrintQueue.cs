@@ -256,17 +256,51 @@ public sealed class PrintQueue : IDisposable
         }
     }
 
+    /// <summary>
+    /// Chọn engine ƯU TIÊN cho format — có FALLBACK: nếu engine ưu tiên không xử lý được (không có
+    /// Office/không có browser/không đọc được file) thì chuyển xuống engine tiếp theo trong chuỗi
+    /// đã đăng ký (OfficeCom → LibreOffice → Gdi → Browser/Watermark → Spool), KHÔNG dừng ở engine đầu.
+    /// </summary>
+    private IEnumerable<IPrintEngine> PickEngines(string format)
+    {
+        lock (_engineLock)
+        {
+            var picked = _engines.Where(e => e.CanHandle(format)).ToList();
+            if (picked.Count == 0) picked = _engines.ToList();
+            return picked;
+        }
+    }
+
     private async Task<Result<bool>> PrintOnceAsync(PrintJob job, CancellationToken ct)
     {
-        var engine = PickEngine(job.Format);
-        if (engine is null)
+        var engines = PickEngines(job.Format);
+        if (engines is null || !engines.Any())
         {
             // Mặc định khi chưa gắn engine: đánh dấu thành công để UI demo chạy được.
             await Task.Delay(50, ct); // mô phỏng xử lý — tôn trọng token (cancel → OCE)
             job.PageCount = job.PageCount > 0 ? job.PageCount : 1;
             return Result<bool>.Ok(true);
         }
-        return await engine.PrintAsync(job, ct);
+
+        // Chạy lần lượt từng engine theo ưu tiên — engine đầu fail (không xử lý được file/printer)
+        // thì chuyển xuống engine kế (OfficeCom → LibreOffice → Gdi → Browser → Spool). Chỉ dừng
+        // khi có engine trả thành công. Lỗi CUỐI cùng giữ nguyên để báo đúng lý do.
+        Result<bool>? lastFail = null;
+        foreach (var engine in engines)
+        {
+            ct.ThrowIfCancellationRequested();
+            var r = await engine.PrintAsync(job, ct);
+            if (r.IsSuccess) return r;
+            lastFail = r;
+            // Engine KHÔNG xử lý được định dạng (CanHandle=false nhưng vẫn được gọi do fallback)
+            // hoặc lỗi config rõ ràng (file không tồn tại / máy in không có) → không fallback tiếp
+            // để tránh in nhầm qua đường khác; lỗi spooler/engine (máy bận, render lỗi) → thử engine kế.
+            var code = r.Error?.Code;
+            if (code is ErrorCodes.FileNotFound or ErrorCodes.PrinterNotFound or ErrorCodes.UnsupportedFormat
+                or ErrorCodes.InvalidPageRange or ErrorCodes.SectionNotFound or ErrorCodes.FileCorrupted)
+                break;
+        }
+        return lastFail ?? Result<bool>.Fail(PrintErrorFactory.SpoolerFailed("Không có engine in nào hoạt động."));
     }
 
     private static bool IsRetryable(PrintError error) =>

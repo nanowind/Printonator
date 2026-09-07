@@ -19,9 +19,21 @@ public partial class PrintDoneWindow : Window
 {
     public bool RemoveDone { get; private set; } = true;
 
+    // Đóng bằng nút X (title bar) ≠ bấm OK: KHÔNG xóa file đã in (giữ an toàn — không mất job
+    // khỏi queue khi user chưa xác nhận). Ok_Click set DialogResult=true → không vào đây.
+    private bool _closedByOk;
+
     private PrintDoneWindow()
     {
         InitializeComponent();
+        Closing += (_, e) =>
+        {
+            if (!_closedByOk)
+            {
+                RemoveDone = false;   // đóng bằng X → giữ file trong queue
+                RemoveDoneChk.IsChecked = false; // phản ánh đúng hành vi (không xóa)
+            }
+        };
     }
 
     /// <summary>Mở popup "đã in xong" — trả về true nếu user muốn xóa các file đã in khỏi hàng đợi.</summary>
@@ -37,6 +49,7 @@ public partial class PrintDoneWindow : Window
 
     private void Ok_Click(object sender, RoutedEventArgs e)
     {
+        _closedByOk = true;
         RemoveDone = RemoveDoneChk.IsChecked == true;
         DialogResult = true;
         Close();
