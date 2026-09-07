@@ -328,4 +328,118 @@ public class PrintQueueTests
         Assert.Equal(2, engine.Calls);
         q.Dispose();
     }
+
+    // ================= RACE FIX (v0.2.5) — spam click Resume/Pause không được kẹt "Converting mãi" =================
+
+    [Fact]
+    public async Task PauseResume_SpamClick_DoesNotStickJobInConverting()
+    {
+        // Bug: spam Pause/Resume trong khi job đang Converting KHÔNG được làm job sau kẹt "Converting mãi"
+        // (triệu chứng user gặp: "cứ báo converting mãi, ko in tiếp được").
+        var q = new PrintQueue();
+        var engine = new BlockingEngine();
+        q.RegisterEngine(engine);
+        var j1 = MakeJob("a.pdf");
+        var j2 = MakeJob("b.pdf");
+        q.AddOnly(j1);
+        q.AddOnly(j2);
+
+        q.ProcessBatch(new[] { j1, j2 });       // j1 Converting
+        await engine.Started.Task;
+
+        // Spam click: Pause/Resume liên tục trong lúc j1 đang in
+        for (var i = 0; i < 10; i++)
+        {
+            q.Pause();
+            q.Resume();
+        }
+
+        engine.Release.SetResult(true);          // j1 xong
+        await TestHelpers.WaitUntilAsync(() => j1.State == JobState.Done);
+
+        // Spam tiếp giữa j1 xong và j2 bắt đầu
+        q.Pause();
+        q.Resume();
+        q.Pause();
+        q.Resume();
+
+        await TestHelpers.WaitUntilAsync(() => j2.State == JobState.Done, timeoutMs: 5000);
+        Assert.Equal(JobState.Done, j2.State);   // KHÔNG kẹt Converting
+        Assert.Equal(2, engine.Calls);
+        q.Dispose();
+    }
+
+    [Fact]
+    public async Task SubscriberThrows_DoesNotKillDrain_NextJobStillPrints()
+    {
+        // Bug: JobStateChanged?.Invoke chạy SYNCHRONOUS trong drain thread — subscriber ném exception
+        // → drain loop chết → _drainRunning kẹt true → MỌI KickDrain sau no-op → job "Converting mãi".
+        // Fix: SetState bọc invoke trong try/catch — subscriber lỗi không phá drain.
+        var q = new PrintQueue();
+        var engine = new TestHelpers.FakeEngine();
+        q.RegisterEngine(engine);
+
+        // Subscriber NÉM exception mỗi lần fire — trước fix: drain chết ngay job đầu.
+        q.JobStateChanged += _ => throw new InvalidOperationException("subscriber boom");
+
+        var j1 = MakeJob("a.pdf");
+        var j2 = MakeJob("b.pdf");
+        q.AddOnly(j1);
+        q.AddOnly(j2);
+
+        q.ProcessBatch(new[] { j1, j2 });
+        await TestHelpers.WaitUntilAsync(() => j1.State == JobState.Done);
+        await TestHelpers.WaitUntilAsync(() => j2.State == JobState.Done, timeoutMs: 5000);
+
+        Assert.Equal(JobState.Done, j1.State);
+        Assert.Equal(JobState.Done, j2.State);   // drain KHÔNG chết — job 2 vẫn in
+        Assert.Equal(2, engine.Calls);
+        q.Dispose();
+    }
+
+    [Fact]
+    public async Task RemoveJob_ConvertingJob_QueueStillProcessesNext()
+    {
+        // Bug: RemoveJob job đang Converting (cancel token) — job sau phải vẫn được in (drain không chết).
+        var q = new PrintQueue();
+        var cancelable = new CancelableBlockingEngine();
+        q.RegisterEngine(cancelable);
+        var j1 = MakeJob("a.pdf");
+        var j2 = MakeJob("b.pdf");
+        q.AddOnly(j1);
+        q.AddOnly(j2);
+
+        q.ProcessBatch(new[] { j1, j2 });
+        await cancelable.Started.Task;           // j1 Converting
+
+        var removed = q.RemoveJob(j1);           // gỡ job đang in — cancel token thật
+        Assert.True(removed);
+        Assert.DoesNotContain(j1, q.Jobs);
+
+        // Engine quan sát token → OCE → DrainLoopAsync chuyển j1 Cancelled (KHÔNG Done)
+        await TestHelpers.WaitUntilAsync(() => j1.State == JobState.Cancelled, timeoutMs: 2000);
+        await TestHelpers.WaitUntilAsync(() => j2.State == JobState.Done, timeoutMs: 5000);
+
+        Assert.Equal(JobState.Cancelled, j1.State);
+        Assert.Equal(JobState.Done, j2.State);   // job sau VẪN in — drain không kẹt
+        Assert.Equal(2, cancelable.Calls);
+        q.Dispose();
+    }
+
+    /// <summary>Engine block lần GỌI ĐẦU (j1) cho tới khi cancel; các lần sau trả Ok ngay (j2 in bình thường).
+    /// Mô phỏng đúng engine thật: quan sát token (cancel → OCE) nhưng chỉ job đang in bị block.</summary>
+    private sealed class CancelableBlockingEngine : IPrintEngine
+    {
+        public TaskCompletionSource<bool> Started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int Calls;
+        public bool CanHandle(string format) => true;
+        public async Task<Result<bool>> PrintAsync(PrintJob job, CancellationToken ct)
+        {
+            var n = Interlocked.Increment(ref Calls);
+            if (n > 1) return Result<bool>.Ok(true);       // lần 2+ (j2) — in ngay
+            Started.TrySetResult(true);
+            await Task.Delay(Timeout.Infinite, ct);         // lần 1 (j1) — giữ Converting cho tới khi cancel → OCE
+            return Result<bool>.Ok(true);
+        }
+    }
 }

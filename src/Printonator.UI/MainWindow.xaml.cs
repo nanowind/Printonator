@@ -1369,7 +1369,11 @@ public partial class MainWindow : Window
 
     private void OnJobStateChanged(PrintJob job)
     {
-        Dispatcher.Invoke(() =>
+        // BeginInvoke (async, KHÔNG block) — OnJobStateChanged fire từ DRAIN THREAD (threadpool).
+        // Dispatcher.Invoke (sync) block drain thread chờ UI thread → UI bận (modal PrintDoneWindow,
+        // MessageBox, spam click) → drain treo vô thời hạn, job "Converting mãi" không in tiếp.
+        // (Fix race: đổi Invoke → BeginInvoke — mọi nơi khác trong MainWindow đều dùng BeginInvoke.)
+        Dispatcher.BeginInvoke(new Action(() =>
         {
             if (job.State == JobState.Error && job.Error is not null)
                 ShowBanner(job.Error.Code, job.Error.Message, job.Error.Hint);
@@ -1379,12 +1383,12 @@ public partial class MainWindow : Window
                 try
                 {
                     HistoryStore.Append(new HistoryEntry(job.FileName, job.FilePath, job.State, job.Error?.Code,
-                        job.FinishedAt.Value, job.StartedAt, job.Config.Copies, job.PageCount, job.Source));
+                            job.FinishedAt.Value, job.StartedAt, job.Config.Copies, job.PageCount, job.Source));
                     // Printing server: máy dùng chung — báo 1 file in xong ngay lập tức (không chờ cả lô).
                     if (job.Source == JobSource.WatchFolder && job.State == JobState.Done)
                         AddNotification(NotificationKind.Done,
-                            L10n.F(Keys.Watch.PrintedTitle, job.FileName),
-                            L10n.F(Keys.Watch.PrintedDetail, DateTime.Now.ToString("HH:mm")));
+                                L10n.F(Keys.Watch.PrintedTitle, job.FileName),
+                                L10n.F(Keys.Watch.PrintedDetail, DateTime.Now.ToString("HH:mm")));
                 }
                 catch { /* lưu lịch sử lỗi (disk full, file bị khóa...) — không làm hỏng vòng đời job */ }
             }
@@ -1396,7 +1400,7 @@ public partial class MainWindow : Window
             JobList.Items.Refresh();
             UpdateFooter();
             UpdateApprovalBar();
-        });
+        }));
     }
 
     private void OnAllCompleted(IReadOnlyList<PrintJob> completed)

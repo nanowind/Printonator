@@ -22,6 +22,10 @@ public sealed class GdiPrintEngine : IPrintEngine
 {
     private static readonly string[] SupportedFormats = ["PDF"];
 
+    /// <summary>Deadline cứng cho PrintDocument.Print() (blocking, không nhận token) — driver máy in
+    /// treo (spooler treo) không được kẹt job "Converting mãi". Hết giờ → trả EngineTimeout, drain thoát.</summary>
+    internal const int GdiPrintTimeoutSeconds = 120;
+
     private readonly IPrintEngine _browserInner;
     private readonly WatermarkPrintEngine _watermarkEngine;
 
@@ -191,7 +195,29 @@ public sealed class GdiPrintEngine : IPrintEngine
         GdiLog($"GdiPrintEngine: RenderPages OK → {imgs.Count} ảnh");
 
         // In ảnh từng trang N bản qua GDI thẳng vào spooler máy đã chọn. Lỗi lúc in ảnh → trả lỗi RÕ.
-        var r = await Task.Run(() => PrintImagesToPrinter(job, printer, imgs, ct), ct);
+        //
+        // TIMEOUT CỨNG (race fix): PrintDocument.Print() là blocking sync KHÔNG nhận CancellationToken —
+        // nếu driver máy in treo (spooler treo), pd.Print() treo vô thời hạn → job "Converting mãi",
+        // Cancel/Pause không thoát được. Wrap WaitAsync(timeout): hết thời gian → drain thoát (job Error
+        // EngineTimeout) dù thread in ảnh vẫn nằm đó (không giết được, nhưng queue KHÔNG kẹt).
+        var printTask = Task.Run(() => PrintImagesToPrinter(job, printer, imgs, ct), ct);
+        Result<bool> r;
+        try
+        {
+            r = await printTask.WaitAsync(TimeSpan.FromSeconds(GdiPrintTimeoutSeconds), ct);
+        }
+        catch (TimeoutException)
+        {
+            GdiLog($"GdiPrintEngine: IN QUÁ LÂU '{job.FileName}' → '{printer}' (>{GdiPrintTimeoutSeconds}s) → EngineTimeout");
+            return Result<bool>.Fail(new PrintError
+            {
+                Code = ErrorCodes.EngineTimeout,
+                Category = PrintErrorCategory.System,
+                Message = $"In {job.FileName} tới \"{printer}\" quá lâu ({GdiPrintTimeoutSeconds}s) — đã hủy.",
+                Hint = "Máy in có thể bị treo/kẹt giấy. Kiểm tra hàng đợi máy in rồi in lại.",
+            });
+        }
+        catch (OperationCanceledException) { throw; }   // cancel (per-job token) → OCE lan tới DrainLoopAsync
         if (!r.IsSuccess)
         {
             GdiLog($"GdiPrintEngine: IN LỖI '{job.FileName}' → '{printer}': code={r.Error!.Code} msg='{r.Error.Message}' hint='{r.Error.Hint}'");
