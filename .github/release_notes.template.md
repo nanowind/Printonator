@@ -2,14 +2,14 @@
 
 SHA256: {HASH}
 
-### Mới
+### Đã sửa
 
-- **Cài đặt dễ hiểu hơn khi máy chưa có .NET**: giờ hiện rõ tiến trình tải và cài đặt — bạn biết máy đang làm gì, không còn tưởng bị kẹt.
+- Lỗi in PDF chỉ ra 1 trang dù file có nhiều trang (đặc biệt với PDF tạo từ Word/Excel) — giờ đếm đúng số trang và in đủ.
+- Lỗi chọn in 1 mặt nhưng máy in vẫn ra 2 mặt — giờ ép đúng chế độ 1 mặt/2 mặt theo cài đặt bạn chọn.
+- Lỗi bỏ tick "Xóa file đã in" trong popup "In xong" nhưng bấm nút X (đóng cửa sổ) vẫn xóa file — giờ chỉ xóa khi bạn bấm OK.
+- Lỗi bấm Tạm dừng/Tiếp tục liên tục làm lô in kẹt "Đang xử lý" mãi không in tiếp — giờ in vẫn chạy bình thường dù bạn bấm nhanh nhiều lần.
+- Lỗi máy in bị treo (kẹt giấy, driver treo) làm file kẹt "Đang xử lý" vô thời hạn — giờ tự dừng sau 2 phút và báo rõ để bạn kiểm tra máy in rồi in lại.
 
 ### Cải tiến
 
-- **Làm lại phần lõi cho ổn định**: gộp những đoạn mã trùng lặp, sửa chỗ này sẽ không sót chỗ kia, dễ bảo trì lâu dài.
-
-### Đã sửa
-
-- Lỗi bấm Tạm dừng (Pause) rồi lô in kết thúc trước khi bấm Tiếp tục — nút in không trả về "In tất cả" mà kẹt ở trạng thái "Tiếp tục". Giờ tự trở về bình thường khi in xong.
+- Làm lại phần chọn engine in để ổn định hơn: nếu một engine lỗi, app tự động thử engine khác thay vì báo lỗi dừng.
