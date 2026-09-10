@@ -138,9 +138,16 @@ public static class CdpPrintParams
     /// <summary>
     /// Params để in HTML ẢNH đã cắt (mỗi trang 1 ảnh khớp khổ giấy gốc PDF):
     /// khổ giấy = inch từ DIPs/96 của trang PDF gốc, margin 0, scale 1 — ảnh lấp đầy tờ.
+    /// landscape = true → tờ NGANG (rộng &gt; cao), false → tờ DỌC. Ảnh đã được thu nhỏ vừa khổ tờ
+    /// (WindowsPdfRasterizer.FitToPaper) nên KHÔNG set cờ landscape của CDP — truyền thẳng khổ
+    /// giấy theo inch, tránh bị swap 2 lần thành sai chiều.
     /// </summary>
-    public static Dictionary<string, object?> BuildForSlicedImages(double widthInches, double heightInches)
+    public static Dictionary<string, object?> BuildForSlicedImages(double widthInches, double heightInches, bool landscape = false)
     {
+        // Ép đúng chiều user chọn: ngang → W &gt; H, dọc → H &gt; W (trang nguồn có thể ngược lại).
+        var (w, h) = landscape
+            ? (Math.Max(widthInches, heightInches), Math.Min(widthInches, heightInches))
+            : (Math.Min(widthInches, heightInches), Math.Max(widthInches, heightInches));
         var p = new Dictionary<string, object?>
         {
             ["landscape"] = false,
@@ -148,8 +155,8 @@ public static class CdpPrintParams
             ["printBackground"] = true,
             ["scale"] = 1.0,
             ["preferCSSPageSize"] = false,
-            ["paperWidth"] = Math.Round(widthInches, 3),
-            ["paperHeight"] = Math.Round(heightInches, 3),
+            ["paperWidth"] = Math.Round(w, 3),
+            ["paperHeight"] = Math.Round(h, 3),
             ["marginTop"] = 0.0,
             ["marginBottom"] = 0.0,
             ["marginLeft"] = 0.0,

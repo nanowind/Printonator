@@ -192,6 +192,51 @@ public static class WindowsPdfRasterizer
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Đưa ảnh trang về ĐÚNG KHỔ TỜ user chọn mà KHÔNG xoay nội dung: dựng canvas khổ tờ (ngang/dọc
+    /// theo <paramref name="targetLandscape"/>) rồi vẽ ảnh thu nhỏ vừa khung, canh giữa — chữ giữ
+    /// nguyên chiều đọc, phần thừa thành lề trắng (giống GDI fit ảnh vào vùng in).
+    /// Trang đã đúng chiều tờ → trả nguyên trạng (khỏi re-encode).
+    /// </summary>
+    public static RenderedPdfPage FitToPaper(RenderedPdfPage page, bool targetLandscape)
+    {
+        if ((page.WidthDip > page.HeightDip) == targetLandscape) return page;
+
+        try
+        {
+            using var input = new MemoryStream(page.Png);
+            using var src = new System.Drawing.Bitmap(input);
+
+            // Canvas pixel = ảnh gốc hoán đổi chiều (giữ nguyên lượng pixel đã render).
+            var canvasW = src.Height;
+            var canvasH = src.Width;
+
+            using var canvas = new System.Drawing.Bitmap(canvasW, canvasH);
+            using (var g = System.Drawing.Graphics.FromImage(canvas))
+            {
+                g.Clear(System.Drawing.Color.White);
+                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                var scale = Math.Min(canvasW / (double)src.Width, canvasH / (double)src.Height);
+                var dw = (float)(src.Width * scale);
+                var dh = (float)(src.Height * scale);
+                g.DrawImage(src, (float)((canvasW - dw) / 2), (float)((canvasH - dh) / 2), dw, dh);
+            }
+
+            using var output = new MemoryStream();
+            canvas.Save(output, System.Drawing.Imaging.ImageFormat.Png);
+            return page with
+            {
+                Png = output.ToArray(),
+                WidthDip = targetLandscape ? Math.Max(page.WidthDip, page.HeightDip) : Math.Min(page.WidthDip, page.HeightDip),
+                HeightDip = targetLandscape ? Math.Min(page.WidthDip, page.HeightDip) : Math.Max(page.WidthDip, page.HeightDip),
+            };
+        }
+        catch
+        {
+            return page;
+        }
+    }
+
     private static PrintError FileCorruptError(string path) => new()
     {
         Code = ErrorCodes.FileCorrupted,

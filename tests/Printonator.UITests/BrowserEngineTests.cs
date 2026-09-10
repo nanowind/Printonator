@@ -227,6 +227,21 @@ public class BrowserEngineTests
         Assert.Equal(false, p["displayHeaderFooter"]);
     }
 
+    [Fact]
+    public void BuildForSlicedImages_LandscapePaper_WiderThanTall()
+    {
+        // Nguồn A4 dọc nhưng user chọn Orientation = Ngang khi cắt trang → khổ tờ phải NGANG
+        var p = CdpPrintParams.BuildForSlicedImages(8.27, 11.69, landscape: true);
+        Assert.Equal(11.69, (double)p["paperWidth"]!);
+        Assert.Equal(8.27, (double)p["paperHeight"]!);
+        Assert.Equal(false, p["landscape"]!);   // khổ đã đúng chiều — không để CDP xoay lần nữa
+
+        // Mặc định (dọc) giữ nguyên hành vi cũ
+        var portrait = CdpPrintParams.BuildForSlicedImages(11.69, 8.27);
+        Assert.Equal(8.27, (double)portrait["paperWidth"]!);
+        Assert.Equal(11.69, (double)portrait["paperHeight"]!);
+    }
+
     private static int CountOccurrences(string haystack, string needle)
     {
         var n = 0; var i = 0;

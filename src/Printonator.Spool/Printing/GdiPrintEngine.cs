@@ -22,9 +22,10 @@ public sealed class GdiPrintEngine : IPrintEngine
 {
     private static readonly string[] SupportedFormats = ["PDF"];
 
-    /// <summary>Deadline cứng cho PrintDocument.Print() (blocking, không nhận token) — driver máy in
-    /// treo (spooler treo) không được kẹt job "Converting mãi". Hết giờ → trả EngineTimeout, drain thoát.</summary>
-    internal const int GdiPrintTimeoutSeconds = 120;
+    /// <summary>Deadline cho PrintDocument.Print() (blocking, không nhận token) — driver máy in
+    /// treo (spooler treo) không được kẹt job "Converting mãi". Hết giờ → trả EngineTimeout, drain thoát.
+    /// Driver máy in vật lý chậm với file lớn (3-5s/trang cho ảnh 300dpi) — đặt 600s đủ cho ~100 trang.</summary>
+    internal const int GdiPrintTimeoutSeconds = 600;
 
     private readonly IPrintEngine _browserInner;
     private readonly WatermarkPrintEngine _watermarkEngine;
@@ -95,53 +96,32 @@ public sealed class GdiPrintEngine : IPrintEngine
             });
 
         // Máy in ẢO (PDF/XPS/OneNote...) → không in GDI (spooler PDF-in-ảnh không ra file đúng).
-        // PDF → copy thẳng file (giữ nguyên, không render — tránh chụp UI browser vào file xuất).
-        // Định dạng khác (ảnh/TXT...) → browser render ra PDF cạnh file gốc.
+        // TẤT CẢ định dạng (kể cả PDF) → browser render ĐÚNG cấu hình (page range, lẻ/chẵn, chiều,
+        // scale, khổ giấy) rồi lưu PDF cạnh file gốc — BrowserPrintEngine lo phần này.
+        // KHÔNG copy thẳng file gốc: copy bỏ qua mọi option (in trang 3-5 vẫn ra cả file, ép ngang
+        // không tác dụng) — sửa 2026-09-10 theo yêu cầu "phải in PDF chuẩn, không copy".
         if (PrinterService.IsVirtualPrinter(printer))
         {
-            if (job.Format.Equals("PDF", StringComparison.OrdinalIgnoreCase))
+            // PDF + máy ảo: probe PageCount TRƯỚC để BrowserPrintEngine slicing range/parity đúng
+            // (ResolveSelectedPages trả null khi PageCount <= 0 → in cả file, bỏ range).
+            if (job.Format.Equals("PDF", StringComparison.OrdinalIgnoreCase) && job.PageCount <= 0)
             {
-                // Máy ảo + file đã là PDF → chỉ cần copy sang đường xuất (PdfOutputPath).
-                var outPdf = PrinterService.PdfOutputPath(job);
-                if (outPdf is null)
-                    return Result<bool>.Fail(new PrintError
-                    {
-                        Code = ErrorCodes.SpoolerFailed,
-                        Category = PrintErrorCategory.Printer,
-                        Message = $"Không xuất được PDF cho \"{job.FileName}\".",
-                        Hint = "Kiểm tra đường dẫn lưu PDF.",
-                    });
-                if (outPdf.Equals(job.FilePath, StringComparison.OrdinalIgnoreCase))
-                    return Result<bool>.Fail(new PrintError
-                    {
-                        Code = ErrorCodes.SpoolerFailed,
-                        Category = PrintErrorCategory.Printer,
-                        Message = $"Không xuất được PDF cho \"{job.FileName}\" (trùng file gốc).",
-                        Hint = "Đổi tên file PDF nguồn hoặc chọn máy in giấy.",
-                    });
-                try
-                {
-                    System.IO.File.Copy(job.FilePath, outPdf, overwrite: true);
-                }
-                catch (Exception ex)
-                {
-                    GdiLog($"GdiPrintEngine: COPY PDF LỖI '{job.FilePath}' → '{outPdf}': {ex.Message}");
-                    return Result<bool>.Fail(new PrintError
-                    {
-                        Code = ErrorCodes.SpoolerFailed,
-                        Category = PrintErrorCategory.Printer,
-                        Message = $"Không lưu được PDF ra \"{outPdf}\".",
-                        Hint = ex.Message,
-                    });
-                }
-                if (job.PageCount <= 0)
-                {
-                    var n = await WindowsPdfRasterizer.PdfPageCountReliableAsync(job.FilePath, ct);
-                    if (n > 0) job.PageCount = n;
-                }
-                GdiLog($"GdiPrintEngine: máy ảo '{printer}' + PDF → copy thẳng ra '{outPdf}'");
-                return Result<bool>.Ok(true);
+                var n = await WindowsPdfRasterizer.PdfPageCountReliableAsync(job.FilePath, ct);
+                if (n > 0) job.PageCount = n;
             }
+
+            // File nguồn ĐÃ là PDF → đường xuất trùng file gốc (đổi đuôi .pdf = chính nó):
+            // không đè file nguồn, báo rõ để user đổi tên/chọn nơi khác.
+            var outPdf = PrinterService.PdfOutputPath(job);
+            if (outPdf is not null && outPdf.Equals(job.FilePath, StringComparison.OrdinalIgnoreCase))
+                return Result<bool>.Fail(new PrintError
+                {
+                    Code = ErrorCodes.SpoolerFailed,
+                    Category = PrintErrorCategory.Printer,
+                    Message = $"Không xuất được PDF cho \"{job.FileName}\" (trùng file gốc).",
+                    Hint = "Đổi tên file PDF nguồn hoặc chọn máy in giấy.",
+                });
+
             GdiLog($"GdiPrintEngine: máy ảo '{printer}' ({job.Format}) → browser render (xuất PDF cạnh file)");
             return await _browserInner.PrintAsync(job, ct);
         }
@@ -253,39 +233,91 @@ public sealed class GdiPrintEngine : IPrintEngine
                     Hint = "Kiểm tra máy in đã chọn còn tồn tại (Printer settings → Scan printers).",
                 });
 
-            // Khổ giấy theo trang GỐC PDF: PaperSize LUÔN là khổ DỌC của tờ giấy (1/100 inch) + Landscape
-            // riêng — tránh xoay 2 lần (GDI xoay theo cờ Landscape). Ưu tiên khổ CHUẨN của CHÍNH máy in
-            // (PrinterSettings.PaperSizes khớp PaperKind) → driver chọn đúng khay/cài đặt; không có → custom.
+            // AUTO-ROTATE pattern (tham khảo SumatraPDF Print.cpp:628-639 advanced.autoRotate):
+            // Paper size LUÔN = khổ dọc (theo user config). Trang PDF landscape → xoay ảnh 90°
+            // trước khi vẽ → text nằm ngang đúng chiều đọc khi xoay giấy (giống Excel landscape ra
+            // A4 dọc — chuẩn in thực tế).
+            //
+            // Áp dụng khi user chọn AsDocument (mặc định) / AsPrinter / Portrait explicit — driver
+            // chỉ cần xử lý paper size dọc quen thuộc, rotate ảnh lo phần orientation.
+            // KHÔNG áp dụng khi Landscape explicit (giữ orientation user chọn).
+            //
+            // Trước đây code set PaperSize theo orientation ảnh đầu → driver máy in vật lý bỏ qua
+            // paper size ngang (set trong DefaultPageSettings) → in dọc + shrink. Fix: paper size cố
+            // định theo user config + rotate ảnh nếu cần.
             var nUp = Math.Max(job.Config.PagesPerSheet, 1);
-            var landscape = nUp > 1
-                ? false // N-up: luôn in khổ giấy DỌC cấu hình (grid trang trên 1 tờ)
-                : images[0].WidthDip > images[0].HeightDip;
-            // Khổ giấy: bình thường = khổ gốc trang PDF. N-up → khổ giấy user đặt (PaperSize) hoặc A4 mặc định.
-            var paper = job.Config.PaperSize;
-            var asDoc = string.IsNullOrWhiteSpace(paper) || paper.Equals(PaperCatalog.AsDocument, StringComparison.OrdinalIgnoreCase);
+            var userOrientation = job.Config.Orientation;
+            var configPaper = job.Config.PaperSize;
+            var asDoc = string.IsNullOrWhiteSpace(configPaper) || configPaper.Equals(PaperCatalog.AsDocument, StringComparison.OrdinalIgnoreCase);
+
+            // Xác định paper size (mm) từ config. AsDocument → A4 dọc. User chọn khổ → đúng khổ đó.
+            int mmW, mmH;
+            PaperKind sourceKind;
+            if (!asDoc)
+            {
+                var dims = PaperCatalog.Dimensions(configPaper);
+                if (dims is { } d)
+                {
+                    mmW = d.W; mmH = d.H;
+                    sourceKind = d.W == 210 && d.H == 297 ? PaperKind.A4
+                               : d.W == 297 && d.H == 420 ? PaperKind.A3
+                               : d.W == 148 && d.H == 210 ? PaperKind.A5
+                               : d.W == 216 && d.H == 279 ? PaperKind.Letter
+                               : d.W == 216 && d.H == 356 ? PaperKind.Legal
+                               : PaperKind.Custom;
+                }
+                else
+                {
+                    mmW = 210; mmH = 297; sourceKind = PaperKind.A4;
+                }
+            }
+            else
+            {
+                mmW = 210; mmH = 297; sourceKind = PaperKind.A4;
+            }
+
+            // Landscape explicit: ép cả batch ra TỜ NGANG bằng cờ orientation (DEVMODE
+            // dmOrientation=DMORIENT_LANDSCAPE) — paper vẫn là khổ chuẩn (A4 dọc), GDI/driver tự xoay,
+            // PrintableArea trong PrintPage event sẽ là chiều NGANG.
+            // KHÔNG dùng PaperSize ngang (swap mmW/mmH + PaperKind.Custom): driver máy in vật lý
+            // CLAMP custom paper về khổ dọc → in y hệt Portrait (đã test trên máy thật 2026-09-10).
+            var isLandscapeExplicit = userOrientation == PrintOrientation.Landscape;
+
             PaperSize? sheet;
             if (nUp > 1)
             {
+                // N-up: paper size theo user config — auto-rotate không áp dụng (N-up hiếm với PDF).
                 sheet = asDoc ? FindSupportedPaper(pd.PrinterSettings, PaperKind.A4, 827, 1169)
-                              : PaperSizeFromName(pd.PrinterSettings, paper);
+                              : PaperSizeFromName(pd.PrinterSettings, configPaper);
                 sheet ??= FindSupportedPaper(pd.PrinterSettings, PaperKind.A4, 827, 1169);
+                // N-up + Landscape: cờ orientation ở DefaultPageSettings lo phần xoay tờ,
+                // PrintableArea sẽ là chiều ngang → vẽ grid vào area đó là đủ (không swap paper).
                 if (sheet is null)
                     return Result<bool>.Fail(new PrintError
                     {
                         Code = ErrorCodes.PrinterNotFound,
                         Category = PrintErrorCategory.Printer,
-                        Message = $"Máy in \"{printer}\" không nhận khổ giấy \"{(asDoc ? "A4" : paper)}\" khi in nhiều trang/tờ.",
+                        Message = $"Máy in \"{printer}\" không nhận khổ giấy \"{(asDoc ? "A4" : configPaper)}\" khi in nhiều trang/tờ.",
                         Hint = "Chọn khổ giấy máy in hỗ trợ trong Print settings.",
                     });
             }
             else
             {
-                var (kind, w100, h100) = PaperSizeFor(images[0].WidthDip, images[0].HeightDip);
-                sheet = FindSupportedPaper(pd.PrinterSettings, kind, w100, h100)
-                    ?? new PaperSize(kind == PaperKind.Custom ? "Custom" : kind.ToString(), w100, h100);
+                // In thường: paper size luôn dọc theo user config (auto-rotate mode cho AsDocument/AsPrinter/Portrait).
+                var paperW = (int)Math.Round(mmW / 25.4 * 100);
+                var paperH = (int)Math.Round(mmH / 25.4 * 100);
+                sheet = FindSupportedPaper(pd.PrinterSettings, sourceKind, paperW, paperH)
+                    ?? new PaperSize(sourceKind == PaperKind.Custom ? "Custom" : sourceKind.ToString(), paperW, paperH);
             }
             pd.DefaultPageSettings.PaperSize = sheet;
-            pd.DefaultPageSettings.Landscape = landscape;
+            // Landscape explicit → cờ orientation ở DefaultPageSettings (DEVMODE dmOrientation).
+            // Đây là cơ chế chuẩn (Edge/Foxit cũng dùng); set ở đây TRƯỚC Print() để driver nhận
+            // dmOrientation=LANDSCAPE từ đầu job — KHÔNG set trong PrintPage event (quá muộn).
+            // (Thử swap PaperSize ngang đã FAIL trên máy in vật lý — driver clamp về khổ dọc.)
+            pd.DefaultPageSettings.Landscape = isLandscapeExplicit;
+            if (isLandscapeExplicit && !pd.PrinterSettings.DefaultPageSettings.Landscape)
+                pd.PrinterSettings.DefaultPageSettings.Landscape = true; // đồng bộ phòng driver đọc từ đây
+            GdiLog($"GdiPrintEngine: orientation={userOrientation} paper='{sheet.PaperName ?? sheet.Kind.ToString()}' {sheet.Width}x{sheet.Height}(1/100in) landscape={pd.DefaultPageSettings.Landscape}");
             pd.PrinterSettings.Copies = 1; // tự bơm N bản collate-by-document bên dưới — tránh driver nhân đôi
 
             // ===== 2 mặt (duplex) =====
@@ -317,18 +349,22 @@ public sealed class GdiPrintEngine : IPrintEngine
             pd.PrintPage += (_, e) =>
             {
                 ct.ThrowIfCancellationRequested();
-                // Vùng GIẤY driver cho vẽ (printable area = PageBounds trừ hard margins). Vẽ ảnh trong
-                // vùng này, KHÔNG phủ kín PageBounds — ảnh bị hard-margin cắt mép phải/dưới (lỗi mất chữ).
-                // Graphics origin = (0,0) góc giấy; hard margin là khoảng driver không cho in được.
-                var page = e.PageSettings;
-                var px = page.HardMarginX;            // margin trái (đơn vị 1/100 inch)
-                var py = page.HardMarginY;            // margin trên
-                var pw = page.PrintableArea.Width;    // vùng in được
-                var ph = page.PrintableArea.Height;
+                // Vùng GIẤY driver cho vẽ. Graphics origin = (0,0) = GÓC TRÁI-TRÊN của vùng
+                // printable (đã trừ hard margin nội bộ). Vẽ (x,y) trong e.Graphics là tọa độ
+                // tương đối printable — KHÔNG cộng HardMarginX/Y.
+                //
+                // DÙNG e.Graphics.VisibleClipBounds (KHÔNG dùng e.PageSettings.PrintableArea):
+                // khi cờ Landscape bật, PrintableArea vẫn trả khổ DỌC (826x1169) trong khi
+                // graphics space đã xoay sang NGANG (1169x826) → vẽ theo PrintableArea bị co
+                // nhỏ + lệch góc dưới phải (đã xác nhận bằng probe in thử, 2026-09-10).
+                // VisibleClipBounds phản ánh đúng vùng vẽ thực của graphics cả dọc lẫn ngang.
+                //
+                // Lỗi cũ: code cộng `px + safe` → double offset → ảnh bị lệch góc dưới phải trên 1 số driver.
+                var vb = e.Graphics is null ? RectangleF.Empty : e.Graphics.VisibleClipBounds;
+                var pw = vb.Width;
+                var ph = vb.Height;
                 // Lề an toàn nhỏ (0.1 inch) — ảnh không dính sát mép cắt được của driver.
                 var safe = 10f; // 1/100 inch
-                var areaX = px + safe;
-                var areaY = py + safe;
                 var areaW = Math.Max(pw - 2 * safe, 1);
                 var areaH = Math.Max(ph - 2 * safe, 1);
 
@@ -340,38 +376,62 @@ public sealed class GdiPrintEngine : IPrintEngine
                     var imgIdx = sheetStart + c;
                     if (imgIdx >= totalPages) break;
                     var img = images[imgIdx % images.Count];
-                    using var bmp = LoadImage(img.Png);
-                    if (bmp is null) { anyPageFailed = true; continue; }
+                    Bitmap? bmp = null;
+                    bool disposeBmp = false;
                     try
                     {
-                        if (e.Graphics is null) break;
-                        if (nUp > 1)
+                        bmp = LoadImage(img.Png);
+                        if (bmp is null) { anyPageFailed = true; continue; }
+                        // Auto-rotate khi paper là khổ DỌC: AsDocument / AsPrinter / Portrait explicit.
+                        // - AsDocument: file PDF có trang landscape → rotate để fit paper size dọc đã set
+                        //   (SumatraPDF Print.cpp:628-639 advanced.autoRotate pattern).
+                        // - Portrait explicit: landscape rotate 90° vừa tờ dọc (giống AsDocument).
+                        // - Landscape explicit: paper đã là tờ NGANG → KHÔNG rotate, giữ đúng thiết kế.
+                        var imgLandscape = img.WidthDip > img.HeightDip;
+                        var isAutoMode = userOrientation == PrintOrientation.AsDocument
+                                      || userOrientation == PrintOrientation.AsPrinter
+                                      || userOrientation == PrintOrientation.Portrait;
+                        if (isAutoMode && imgLandscape)
                         {
-                            // Vẽ vào ô grid (có lề nhẹ giữa các ô — 4% chiều mỗi chiều).
-                            var col = c % nUpCols;
-                            var row = c / nUpCols;
-                            var cw = areaW / (double)nUpCols;
-                            var ch = areaH / (double)nUpRows;
-                            var cell = new RectangleF(
-                                (float)(areaX + col * cw), (float)(areaY + row * ch),
-                                (float)cw, (float)ch);
-                            var scale = Math.Min(cell.Width * 0.92 / bmp.Width, cell.Height * 0.92 / bmp.Height);
-                            var dw = (float)(bmp.Width * scale);
-                            var dh = (float)(bmp.Height * scale);
-                            e.Graphics.DrawImage(bmp,
-                                cell.X + (cell.Width - dw) / 2, cell.Y + (cell.Height - dh) / 2, dw, dh);
+                            bmp.RotateFlip(System.Drawing.RotateFlipType.Rotate90FlipNone);
                         }
-                        else
+                        disposeBmp = true;
+                        try
                         {
-                            // Vẽ ảnh fit trong vùng in được (đã trừ hard margin) — không bị cắt mép.
-                            var scale = Math.Min(areaW / (double)bmp.Width, areaH / (double)bmp.Height);
-                            var dw = (float)(bmp.Width * scale);
-                            var dh = (float)(bmp.Height * scale);
-                            e.Graphics.DrawImage(bmp,
-                                areaX + (areaW - dw) / 2, areaY + (areaH - dh) / 2, dw, dh);
+                            if (e.Graphics is null) break;
+                            if (nUp > 1)
+                            {
+                                // Vẽ vào ô grid (có lề nhẹ giữa các ô — 4% chiều mỗi chiều).
+                                var col = c % nUpCols;
+                                var row = c / nUpCols;
+                                var cw = areaW / (double)nUpCols;
+                                var ch = areaH / (double)nUpRows;
+                                var cell = new RectangleF(
+                                    (float)(safe + col * cw), (float)(safe + row * ch),
+                                    (float)cw, (float)ch);
+                                var scale = Math.Min(cell.Width * 0.92 / bmp.Width, cell.Height * 0.92 / bmp.Height);
+                                var dw = (float)(bmp.Width * scale);
+                                var dh = (float)(bmp.Height * scale);
+                                e.Graphics.DrawImage(bmp,
+                                    cell.X + (cell.Width - dw) / 2, cell.Y + (cell.Height - dh) / 2, dw, dh);
+                            }
+                            else
+                            {
+                                // Vẽ ảnh fit trong vùng printable (đã trừ safe margin). Graphics origin
+                                // đã là góc printable — KHÔNG cộng HardMargin (sửa bug lệch góc dưới).
+                                var scale = Math.Min(areaW / (double)bmp.Width, areaH / (double)bmp.Height);
+                                var dw = (float)(bmp.Width * scale);
+                                var dh = (float)(bmp.Height * scale);
+                                e.Graphics.DrawImage(bmp,
+                                    safe + (areaW - dw) / 2, safe + (areaH - dh) / 2, dw, dh);
+                            }
                         }
+                        catch { anyPageFailed = true; }
                     }
-                    catch { anyPageFailed = true; }
+                    finally
+                    {
+                        if (disposeBmp) bmp?.Dispose();
+                    }
                 }
 
                 pumped += perSheet; // mỗi tờ tiêu thụ perSheet ảnh

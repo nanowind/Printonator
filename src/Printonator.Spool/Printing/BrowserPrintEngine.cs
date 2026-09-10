@@ -73,12 +73,26 @@ public sealed class BrowserPrintEngine : IPrintEngine
                     job.FilePath, sel, ct, CdpPrintParams.DpiFor(job.Config.Quality));
                 if (rendered.IsSuccess && rendered.Value is { Count: > 0 } imgs)
                 {
+                    // Chiều tờ theo user: Ngang → tờ NGANG, Dọc → tờ DỌC, còn lại (Theo tài liệu /
+                    // Theo máy) → theo khổ trang gốc. KHÔNG xoay nội dung: trang lệch chiều tờ được
+                    // thu nhỏ vừa khổ, canh giữa (giống GDI fit ảnh vào vùng in) — chữ giữ đúng chiều đọc.
+                    bool? targetLandscape = job.Config.Orientation switch
+                    {
+                        PrintOrientation.Landscape => true,
+                        PrintOrientation.Portrait => false,
+                        _ => null,
+                    };
+                    var pages = imgs
+                        .Select(p => targetLandscape is { } tl ? WindowsPdfRasterizer.FitToPaper(p, tl) : p)
+                        .ToList();
                     var htmlPath = Path.Combine(tempDir, "slice.html");
-                    await File.WriteAllTextAsync(htmlPath, WindowsPdfRasterizer.BuildHtml(imgs), ct);
-                    var first = imgs[0];
+                    await File.WriteAllTextAsync(htmlPath, WindowsPdfRasterizer.BuildHtml(pages), ct);
+                    var first = pages[0];
                     (ok, base64, err) = await DevToolsPrintClient.PrintPdfAsync(
                         b.Path, new Uri(htmlPath).AbsoluteUri,
-                        CdpPrintParams.BuildForSlicedImages(first.WidthDip / 96.0, first.HeightDip / 96.0),
+                        CdpPrintParams.BuildForSlicedImages(
+                            first.WidthDip / 96.0, first.HeightDip / 96.0,
+                            targetLandscape ?? first.WidthDip > first.HeightDip),
                         Path.Combine(tempDir, "profile"), ct);
                 }
                 else
@@ -115,7 +129,23 @@ public sealed class BrowserPrintEngine : IPrintEngine
             // Máy in ảo → lưu thẳng PDF ra cạnh file gốc (đúng ý "xuất PDF"), không đụng spooler.
             if (pdfOut is not null)
             {
-                File.Copy(outPdf, pdfOut, overwrite: true);
+                try
+                {
+                    File.Copy(outPdf, pdfOut, overwrite: true);
+                }
+                catch (Exception ex)
+                {
+                    // File xuất đang bị chương trình khác giữ (viewer đang mở, hoặc lần in trước chưa nhả)
+                    // → trả lỗi RÕ, không để exception thoát ra giết cả job.
+                    return Result<bool>.Fail(new PrintError
+                    {
+                        Code = ErrorCodes.SpoolerFailed,
+                        Category = PrintErrorCategory.Printer,
+                        Message = $"Không lưu được PDF ra \"{pdfOut}\".",
+                        Hint = "File PDF đang được mở ở chương trình khác — đóng lại rồi in lại.",
+                        Detail = ex.Message,
+                    });
+                }
                 if (job.PageCount <= 0) job.PageCount = ResolveCount(job);
                 return Result<bool>.Ok(true);
             }

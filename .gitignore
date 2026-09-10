@@ -62,6 +62,10 @@ docs/HANDOFF_KE_TOAN_2026-08-28.md
 skills-lock.json
 # Hermes/AI framework plans + local working notes (never commit)
 .hermes/
+# OpenCode plugin scaffolding (six-phase-workflow — local tooling, never commit)
+opencode.json
+package.json
+scripts/
 AGENTS.md.bk
 cai-tien.md
 # OS
