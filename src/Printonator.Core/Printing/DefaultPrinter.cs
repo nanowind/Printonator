@@ -38,6 +38,7 @@ public static class DefaultPrinter
     /// </summary>
     public static string? GetWindowsDefaultPrinterName()
     {
+        if (!OperatingSystem.IsWindows()) return null; // Registry chỉ có trên Windows — CA1416
         try
         {
             using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(

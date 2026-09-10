@@ -13,7 +13,7 @@ namespace Printonator.Spool.Tests;
 public class E2ePrintTests
 {
     [Fact]
-    public void PdfImageWriter_WritesNewPdf_WithAllPages_NoSourceSignature()
+    public async Task PdfImageWriter_WritesNewPdf_WithAllPages_NoSourceSignature()
     {
         var dir = Path.Combine(Path.GetTempPath(), "printonator-e2e-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
@@ -43,7 +43,7 @@ public class E2ePrintTests
             Assert.Equal("%PDF", System.Text.Encoding.ASCII.GetString(bytes, 0, 4));
 
             // Đếm lại số trang = 2 (Windows.Data.Pdf đọc được → cấu trúc hợp lệ)
-            var count = WindowsPdfRasterizer.PdfPageCountReliableAsync(outPdf, CancellationToken.None).GetAwaiter().GetResult();
+            var count = await WindowsPdfRasterizer.PdfPageCountReliableAsync(outPdf, CancellationToken.None);
             Assert.Equal(2, count);
         }
         finally
