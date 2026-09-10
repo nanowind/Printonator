@@ -96,32 +96,17 @@ public sealed class GdiPrintEngine : IPrintEngine
             });
 
         // Máy in ẢO (PDF/XPS/OneNote...) → không in GDI (spooler PDF-in-ảnh không ra file đúng).
-        // TẤT CẢ định dạng (kể cả PDF) → browser render ĐÚNG cấu hình (page range, lẻ/chẵn, chiều,
-        // scale, khổ giấy) rồi lưu PDF cạnh file gốc — BrowserPrintEngine lo phần này.
-        // KHÔNG copy thẳng file gốc: copy bỏ qua mọi option (in trang 3-5 vẫn ra cả file, ép ngang
-        // không tác dụng) — sửa 2026-09-10 theo yêu cầu "phải in PDF chuẩn, không copy".
         if (PrinterService.IsVirtualPrinter(printer))
         {
-            // PDF + máy ảo: probe PageCount TRƯỚC để BrowserPrintEngine slicing range/parity đúng
-            // (ResolveSelectedPages trả null khi PageCount <= 0 → in cả file, bỏ range).
-            if (job.Format.Equals("PDF", StringComparison.OrdinalIgnoreCase) && job.PageCount <= 0)
-            {
-                var n = await WindowsPdfRasterizer.PdfPageCountReliableAsync(job.FilePath, ct);
-                if (n > 0) job.PageCount = n;
-            }
+            // PDF source → RENDER TRỰC TIẾP KHÔNG BROWSER: Windows.Data.Pdf rasterize từng trang →
+            // PdfImageWriter ghi file PDF MỚI (tài liệu mới — chữ ký số/metadata gốc bị BỎ, đúng bản
+            // chất "in ra"). Không spawn Chrome/Edge → không có UI browser, không có process dư.
+            // KHÔNG copy thẳng file gốc: copy giữ nguyên chữ ký số (lỗ hổng bảo mật — đã chốt 2026-09-10).
+            if (job.Format.Equals("PDF", StringComparison.OrdinalIgnoreCase))
+                return await ExportPdfDirectAsync(job, printer, ct);
 
-            // File nguồn ĐÃ là PDF → đường xuất trùng file gốc (đổi đuôi .pdf = chính nó):
-            // không đè file nguồn, báo rõ để user đổi tên/chọn nơi khác.
-            var outPdf = PrinterService.PdfOutputPath(job);
-            if (outPdf is not null && outPdf.Equals(job.FilePath, StringComparison.OrdinalIgnoreCase))
-                return Result<bool>.Fail(new PrintError
-                {
-                    Code = ErrorCodes.SpoolerFailed,
-                    Category = PrintErrorCategory.Printer,
-                    Message = $"Không xuất được PDF cho \"{job.FileName}\" (trùng file gốc).",
-                    Hint = "Đổi tên file PDF nguồn hoặc chọn máy in giấy.",
-                });
-
+            // Ảnh/TXT → browser render (cần chuyển sang PDF — không có cách native; BrowserPrintEngine
+            // xuất PDF cạnh file gốc cho máy ảo).
             GdiLog($"GdiPrintEngine: máy ảo '{printer}' ({job.Format}) → browser render (xuất PDF cạnh file)");
             return await _browserInner.PrintAsync(job, ct);
         }
@@ -206,6 +191,82 @@ public sealed class GdiPrintEngine : IPrintEngine
 
         GdiLog($"GdiPrintEngine: IN XONG '{job.FileName}' → '{printer}' ({imgs.Count} trang)");
         if (job.PageCount <= 0) job.PageCount = pages.Length;
+        return Result<bool>.Ok(true);
+    }
+
+    /// <summary>
+    /// PDF → máy ảo: xuất PDF MỚI trực tiếp (KHÔNG browser). Windows.Data.Pdf rasterize đúng
+    /// page-range/parity → PdfImageWriter ghi tài liệu PDF MỚI — chữ ký số/metadata gốc bị BỎ
+    /// (an toàn bảo mật; không kế thừa chứng thư file gốc).
+    /// </summary>
+    private static async Task<Result<bool>> ExportPdfDirectAsync(PrintJob job, string printer, CancellationToken ct)
+    {
+        // Probe PageCount trước — ResolveSelectedPages cần nó để lọc range/parity.
+        if (job.PageCount <= 0)
+        {
+            var n = await WindowsPdfRasterizer.PdfPageCountReliableAsync(job.FilePath, ct);
+            GdiLog($"GdiPrintEngine: PdfPageCount='{job.FileName}' → {n}");
+            if (n > 0) job.PageCount = n;
+        }
+
+        var outPdf = PrinterService.PdfOutputPath(job);
+        if (outPdf is not null && outPdf.Equals(job.FilePath, StringComparison.OrdinalIgnoreCase))
+            return Result<bool>.Fail(new PrintError
+            {
+                Code = ErrorCodes.SpoolerFailed,
+                Category = PrintErrorCategory.Printer,
+                Message = $"Không xuất được PDF cho \"{job.FileName}\" (trùng file gốc).",
+                Hint = "Đổi tên file PDF nguồn hoặc chọn máy in giấy.",
+            });
+        outPdf ??= Path.Combine(Path.GetTempPath(), Path.GetFileNameWithoutExtension(job.FilePath) + "_printonator.pdf");
+
+        // Trang cần in (range/parity) — null + All + không lẻ/chẵn → in hết.
+        int[]? pages;
+        try { pages = CdpPrintParams.ResolveSelectedPages(job); }
+        catch { pages = null; }
+        var isAll = string.IsNullOrWhiteSpace(job.Config.PageRange)
+                    || job.Config.PageRange.Equals("All", StringComparison.OrdinalIgnoreCase);
+        if (pages is null && isAll && job.Config.Parity == PageParityFilter.All && job.PageCount > 0)
+            pages = Enumerable.Range(1, job.PageCount).ToArray();
+
+        if (pages is not { Length: > 0 })
+            return Result<bool>.Fail(new PrintError
+            {
+                Code = ErrorCodes.FileCorrupted,
+                Category = PrintErrorCategory.App,
+                Message = $"Không xác định được trang nào để in từ \"{job.FileName}\".",
+                Hint = "Kiểm tra file PDF còn đọc được (không khóa/mật khẩu).",
+            });
+
+        // Render 300 DPI (sắc nét cho văn bản — cao hơn DpiFor browser ~150).
+        var imgs = await WindowsPdfRasterizer.RenderPagesAsync(job.FilePath, pages, ct, 300);
+        if (!imgs.IsSuccess || imgs.Value is not { Count: > 0 } list)
+            return Result<bool>.Fail(new PrintError
+            {
+                Code = ErrorCodes.FileCorrupted,
+                Category = PrintErrorCategory.App,
+                Message = $"Không đọc được nội dung \"{job.FileName}\" để xuất PDF.",
+                Hint = "File PDF có thể bị hỏng hoặc bị mật khẩu. Thử mở trong Edge/Adobe xem được không.",
+            });
+
+        try
+        {
+            PdfImageWriter.Write(outPdf, list);
+        }
+        catch (Exception ex)
+        {
+            return Result<bool>.Fail(new PrintError
+            {
+                Code = ErrorCodes.SpoolerFailed,
+                Category = PrintErrorCategory.Printer,
+                Message = $"Không lưu được PDF ra \"{outPdf}\".",
+                Hint = "File PDF đang được mở ở chương trình khác — đóng lại rồi in lại.",
+                Detail = ex.Message,
+            });
+        }
+
+        GdiLog($"GdiPrintEngine: PDF '{job.FileName}' → máy ảo '{printer}' → PDF MỚI trực tiếp (không browser): {outPdf} ({list.Count} trang)");
+        if (job.PageCount <= 0) job.PageCount = list.Count;
         return Result<bool>.Ok(true);
     }
 

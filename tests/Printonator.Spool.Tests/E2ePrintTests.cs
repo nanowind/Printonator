@@ -13,6 +13,74 @@ namespace Printonator.Spool.Tests;
 public class E2ePrintTests
 {
     [Fact]
+    public void PdfImageWriter_WritesNewPdf_WithAllPages_NoSourceSignature()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "printonator-e2e-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            // 2 trang PNG giả (94x150 DIP ~ A6 ngang cho dễ parse)
+            byte[] Png(int r)
+            {
+                using var bmp = new System.Drawing.Bitmap(94, 150);
+                using (var g = System.Drawing.Graphics.FromImage(bmp)) { g.Clear(System.Drawing.Color.FromArgb(r, 200, 200)); }
+                using var ms = new MemoryStream();
+                bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                return ms.ToArray();
+            }
+            var pages = new List<RenderedPdfPage>
+            {
+                new(Png(200), 94, 150),
+                new(Png(80), 94, 150),
+            };
+
+            var outPdf = Path.Combine(dir, "out.pdf");
+            PdfImageWriter.Write(outPdf, pages);
+
+            Assert.True(File.Exists(outPdf), "Không tạo được file PDF");
+            var bytes = File.ReadAllBytes(outPdf);
+            Assert.True(bytes.Length > 100, "PDF quá nhỏ — có thể rỗng");
+            Assert.Equal("%PDF", System.Text.Encoding.ASCII.GetString(bytes, 0, 4));
+
+            // Đếm lại số trang = 2 (Windows.Data.Pdf đọc được → cấu trúc hợp lệ)
+            var count = WindowsPdfRasterizer.PdfPageCountReliableAsync(outPdf, CancellationToken.None).GetAwaiter().GetResult();
+            Assert.Equal(2, count);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void PdfImageWriter_WritesNewPdf_DoesNotContainSourceSignature()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "printonator-e2e-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            // 1 trang PNG đỏ
+            using var bmp = new System.Drawing.Bitmap(96, 96);
+            using (var g = System.Drawing.Graphics.FromImage(bmp)) g.Clear(System.Drawing.Color.Red);
+            using var msx = new MemoryStream();
+            bmp.Save(msx, System.Drawing.Imaging.ImageFormat.Png);
+
+            var outPdf = Path.Combine(dir, "out2.pdf");
+            PdfImageWriter.Write(outPdf, [new RenderedPdfPage(msx.ToArray(), 96, 96)]);
+
+            // PDF mới KHÔNG được chứa object chữ ký (ví dụ /Sig, /ByteRange, /AcroForm)
+            var text = System.Text.Encoding.ASCII.GetString(File.ReadAllBytes(outPdf));
+            Assert.DoesNotContain("/Sig", text);
+            Assert.DoesNotContain("/ByteRange", text);
+            Assert.DoesNotContain("/AcroForm", text);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
     public async Task PrintToPdfPrinter_SavesPdfNextToSource_WithSameName()
     {
         var dir = Path.Combine(Path.GetTempPath(), "printonator-e2e-" + Guid.NewGuid().ToString("N"));
@@ -193,6 +261,17 @@ public class E2ePrintTests
         // Port lạ (PDF-XChange custom) / không đọc được → giữ heuristic tên (không ép physical)
         Assert.True(PrinterService.ClassifyVirtual("PDF-XChange 5.0", "PDF-XChange5-ABBYY-FR15"));
         Assert.True(PrinterService.ClassifyVirtual("Microsoft Print to PDF", null));
+    }
+
+    [Fact]
+    public void PdfOutputPath_ResolvedPrinterName_DetectsVirtual()
+    {
+        // Tên máy ĐÃ RESOLVE (sentinel "mặc định" → tên thật) → máy PDF vẫn ra đường xuất cạnh file gốc
+        var path = PrinterService.PdfOutputPath("Microsoft Print to PDF", @"C:\tmp\bao-cao.xlsx");
+        Assert.Equal(@"C:\tmp\bao-cao.pdf", path);
+
+        // Máy vật lý → null (in bình thường, không xuất file)
+        Assert.Null(PrinterService.PdfOutputPath("Canon LBP226", @"C:\tmp\bao-cao.xlsx"));
     }
 
     [Fact]

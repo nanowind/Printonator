@@ -501,10 +501,16 @@ public sealed class OfficeComPrintEngine : IPrintEngine
 
     /// <summary>Máy in ẢO (PDF/XPS/OneNote/Adobe…) → trả PrintToFile=true + đường dẫn PDF cạnh file gốc
     /// (dùng chung PrinterService.PdfOutputPath), để engine lưu thẳng file xuất — không đẩy vào spooler
-    /// PDF printer (mở hộp "Save As" vô hình → "báo xong không ra file"). Máy vật lý → (false, null).</summary>
+    /// PDF printer (mở hộp "Save As" vô hình → "báo xong không ra file"). Máy vật lý → (false, null).
+    /// QUAN TRỌNG: resolve sentinel "mặc định" → tên máy THẬT TRƯỚC khi kiểm tra máy ảo — nếu default
+    /// Windows là máy PDF (Microsoft Print to PDF...), vẫn phải xuất file cạnh gốc (ExportAsFixedFormat),
+    /// KHÔNG đẩy Excel/Word PrintOut vào spooler (mở hộp "Save As" — bug "in excel to pdf hiện ô nhập vị trí lưu").</summary>
     private static (bool printToFile, string? outputPath) PdfOutputArgs(PrintJob job)
     {
-        var p = PrinterService.PdfOutputPath(job);
+        var printerName = job.Config.PrinterName;
+        if (DefaultPrinter.IsDefault(printerName))
+            printerName = DefaultPrinter.GetWindowsDefaultPrinterName();
+        var p = PrinterService.PdfOutputPath(printerName, job.FilePath);
         return p is null ? (false, null) : (true, p);
     }
 

@@ -938,9 +938,11 @@ public partial class MainWindow : Window
     {
         "DWG" or "DXF" or "PLT" or "DWT" => "A3",
         "TXT" or "CSV" => "A5", // hóa đơn/biên nhận dạng ngắn
-        // Office (Excel/Word/PPT) có CẤU HÌNH IN SẴN trong file (khổ giấy/chiều/print area) → GIỮ NGUYÊN
+        // Office (Excel/Word/PPT) + PDF có CẤU HÌNH IN SẴN trong file (khổ giấy/chiều/print area) → GIỮ NGUYÊN
         // (AsDocument = "theo tài liệu"). Ép A4/portrait làm PDF/in ra sai so với file (bug v0.1.6).
-        "XLS" or "XLSX" or "XLSM" or "DOC" or "DOCX" or "RTF" or "PPT" or "PPTX" or "PPS" or "PPSX" => PaperCatalog.AsDocument,
+        // PDF: file đã có khổ từng trang — ép A4 mặc định làm "in pdf to pdf" phải render browser
+        // (ra file mới + UI Chrome) thay vì copy thẳng file gốc (bug 2026-09-10).
+        "XLS" or "XLSX" or "XLSM" or "DOC" or "DOCX" or "RTF" or "PPT" or "PPTX" or "PPS" or "PPSX" or "PDF" => PaperCatalog.AsDocument,
         _ => "A4",
     };
 

@@ -302,13 +302,17 @@ public sealed class PrinterService
     /// LƯU Ý: file gốc đã là .pdf → thêm "_printonator" vào tên (tránh copy chính nó lỗi SPOOLER_FAILED).
     /// </summary>
     internal static string? PdfOutputPath(PrintJob job)
+        => PdfOutputPath(job.Config.PrinterName, job.FilePath);
+
+    /// <summary>Overload nhận tên máy in ĐÃ RESOLVE (sentinel "mặc định" → tên thật) — dùng khi caller
+    /// đã resolve trước (OfficeComPrintEngine.PdfOutputArgs) để máy ảo vẫn được nhận diện đúng.</summary>
+    internal static string? PdfOutputPath(string? printerName, string filePath)
     {
-        var printer = job.Config.PrinterName;
-        if (string.IsNullOrWhiteSpace(printer) || !IsVirtualPrinter(printer)) return null;
-        var dir = System.IO.Path.GetDirectoryName(job.FilePath) ?? System.IO.Path.GetTempPath();
-        var name = System.IO.Path.GetFileNameWithoutExtension(job.FilePath) ?? "printonator";
+        if (string.IsNullOrWhiteSpace(printerName) || !IsVirtualPrinter(printerName)) return null;
+        var dir = System.IO.Path.GetDirectoryName(filePath) ?? System.IO.Path.GetTempPath();
+        var name = System.IO.Path.GetFileNameWithoutExtension(filePath) ?? "printonator";
         // File đã là .pdf → thêm "_printonator" để tránh copy trùng file gốc.
-        var ext = System.IO.Path.GetExtension(job.FilePath) ?? "";
+        var ext = System.IO.Path.GetExtension(filePath) ?? "";
         var suffix = ext.Equals(".pdf", StringComparison.OrdinalIgnoreCase) ? "_printonator" : "";
         return System.IO.Path.Combine(dir, name + suffix + ".pdf");
     }
