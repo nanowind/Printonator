@@ -100,6 +100,42 @@ public static class Keys
         public const string WindowTitle = "Confirm.WindowTitle";
     }
 
+    public static class Cover
+    {
+        public const string BatchPrefix = "Cover.BatchPrefix";
+        public const string BrandSub = "Cover.BrandSub";
+        public const string ColConfig = "Cover.ColConfig";
+        public const string ColFile = "Cover.ColFile";
+        public const string ColIndex = "Cover.ColIndex";
+        public const string ColPages = "Cover.ColPages";
+        public const string ColPrinter = "Cover.ColPrinter";
+        public const string FilesLabel = "Cover.FilesLabel";
+        public const string Heading = "Cover.Heading";
+        public const string MachineBlock = "Cover.MachineBlock";
+        public const string MachineLabel = "Cover.MachineLabel";
+        public const string MachineUnknown = "Cover.MachineUnknown";
+        public const string MarkTitle = "Cover.MarkTitle";
+        public const string MixedPrinters = "Cover.MixedPrinters";
+        public const string MixedPrintersListFormat = "Cover.MixedPrintersListFormat";
+        public const string MoreFilesFormat = "Cover.MoreFilesFormat";
+        public const string NoFiles = "Cover.NoFiles";
+        public const string Note = "Cover.Note";
+        public const string PaperAsDocument = "Cover.PaperAsDocument";
+        public const string PaperLabel = "Cover.PaperLabel";
+        public const string PrinterDefault = "Cover.PrinterDefault";
+        public const string PrinterLabel = "Cover.PrinterLabel";
+        public const string SheetsLabel = "Cover.SheetsLabel";
+        public const string SheetsTotalFormat = "Cover.SheetsTotalFormat";
+        public const string SoftwareBlock = "Cover.SoftwareBlock";
+        public const string SoftwareLine = "Cover.SoftwareLine";
+        public const string SoftwareMuted = "Cover.SoftwareMuted";
+        public const string SummaryBlock = "Cover.SummaryBlock";
+        public const string TimeLabel = "Cover.TimeLabel";
+        public const string TotalPagesLabel = "Cover.TotalPagesLabel";
+        public const string TotalRowFormat = "Cover.TotalRowFormat";
+        public const string UnknownPagesFormat = "Cover.UnknownPagesFormat";
+    }
+
     public static class Done
     {
         public const string Checking = "Done.Checking";
@@ -425,6 +461,25 @@ public static class Keys
     {
         public const string MenuText = "Shell.MenuText";
         public const string PrintTaskName = "Shell.PrintTaskName";
+    }
+
+    public static class Summary
+    {
+        public const string Color = "Summary.Color";
+        public const string ColorPrinter = "Summary.ColorPrinter";
+        public const string CollateByPages = "Summary.CollateByPages";
+        public const string CollateDocs = "Summary.CollateDocs";
+        public const string Cover = "Summary.Cover";
+        public const string DuplexLong = "Summary.DuplexLong";
+        public const string DuplexPrinter = "Summary.DuplexPrinter";
+        public const string DuplexShortEdge = "Summary.DuplexShortEdge";
+        public const string DuplexSimplex = "Summary.DuplexSimplex";
+        public const string Merge = "Summary.Merge";
+        public const string PagesPerSheet = "Summary.PagesPerSheet";
+        public const string PaperAsDocument = "Summary.PaperAsDocument";
+        public const string ParityEven = "Summary.ParityEven";
+        public const string ParityOdd = "Summary.ParityOdd";
+        public const string Watermark = "Summary.Watermark";
     }
 
     public static class Stop

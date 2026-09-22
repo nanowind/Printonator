@@ -9,6 +9,61 @@ using Printonator.Core.Printing;
 namespace Printonator.Spool.Printing;
 
 /// <summary>
+/// Nhãn hiển thị trên trang bìa — UI điền theo ngôn ngữ app (Spool KHÔNG reference UI);
+/// null → mặc định tiếng Việt (fallback cho test/MCP). Field giữ nguyên placeholder {0}.
+/// Giá trị nhãn KHÔNG được Esc khi ghép HTML: chúng là chuỗi catalog do mình viết (như bản
+/// hardcode cũ) — Esc sẽ biến "—" và chữ có dấu thành numeric entity, đổi byte output.
+/// </summary>
+public sealed class CoverLabels
+{
+    public string Heading = "DANH SÁCH FILE IN";
+    /// <summary>Tiền tố ghép TRƯỚC tiêu đề lô (tiêu đề do user đặt nằm sau, được Esc riêng).</summary>
+    public string BatchPrefix = "Lô in — ";
+    public string MarkTitle = "TRANG BÌA";
+    public string BrandSub = "Phần mềm in hàng loạt";
+    /// <summary>Dòng phần mềm trong khối: {0} = "Printonator &lt;version&gt;".</summary>
+    public string SoftwareLine = "{0} — phần mềm in hàng loạt cho Windows";
+    public string SoftwareBlock = "PHẦN MỀM";
+    public string SoftwareMuted = "github.com/nanowind/Printonator &nbsp;·&nbsp; Giấy in được tạo tự động, không cần kiểm tra tay";
+    public string MachineBlock = "MÁY YÊU CẦU IN";
+    /// <summary>Environment.MachineName rỗng (hiếm) → nhãn này.</summary>
+    public string MachineUnknown = "không rõ";
+    /// <summary>Tên nhãn TRƯỚC dấu hai chấm — renderer tự thêm ":" (catalog giữ nhãn trần).</summary>
+    public string MachineLabel = "Máy tính";
+    public string PrinterLabel = "Máy in đích";
+    public string TimeLabel = "Thời điểm in";
+    public string SummaryBlock = "TỔNG HỢP";
+    public string FilesLabel = "Số file";
+    public string TotalPagesLabel = "Tổng trang";
+    /// <summary>{0} = số file chưa rõ số trang.</summary>
+    public string UnknownPagesFormat = "(+{0} file chưa rõ số trang)";
+    public string SheetsLabel = "Tổng tờ (ước tính, đã nhân số bản)";
+    public string PaperLabel = "Khổ giấy";
+    public string ColIndex = "STT";
+    public string ColFile = "Tên file";
+    public string ColPages = "Trang";
+    public string ColConfig = "Cấu hình in";
+    public string ColPrinter = "Máy in riêng";
+    /// <summary>{0} = tổng số file.</summary>
+    public string TotalRowFormat = "TỔNG CỘNG — {0} file";
+    /// <summary>{0} = tổng số tờ ước tính.</summary>
+    public string SheetsTotalFormat = "{0} tờ (ước tính)";
+    public string Note = "Số trang ghi trên đây là số trang của từng file; số tờ thực tế phụ thuộc cấu hình in và máy in.";
+    public string PrinterDefault = "Máy in mặc định";
+    /// <summary>Tiền tố khi lô trộn nhiều máy in — ghép tên cột "Máy in riêng" (MixedPrintersListFormat ghép danh sách tên máy).</summary>
+    public string MixedPrinters = "nhiều máy in (xem cột Máy in riêng)";
+    /// <summary>{0} = danh sách tên máy in (lô trộn máy nhưng KHÔNG có máy in riêng per-file).</summary>
+    public string MixedPrintersListFormat = "nhiều máy in ({0})";
+    /// <summary>{0} = số file không hiển thị được trong bảng.</summary>
+    public string MoreFilesFormat = "… và {0} file nữa (xem danh sách đầy đủ trong phần mềm)";
+    public string NoFiles = "(không có file)";
+    /// <summary>Khổ giấy "theo tài liệu" (PaperCatalog.AsDocument).</summary>
+    public string PaperAsDocument = "theo file";
+    /// <summary>Dịch Config.SummaryText cho cột "Cấu hình in" (UI điền; null → token VN gốc).</summary>
+    public Func<PrintConfig, string>? ConfigText;
+}
+
+/// <summary>
 /// Trang bìa in trước lô (CoverPage): dựng HTML 1 trang → headless browser (CDP printToPDF)
 /// → PDF tạm → in qua GDI engine tới máy đã chọn. Không nuốt lỗi — render/in hỏng
 /// trả PrintError rõ ràng để queue dừng-đúng-chỗ (không đốt giấy phần sau lô).
@@ -34,17 +89,22 @@ public static class CoverPageRenderer
         string? batchTitle,
         DateTime now,
         string? appVersion,
-        string? printerName)
+        string? printerName,
+        CoverLabels? labels = null)
     {
+        labels ??= new CoverLabels();
         var dateText = now.ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture);
         var title = ResolveTitle(jobs, batchTitle, dateText);
-        var machine = string.IsNullOrWhiteSpace(Environment.MachineName) ? "không rõ" : Environment.MachineName;
+        var machine = string.IsNullOrWhiteSpace(Environment.MachineName) ? labels.MachineUnknown : Environment.MachineName;
         var appLine = string.IsNullOrWhiteSpace(appVersion) ? "Printonator" : $"Printonator {appVersion.Trim()}";
 
-        var totalPages = jobs.Sum(j => j.PageCount > 0 ? j.PageCount : 0);
-        var unknownPages = jobs.Count(j => j.PageCount <= 0);
+        // Số trang SẮP IN của từng job (đã resolve page range + parity) — không phải PageCount toàn file.
+        // null = chưa biết (PageCount chưa probe / range lỗi) → không cộng vào tổng, ô trang ghi "?".
+        var perJobPages = jobs.Select(PagesToPrint).ToList();
+        var totalPages = perJobPages.Sum(p => p ?? 0);
+        var unknownPages = perJobPages.Count(p => p is null);
         var totalSheets = jobs.Sum(EstimatedSheets);
-        var paper = ResolvePaper(jobs);
+        var paper = ResolvePaper(jobs, labels);
         var showPrinterCol = jobs.Any(j => j.HasPerFilePrinter);
         var cols = showPrinterCol ? 5 : 4;
         var dupNames = jobs.GroupBy(j => j.FileName, StringComparer.OrdinalIgnoreCase)
@@ -65,51 +125,51 @@ public static class CoverPageRenderer
             sb.Append("<td><img src=\"").Append(logo).Append("\" alt=\"Printonator\"></td>");
         sb.Append("<td style=\"padding-left:9px\">");
         sb.Append("<div class=\"brand\">Printonator</div>");
-        sb.Append("<div class=\"brand-sub\">Phần mềm in hàng loạt</div>");
+        sb.Append("<div class=\"brand-sub\">").Append(labels.BrandSub).Append("</div>");
         sb.Append("</td></tr></table></td>");
-        sb.Append("<td style=\"width:38%\"><div class=\"mark\"><b>TRANG BÌA</b><span>")
+        sb.Append("<td style=\"width:38%\"><div class=\"mark\"><b>").Append(labels.MarkTitle).Append("</b><span>")
           .Append(Esc(dateText)).Append("</span></div></td>");
         sb.Append("</tr></table>");
 
-        sb.Append("<h1>DANH SÁCH FILE IN</h1>");
-        sb.Append("<p class=\"sub\">Lô in — ").Append(Esc(title)).Append("</p>");
+        sb.Append("<h1>").Append(labels.Heading).Append("</h1>");
+        sb.Append("<p class=\"sub\">").Append(labels.BatchPrefix).Append(Esc(title)).Append("</p>");
 
         // ---- PHAN MEM ----
-        sb.Append("<div class=\"block\"><h2>PHẦN MỀM</h2>");
-        sb.Append("<p>").Append(Esc(appLine)).Append(" — phần mềm in hàng loạt cho Windows</p>");
-        sb.Append("<p class=\"muted\">github.com/nanowind/Printonator &nbsp;·&nbsp; Giấy in được tạo tự động, không cần kiểm tra tay</p>");
+        sb.Append("<div class=\"block\"><h2>").Append(labels.SoftwareBlock).Append("</h2>");
+        sb.Append("<p>").Append(string.Format(CultureInfo.InvariantCulture, labels.SoftwareLine, Esc(appLine))).Append("</p>");
+        sb.Append("<p class=\"muted\">").Append(labels.SoftwareMuted).Append("</p>");
         sb.Append("</div>");
 
         // ---- MAY YEU CAU IN (khong in ten nguoi dung Windows — thong tin ca nhan roi khoi may) ----
-        sb.Append("<div class=\"block\"><h2>MÁY YÊU CẦU IN</h2>");
-        sb.Append("<p><b>Máy tính:</b> ").Append(Esc(machine)).Append("</p>");
-        sb.Append("<p><b>Máy in đích:</b> ").Append(Esc(ResolvePrinter(jobs, printerName))).Append("</p>");
-        sb.Append("<p><b>Thời điểm in:</b> ").Append(Esc(dateText)).Append("</p>");
+        sb.Append("<div class=\"block\"><h2>").Append(labels.MachineBlock).Append("</h2>");
+        sb.Append("<p><b>").Append(labels.MachineLabel).Append(":</b> ").Append(Esc(machine)).Append("</p>");
+        sb.Append("<p><b>").Append(labels.PrinterLabel).Append(":</b> ").Append(Esc(ResolvePrinter(jobs, printerName, labels))).Append("</p>");
+        sb.Append("<p><b>").Append(labels.TimeLabel).Append(":</b> ").Append(Esc(dateText)).Append("</p>");
         sb.Append("</div>");
 
         // ---- TONG HOP ----
-        sb.Append("<div class=\"block\"><h2>TỔNG HỢP</h2><p>");
-        sb.Append("<b>Số file:</b> ").Append(jobs.Count).Append(" &nbsp;·&nbsp; ");
-        sb.Append("<b>Tổng trang:</b> ").Append(totalPages);
+        sb.Append("<div class=\"block\"><h2>").Append(labels.SummaryBlock).Append("</h2><p>");
+        sb.Append("<b>").Append(labels.FilesLabel).Append(":</b> ").Append(jobs.Count).Append(" &nbsp;·&nbsp; ");
+        sb.Append("<b>").Append(labels.TotalPagesLabel).Append(":</b> ").Append(totalPages);
         if (unknownPages > 0)
-            sb.Append(" (+").Append(unknownPages).Append(" file chưa rõ số trang)");
+            sb.Append(' ').Append(string.Format(CultureInfo.InvariantCulture, labels.UnknownPagesFormat, unknownPages));
         sb.Append(" &nbsp;·&nbsp; ");
-        sb.Append("<b>Tổng tờ (ước tính, đã nhân số bản):</b> ").Append(totalSheets).Append(" &nbsp;·&nbsp; ");
-        sb.Append("<b>Khổ giấy:</b> ").Append(Esc(paper));
+        sb.Append("<b>").Append(labels.SheetsLabel).Append(":</b> ").Append(totalSheets).Append(" &nbsp;·&nbsp; ");
+        sb.Append("<b>").Append(labels.PaperLabel).Append(":</b> ").Append(Esc(paper));
         sb.Append("</p></div>");
 
         // ---- BANG FILE ----
         sb.Append("<table class=\"list\"><thead><tr>");
-        sb.Append("<th class=\"c\" style=\"width:6%\">STT</th>");
-        sb.Append("<th style=\"width:").Append(showPrinterCol ? 40 : 46).Append("%\">Tên file</th>");
-        sb.Append("<th class=\"c\" style=\"width:8%\">Trang</th>");
-        sb.Append("<th style=\"width:").Append(showPrinterCol ? 34 : 40).Append("%\">Cấu hình in</th>");
-        if (showPrinterCol) sb.Append("<th style=\"width:12%\">Máy in riêng</th>");
+        sb.Append("<th class=\"c\" style=\"width:6%\">").Append(labels.ColIndex).Append("</th>");
+        sb.Append("<th style=\"width:").Append(showPrinterCol ? 40 : 46).Append("%\">").Append(labels.ColFile).Append("</th>");
+        sb.Append("<th class=\"c\" style=\"width:8%\">").Append(labels.ColPages).Append("</th>");
+        sb.Append("<th style=\"width:").Append(showPrinterCol ? 34 : 40).Append("%\">").Append(labels.ColConfig).Append("</th>");
+        if (showPrinterCol) sb.Append("<th style=\"width:12%\">").Append(labels.ColPrinter).Append("</th>");
         sb.Append("</tr></thead><tbody>");
 
         if (jobs.Count == 0)
         {
-            sb.Append("<tr><td colspan=\"").Append(cols).Append("\">(không có file)</td></tr>");
+            sb.Append("<tr><td colspan=\"").Append(cols).Append("\">").Append(labels.NoFiles).Append("</td></tr>");
         }
         else
         {
@@ -123,26 +183,29 @@ public static class CoverPageRenderer
                 if (dupNames.Contains(j.FileName))
                     sb.Append("<div class=\"sub-file\">").Append(Esc(j.FolderLabel)).Append("</div>");
                 sb.Append("</td>");
-                sb.Append("<td class=\"c\">").Append(j.PageCount > 0 ? j.PageCount.ToString(CultureInfo.InvariantCulture) : "?").Append("</td>");
-                sb.Append("<td>").Append(Esc(j.Config.SummaryText)).Append("</td>");
+                var pages = perJobPages[i];
+                sb.Append("<td class=\"c\">").Append(pages?.ToString(CultureInfo.InvariantCulture) ?? "?").Append("</td>");
+                sb.Append("<td>").Append(Esc(labels.ConfigText?.Invoke(j.Config) ?? j.Config.SummaryText)).Append("</td>");
                 if (showPrinterCol) sb.Append("<td>").Append(Esc(j.Config.PrinterName ?? "")).Append("</td>");
                 sb.Append("</tr>");
             }
 
             if (jobs.Count > MaxRows)
-                sb.Append("<tr><td colspan=\"").Append(cols).Append("\">… và ")
-                  .Append(jobs.Count - MaxRows).Append(" file nữa (xem danh sách đầy đủ trong phần mềm)</td></tr>");
+                sb.Append("<tr><td colspan=\"").Append(cols).Append("\">")
+                  .Append(string.Format(CultureInfo.InvariantCulture, labels.MoreFilesFormat, jobs.Count - MaxRows))
+                  .Append("</tr>");
         }
 
         // Dong TONG CONG phai GOP O — de trong cot STT 6% thi chu vo dong.
         sb.Append("</tbody><tfoot><tr>");
-        sb.Append("<td colspan=\"2\">TỔNG CỘNG — ").Append(jobs.Count).Append(" file</td>");
+        sb.Append("<td colspan=\"2\">")
+          .Append(string.Format(CultureInfo.InvariantCulture, labels.TotalRowFormat, jobs.Count)).Append("</td>");
         sb.Append("<td class=\"c\">").Append(totalPages).Append("</td>");
         sb.Append("<td colspan=\"").Append(showPrinterCol ? 2 : 1).Append("\">")
-          .Append(totalSheets).Append(" tờ (ước tính)</td>");
+          .Append(string.Format(CultureInfo.InvariantCulture, labels.SheetsTotalFormat, totalSheets)).Append("</td>");
         sb.Append("</tr></tfoot></table>");
 
-        sb.Append("<p class=\"note\">Số trang ghi trên đây là số trang của từng file; số tờ thực tế phụ thuộc cấu hình in và máy in.</p>");
+        sb.Append("<p class=\"note\">").Append(labels.Note).Append("</p>");
         sb.Append("</div></body></html>");
         return sb.ToString();
     }
@@ -274,7 +337,7 @@ public static class CoverPageRenderer
 
     /// <summary>Máy in đích: rỗng → mặc định; lô trộn nhiều máy → trỏ sang cột "Máy in riêng"
     /// (cột này chỉ có khi lô có máy in riêng — không có thì liệt kê tên máy).</summary>
-    private static string ResolvePrinter(IReadOnlyList<PrintJob> jobs, string? printerName)
+    private static string ResolvePrinter(IReadOnlyList<PrintJob> jobs, string? printerName, CoverLabels labels)
     {
         var names = jobs.Select(j => j.Config.PrinterName ?? "")
             .Where(n => !string.IsNullOrWhiteSpace(n))
@@ -282,33 +345,47 @@ public static class CoverPageRenderer
             .ToList();
         if (names.Count > 1)
             return jobs.Any(j => j.HasPerFilePrinter)
-                ? "nhiều máy in (xem cột Máy in riêng)"
-                : "nhiều máy in (" + string.Join(", ", names) + ")";
-        return string.IsNullOrWhiteSpace(printerName) ? "Máy in mặc định" : printerName.Trim();
+                ? labels.MixedPrinters
+                : string.Format(CultureInfo.InvariantCulture, labels.MixedPrintersListFormat, string.Join(", ", names));
+        return string.IsNullOrWhiteSpace(printerName) ? labels.PrinterDefault : printerName.Trim();
     }
 
     /// <summary>Khổ giấy tổng: các khổ khác nhau trong lô, "theo file" cho AsDocument.</summary>
-    private static string ResolvePaper(IReadOnlyList<PrintJob> jobs)
+    private static string ResolvePaper(IReadOnlyList<PrintJob> jobs, CoverLabels labels)
     {
         var names = jobs.Select(j => j.Config.PaperSize)
             .Select(p => string.IsNullOrWhiteSpace(p) || p.Equals(PaperCatalog.AsDocument, StringComparison.OrdinalIgnoreCase)
-                ? "theo file"
+                ? labels.PaperAsDocument
                 : p)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
         return names.Count == 0 ? "—" : string.Join(", ", names);
     }
 
-    /// <summary>Tổng tờ ƯỚC TÍNH của 1 job = số trang vật lý × số bản ÷ số trang/tờ (làm tròn lên).
-    /// File chưa đếm được trang → 0 (không đoán bừa).</summary>
+    /// <summary>Số trang SẮP IN của 1 job: đã resolve Config.PageRange + parity qua
+    /// <see cref="CdpPrintParams.ResolveSelectedPages"/> (null = in toàn bộ → PageCount).
+    /// PageCount chưa probe (≤0) hoặc resolve lỗi → null (bìa ghi "?", không cộng vào tổng).
+    /// BuildHtml CHỈ tính — không mở file (probe đã làm ở tầng orchestrator).</summary>
+    private static int? PagesToPrint(PrintJob j)
+    {
+        if (j.PageCount <= 0) return null;   // chưa probe được (TXT...) → "?", kể cả khi có range
+        try
+        {
+            var pages = CdpPrintParams.ResolveSelectedPages(j);   // null = in tất cả (All + không lọc lẻ/chẵn / range lỗi)
+            return pages is not null ? pages.Length : j.PageCount;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>Tổng tờ ƯỚC TÍNH của 1 job = số trang SẮP IN × số bản ÷ số trang/tờ (làm tròn lên).
+    /// Chưa biết số trang thực in → 0 (không đoán bừa).</summary>
     private static int EstimatedSheets(PrintJob j)
     {
-        if (j.PageCount <= 0) return 0;
-        var resolved = j.ResolvePhysicalPages();
-        var pages = resolved.IsSuccess && resolved.Value is { Length: > 0 } v ? v.Length : j.PageCount;
+        var pages = PagesToPrint(j);
+        if (pages is not > 0) return 0;
         var copies = Math.Max(j.Config.Copies, 1);
         var perSheet = Math.Max(j.Config.PagesPerSheet, 1);
-        return (int)Math.Ceiling(pages * (double)copies / perSheet);
+        return (int)Math.Ceiling(pages.Value * (double)copies / perSheet);
     }
 
     /// <summary>Logo nhúng thẳng dạng data URI — HTML ghi vào tempdir rồi render bằng headless browser

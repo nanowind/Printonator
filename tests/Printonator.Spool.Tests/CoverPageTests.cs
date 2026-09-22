@@ -20,7 +20,8 @@ public class CoverPageTests
         bool perFilePrinter = false,
         string dir = @"C:\lo\in",
         string? printer = null,
-        string paper = PaperCatalog.AsDocument) => new()
+        string paper = PaperCatalog.AsDocument,
+        string pageRange = "All") => new()
         {
             FilePath = Path.Combine(dir, name),
             FileName = name,
@@ -31,6 +32,7 @@ public class CoverPageTests
                 PagesPerSheet = perSheet,
                 PaperSize = paper,
                 PrinterName = printer,
+                PageRange = pageRange,
             },
             PageCount = pageCount,
             HasPerFilePrinter = perFilePrinter,
@@ -213,6 +215,70 @@ public class CoverPageTests
 
         Assert.Contains("<div class=\"sub-file\">A</div>", html);
         Assert.Contains("<div class=\"sub-file\">B</div>", html);
+    }
+
+    // ===== PageRange-aware (bìa hiển thị số trang SẮP IN, không phải toàn file) =====
+
+    [Fact]
+    public void BuildHtml_PageRange1_HienTrangVaTongTheoRange_KhongPhaiToanFile()
+    {
+        // User in 1 trang đầu của file 8 trang → bìa phải ghi 1, không phải 8 (bug đã báo)
+        var html = Build([Job("a.pdf", pageCount: 8, pageRange: "1")]);
+
+        Assert.Contains("<td class=\"c\">1</td>", html);
+        Assert.DoesNotContain("<td class=\"c\">8</td>", html);
+        Assert.Contains("<b>Tổng trang:</b> 1", html);
+        // Tổng tờ cùng dùng PagesToPrint: 1 trang × 1 bản ÷ 1 trang/tờ = 1 tờ
+        Assert.Contains("<b>Tổng tờ (ước tính, đã nhân số bản):</b> 1", html);
+    }
+
+    [Fact]
+    public void BuildHtml_PageRangeNhieuTrang_TongTheoSoTrangSeIn()
+    {
+        // Range "2-3" + 2 bản → 2 trang sắp in; tổng tờ = 2 × 2 ÷ 1 = 4
+        var html = Build([Job("a.pdf", pageCount: 8, copies: 2, pageRange: "2-3")]);
+
+        Assert.Contains("<td class=\"c\">2</td>", html);
+        Assert.Contains("<b>Tổng trang:</b> 2", html);
+        Assert.Contains("<b>Tổng tờ (ước tính, đã nhân số bản):</b> 4", html);
+    }
+
+    // ===== CoverLabels (i18n) =====
+
+    [Fact]
+    public void BuildHtml_CoverLabelsCustom_DungNhanDaDich_KhongDungMacDinhViet()
+    {
+        var html = CoverPageRenderer.BuildHtml(
+            [Job("a.pdf")], null, Now, null, null,
+            new CoverLabels { Heading = "TEST-HEADING" });
+
+        Assert.Contains("TEST-HEADING", html);
+        Assert.DoesNotContain("DANH SÁCH FILE IN", html);
+    }
+
+    [Fact]
+    public void BuildHtml_TotalRowFormatCustom_DungPlaceholderLabel()
+    {
+        var html = CoverPageRenderer.BuildHtml(
+            [Job("a.pdf"), Job("b.pdf")], null, Now, null, null,
+            new CoverLabels { TotalRowFormat = "TOTAL-{0}-FILES" });
+
+        Assert.Contains("TOTAL-2-FILES", html);
+        Assert.DoesNotContain("TỔNG CỘNG", html);
+    }
+
+    [Fact]
+    public void BuildHtml_ConfigTextCustom_DichCotCauHinhIn()
+    {
+        // Config.SummaryText hardcode VN trong Core — UI dịch qua ConfigText delegate
+        var html = CoverPageRenderer.BuildHtml(
+            [Job("a.pdf")], null, Now, null, null,
+            new CoverLabels { ConfigText = c => "EN-" + c.SummaryText });
+
+        Assert.Contains("EN-1x", html);
+
+        // Không đặt ConfigText → token VN gốc (qua HtmlEncode, như các chuỗi catalog khác)
+        Assert.Contains(System.Net.WebUtility.HtmlEncode("khổ gốc"), Build([Job("a.pdf")]));
     }
 
     // ===== PageCountProber — đếm số trang TRƯỚC khi in (trang bìa dựng trước lô) =====

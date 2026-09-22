@@ -189,7 +189,8 @@ public sealed class PrintBatchOrchestrator
                 try { await PageCountProber.ProbeAsync(ready, CancellationToken.None); }
                 catch { /* PageCount giữ 0 → bìa ghi "?" */ }
 
-                var html = CoverPageRenderer.BuildHtml(ready, batchTitle, DateTime.Now, appVersion, printerName);
+                var html = CoverPageRenderer.BuildHtml(
+                    ready, batchTitle, DateTime.Now, appVersion, printerName, MakeCoverLabels());
                 var (ok, b64) = await CoverPageRenderer.RenderCoverAsync(html, coverCfg, CancellationToken.None);
                 if (ok && b64 is not null)
                 {
@@ -218,6 +219,82 @@ public sealed class PrintBatchOrchestrator
         }
 
         StartPrintBatch(ready, action);
+    }
+
+    /// <summary>
+    /// Nhãn trang bìa theo ngôn ngữ app — Spool không reference UI nên UI bơm chuỗi đã dịch xuống
+    /// (Key: Keys.Cover.*). Key thiếu → L10n trả chính tên key (dễ thấy khi test tay).
+    /// </summary>
+    private static CoverLabels MakeCoverLabels() => new()
+    {
+        Heading = L10n.S(Keys.Cover.Heading),
+        BatchPrefix = L10n.S(Keys.Cover.BatchPrefix),
+        MarkTitle = L10n.S(Keys.Cover.MarkTitle),
+        BrandSub = L10n.S(Keys.Cover.BrandSub),
+        SoftwareLine = L10n.S(Keys.Cover.SoftwareLine),
+        SoftwareBlock = L10n.S(Keys.Cover.SoftwareBlock),
+        SoftwareMuted = L10n.S(Keys.Cover.SoftwareMuted),
+        MachineBlock = L10n.S(Keys.Cover.MachineBlock),
+        MachineUnknown = L10n.S(Keys.Cover.MachineUnknown),
+        MachineLabel = L10n.S(Keys.Cover.MachineLabel),
+        PrinterLabel = L10n.S(Keys.Cover.PrinterLabel),
+        TimeLabel = L10n.S(Keys.Cover.TimeLabel),
+        SummaryBlock = L10n.S(Keys.Cover.SummaryBlock),
+        FilesLabel = L10n.S(Keys.Cover.FilesLabel),
+        TotalPagesLabel = L10n.S(Keys.Cover.TotalPagesLabel),
+        UnknownPagesFormat = L10n.S(Keys.Cover.UnknownPagesFormat),
+        SheetsLabel = L10n.S(Keys.Cover.SheetsLabel),
+        PaperLabel = L10n.S(Keys.Cover.PaperLabel),
+        ColIndex = L10n.S(Keys.Cover.ColIndex),
+        ColFile = L10n.S(Keys.Cover.ColFile),
+        ColPages = L10n.S(Keys.Cover.ColPages),
+        ColConfig = L10n.S(Keys.Cover.ColConfig),
+        ColPrinter = L10n.S(Keys.Cover.ColPrinter),
+        TotalRowFormat = L10n.S(Keys.Cover.TotalRowFormat),
+        SheetsTotalFormat = L10n.S(Keys.Cover.SheetsTotalFormat),
+        Note = L10n.S(Keys.Cover.Note),
+        PrinterDefault = L10n.S(Keys.Cover.PrinterDefault),
+        MixedPrinters = L10n.S(Keys.Cover.MixedPrinters),
+        MixedPrintersListFormat = L10n.S(Keys.Cover.MixedPrintersListFormat),
+        MoreFilesFormat = L10n.S(Keys.Cover.MoreFilesFormat),
+        NoFiles = L10n.S(Keys.Cover.NoFiles),
+        PaperAsDocument = L10n.S(Keys.Cover.PaperAsDocument),
+        ConfigText = LocalizeSummary,
+    };
+
+    /// <summary>
+    /// Dịch token trong Config.SummaryText (Core hardcode VN, không i18n) sang ngôn ngữ app
+    /// cho cột "Cấu hình in" trên trang bìa. Token neutral (Nx, A4, res:*, khay:*, zoom%, scale...) giữ nguyên.
+    /// </summary>
+    private static string LocalizeSummary(PrintConfig cfg)
+    {
+        var parts = cfg.SummaryText.Split(" · ");
+        for (var i = 0; i < parts.Length; i++)
+        {
+            // "{n}-tr/tờ" → format key có placeholder {0}
+            var m = System.Text.RegularExpressions.Regex.Match(parts[i], @"^(\d+)-tr/tờ$");
+            parts[i] = m.Success
+                ? L10n.F(Keys.Summary.PagesPerSheet, m.Groups[1].Value)
+                : parts[i] switch
+                {
+                    "khổ gốc" => L10n.S(Keys.Summary.PaperAsDocument),
+                    "2 mặt" => L10n.S(Keys.Summary.DuplexLong),
+                    "2 mặt — lật cạnh ngắn" => L10n.S(Keys.Summary.DuplexShortEdge),
+                    "1 mặt" => L10n.S(Keys.Summary.DuplexSimplex),
+                    "2 mặt theo máy" => L10n.S(Keys.Summary.DuplexPrinter),
+                    "Màu" => L10n.S(Keys.Summary.Color),
+                    "màu theo máy" => L10n.S(Keys.Summary.ColorPrinter),
+                    "gom bản" => L10n.S(Keys.Summary.CollateDocs),
+                    "rời bản" => L10n.S(Keys.Summary.CollateByPages),
+                    "trang lẻ" => L10n.S(Keys.Summary.ParityOdd),
+                    "trang chẵn" => L10n.S(Keys.Summary.ParityEven),
+                    "bìa" => L10n.S(Keys.Summary.Cover),
+                    "gộp" => L10n.S(Keys.Summary.Merge),
+                    "dấu mờ" => L10n.S(Keys.Summary.Watermark),
+                    _ => parts[i],
+                };
+        }
+        return string.Join(" · ", parts);
     }
 
     /// <summary>
