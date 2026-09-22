@@ -51,6 +51,8 @@ public static class Keys
     {
         public const string ConfirmRePrint = "Banner.ConfirmRePrint";
         public const string ConfirmRePrintTitle = "Banner.ConfirmRePrintTitle";
+        public const string CoverBuildFailed = "Banner.CoverBuildFailed";
+        public const string CoverPrintFailed = "Banner.CoverPrintFailed";
         public const string FileAddError = "Banner.FileAddError";
         public const string FileNotFound = "Banner.FileNotFound";
         public const string FileOpenError = "Banner.FileOpenError";
@@ -164,6 +166,11 @@ public static class Keys
         public const string ColSettingsTooltip = "Main.ColSettingsTooltip";
         public const string ColStatus = "Main.ColStatus";
         public const string ColStatusTooltip = "Main.ColStatusTooltip";
+        public const string CoverNamePlaceholder = "Main.CoverNamePlaceholder";
+        public const string CoverNameTooltip = "Main.CoverNameTooltip";
+        public const string CoverRowBadge = "Main.CoverRowBadge";
+        public const string CoverRowSummary = "Main.CoverRowSummary";
+        public const string CoverToggle = "Main.CoverToggle";
         public const string CtxEdit = "Main.CtxEdit";
         public const string CtxEditPlural = "Main.CtxEditPlural";
         public const string CtxEditTooltip = "Main.CtxEditTooltip";
@@ -181,6 +188,8 @@ public static class Keys
         public const string DropHighlightTitle = "Main.DropHighlightTitle";
         public const string EmptyStateHint = "Main.EmptyStateHint";
         public const string EmptyStateTitle = "Main.EmptyStateTitle";
+        public const string ExcelAutoOrient = "Main.ExcelAutoOrient";
+        public const string ExcelFitWide = "Main.ExcelFitWide";
         public const string FolderLeafFallback = "Main.FolderLeafFallback";
         public const string FooterHintDefault = "Main.FooterHintDefault";
         public const string FooterHintSelection = "Main.FooterHintSelection";
@@ -349,6 +358,7 @@ public static class Keys
         public const string GroupPaperColor = "Settings.GroupPaperColor";
         public const string GroupPaperLayout = "Settings.GroupPaperLayout";
         public const string HintAutoOrientation = "Settings.HintAutoOrientation";
+        public const string HintAutoOrientationLock = "Settings.HintAutoOrientationLock";
         public const string HintCollation = "Settings.HintCollation";
         public const string HintColor = "Settings.HintColor";
         public const string HintCopies = "Settings.HintCopies";
@@ -437,9 +447,13 @@ public static class Keys
         public const string BatchStart = "Toast.BatchStart";
         public const string BatchStopped = "Toast.BatchStopped";
         public const string CtxPrintQueued = "Toast.CtxPrintQueued";
+        public const string CoverDisabled = "Toast.CoverDisabled";
+        public const string CoverEnabled = "Toast.CoverEnabled";
+        public const string CoverSkipped = "Toast.CoverSkipped";
         public const string DedupSuffix = "Toast.DedupSuffix";
         public const string DefaultConfig = "Toast.DefaultConfig";
         public const string DeletedFiles = "Toast.DeletedFiles";
+        public const string ExcelFlagApplied = "Toast.ExcelFlagApplied";
         public const string FileReloaded = "Toast.FileReloaded";
         public const string FilesAdded = "Toast.FilesAdded";
         public const string FilesAddedFromFolder = "Toast.FilesAddedFromFolder";

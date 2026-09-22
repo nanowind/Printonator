@@ -31,6 +31,15 @@ public sealed record Preset
     public PageParityFilter Parity { get; init; } = PageParityFilter.All;
     public PrintQuality Quality { get; init; } = PrintQuality.AsPrinter;
 
+    /// <summary>Excel: fit tất cả cột vào 1 trang ngang — chỉ có tác dụng với file Excel (đường in qua Excel COM).</summary>
+    public bool FitToPageWide { get; init; }
+
+    /// <summary>Excel: tự chọn chiều giấy theo nội dung — chỉ có tác dụng với file Excel (đường in qua Excel COM).</summary>
+    public bool AutoOrientation { get; init; }
+
+    // KHÔNG thêm CoverPage vào preset: bìa là thuộc tính của LÔ in (nhiều file),
+    // không phải của cấu hình in từng file — preset áp cho từng file nên không mang nghĩa.
+
     /// <summary>Clone cấu hình từ preset sang PrintConfig của một job.</summary>
     public PrintConfig ToPrintConfig() => new()
     {
@@ -53,6 +62,8 @@ public sealed record Preset
         Collation = Collation,
         Parity = Parity,
         Quality = Quality,
+        FitToPageWide = FitToPageWide,
+        AutoOrientation = AutoOrientation,
         ProfileName = Name,
     };
 }
@@ -78,5 +89,7 @@ public static class PresetExtensions
         Collation = cfg.Collation,
         Parity = cfg.Parity,
         Quality = cfg.Quality,
+        FitToPageWide = cfg.FitToPageWide,
+        AutoOrientation = cfg.AutoOrientation,
     };
 }

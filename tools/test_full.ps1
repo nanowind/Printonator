@@ -103,9 +103,14 @@ try {
     # Start-Process + Wait-Process -TimeoutSeconds: watchdog THẬT, treo thì kill tree.
     Log "`n==== [2/2] dotnet test (per-project, watchdog $TestTimeoutSec s/project) ===="
     $testOut = @(); $testCode = 0; $passed = 0; $failed = 0
+    # $allLogs gom TOÀN BỘ output của mọi project — nguồn đếm Passed/Failed ở dưới.
+    # (Trước đây đếm từ $testOut — biến đó CHỈ chứa dòng lỗi "[EXIT n] <proj>" nên tổng kết
+    #  luôn in Passed=0 Failed=0. Đếm từ log thật mới đúng.)
+    $allLogs = [System.Collections.Generic.List[string]]::new()
     $projects = @(
         'tests/Printonator.Core.Tests/Printonator.Core.Tests.csproj',
         'tests/Printonator.Spool.Tests/Printonator.Spool.Tests.csproj',
+        'tests/Printonator.Mcp.Tests/Printonator.Mcp.Tests.csproj',
         'tests/Printonator.UITests/Printonator.UITests.csproj'
     )
     foreach ($proj in $projects) {
@@ -135,16 +140,38 @@ try {
             if ($testCode -eq 0) { $testCode = $codeThis }
             $testOut += "[EXIT $codeThis] $proj"
         }
+        # Gom vào $allLogs để đếm Passed/Failed ở tổng kết (xem chú thích khai báo $allLogs).
+        $allLogs.Add("[PROJECT] $proj  (exit $codeThis)")
         # in log riêng của project vào cả log chính
-        if (Test-Path $logThis) { Get-Content $logThis | ForEach-Object { Log $_ } }
-        if (Test-Path "$($logThis).err") { Get-Content "$($logThis).err" | ForEach-Object { Log $_ } }
+        if (Test-Path $logThis) {
+            $projLines = @(Get-Content $logThis | ForEach-Object { [string]$_ })
+            foreach ($l in $projLines) { Log $l }
+            if ($projLines.Count -gt 0) { $allLogs.AddRange([string[]]$projLines) }
+        }
+        if (Test-Path "$($logThis).err") {
+            $errLines = @(Get-Content "$($logThis).err" | ForEach-Object { [string]$_ })
+            foreach ($l in $errLines) { Log $l }
+            if ($errLines.Count -gt 0) { $allLogs.AddRange([string[]]$errLines) }
+        }
     }
 
-    # Đếm PASS/FAIL từ output các dòng kiểu "Passed: 62" / "Failed: 3" (xunit/VSTest summary)
-    $text = ($testOut -join "`n")
+    # Đếm PASS/FAIL từ output THẬT của các project (dòng "Passed: 62" / "Failed: 3" của VSTest).
+    # CHÚ Ý: mỗi project in 1 dòng tổng kết → cộng dồn qua regex là đúng; nếu VSTest in nhiều
+    # dòng khớp trong cùng project thì lấy dòng CUỐI của project đó để tránh đếm trùng.
     $passed = 0; $failed = 0
-    [regex]::Matches($text, 'Passed:\s*(\d+)') | ForEach-Object { $passed += [int]$_.Groups[1].Value }
-    [regex]::Matches($text, 'Failed:\s*(\d+)')  | ForEach-Object { $failed  += [int]$_.Groups[1].Value }
+    $currentPassed = $null; $currentFailed = $null
+    foreach ($line in $allLogs) {
+        if ($line -match '^\s*\[PROJECT\]') {
+            if ($currentPassed -ne $null) { $passed += [int]$currentPassed }
+            if ($currentFailed -ne $null) { $failed += [int]$currentFailed }
+            $currentPassed = $null; $currentFailed = $null
+            continue
+        }
+        if ($line -match 'Passed:\s*(\d+)') { $currentPassed = $Matches[1] }
+        if ($line -match 'Failed:\s*(\d+)') { $currentFailed = $Matches[1] }
+    }
+    if ($currentPassed -ne $null) { $passed += [int]$currentPassed }
+    if ($currentFailed -ne $null) { $failed += [int]$currentFailed }
 
     # ===== Tổng kết rõ ràng =====
     if ($testCode -eq 0 -and $failed -eq 0) {

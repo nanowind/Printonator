@@ -33,14 +33,12 @@ public sealed class OfficeComPrintEngine : IPrintEngine
 
     public Task<Result<bool>> PrintAsync(PrintJob job, CancellationToken ct)
     {
+        // PrinterName rỗng/null = "máy in mặc định Windows" (sentinel cũng có dạng này khi combo toolbar
+        // ở item "Theo máy thanh công cụ" — PrintJob.Config.PrinterName bị đặt null). PHẢI resolve ở đây
+        // thay vì báo lỗi: GdiPrintEngine đã làm vậy (resolve sentinel TRƯỚC khi kiểm rỗng), nên nếu chỗ này
+        // báo lỗi thì lô PDF in được mà file Excel/Word lại chết PRINTER_NOT_FOUND dù cùng một lô.
         if (string.IsNullOrWhiteSpace(job.Config.PrinterName))
-            return Task.FromResult(Result<bool>.Fail(new PrintError
-            {
-                Code = ErrorCodes.PrinterNotFound,
-                Category = PrintErrorCategory.Config,
-                Message = "Chưa chọn máy in.",
-                Hint = "Chọn máy in (hoặc để 'mặc định').",
-            }));
+            job.Config.PrinterName = DefaultPrinter.Resolve(null) ?? "mặc định";
 
         // COM Office bắt buộc chạy trên STA thread — chạy nền + timeout để không kẹt hàng đợi.
         // spawnedOfficePids: theo dõi PID của instance Office MÀ ENGINE TỰ TẠO (không phải của user
@@ -459,16 +457,12 @@ public sealed class OfficeComPrintEngine : IPrintEngine
     /// <summary>Excel: Fit tất cả cột vào 1 trang ngang + tự chọn chiều giấy theo nội dung (option user chọn).</summary>
     private static void ApplyExcelPageExtras(dynamic sheet, PrintConfig cfg)
     {
+        // 2 try RIÊNG: lỗi auto-orient không được nuốt luôn FitToPageWide (Try chung nuốt cả 2).
+        if (cfg.AutoOrientation)
+            Try(() => sheet.PageSetup.Orientation = PickAutoOrientation(sheet));
+
         Try(() =>
         {
-            if (cfg.AutoOrientation)
-            {
-                // Vùng dữ liệu rộng >= cao → landscape; ngược lại portrait (đo bằng điểm in).
-                var used = sheet.UsedRange;
-                var wPt = (double)used.Width;
-                var hPt = (double)used.Height;
-                sheet.PageSetup.Orientation = wPt >= hPt ? 2 /* xlLandscape */ : 1 /* xlPortrait */;
-            }
             if (cfg.FitToPageWide)
             {
                 // FitToPagesWide=1 + FitToPagesTall=false → gom cột vào 1 trang ngang, cao theo nội dung.
@@ -477,6 +471,69 @@ public sealed class OfficeComPrintEngine : IPrintEngine
                 sheet.PageSetup.FitToPagesTall = false;
             }
         });
+    }
+
+    /// <summary>
+    /// Chọn chiều giấy: đo số trang NGANG ở zoom 100% cho từng chiều — chiều nào cần ít trang ngang hơn
+    /// (= chứa đủ cột với ít thu nhỏ nhất khi fit-to-1-trang) thắng.
+    ///
+    /// SO UsedRange W/H (cũ) luôn ra portrait với bảng nhiều hàng: hàng kéo chiều cao lên vĩnh viễn
+    /// (vd file thật 1403x1414pt → portrait dù cột chia qua 4 trang). Đo VPageBreaks mới phản ánh ĐÚNG
+    /// mất bao nhiêu cột: cùng file đo được portrait=3 break (4 trang ngang) vs landscape=1 (2 trang) →
+    /// landscape chỉ phải thu nhỏ 2× thay vì 4× → chữ lớn gấp đôi, vẫn đủ cột.
+    /// </summary>
+    private static int PickAutoOrientation(dynamic sheet)
+    {
+        try { sheet.Activate(); } catch { }   // VPageBreaks tính theo layout — activate cho chắc (giống SheetPageCount)
+
+        dynamic ps = sheet.PageSetup;
+        object origZoom = true, origWide = false, origTall = false;
+        try { origZoom = ps.Zoom; } catch { }
+        try { origWide = ps.FitToPagesWide; } catch { }
+        try { origTall = ps.FitToPagesTall; } catch { }
+
+        static int CountPagesWide(dynamic sheet2, int orientation)
+        {
+            try
+            {
+                dynamic ps2 = sheet2.PageSetup;
+                ps2.Orientation = orientation;
+                ps2.FitToPagesWide = false;   // VARIANT False = tắt fit → về zoom 100%, layout thật
+                ps2.FitToPagesTall = false;
+                ps2.Zoom = true;
+            }
+            catch { }
+            try { return (int)sheet2.VPageBreaks.Count; }
+            catch { return -1; }   // không đếm được → coi như thua
+        }
+
+        int portrait = CountPagesWide(sheet, 1 /* xlPortrait */);
+        int landscape = CountPagesWide(sheet, 2 /* xlLandscape */);
+
+        // Trả về trạng thái fit/zoom CŨ (caller tự áp FitToPageWide sau nếu chip bật).
+        try
+        {
+            if (origZoom is bool z && z)
+            {
+                ps.FitToPagesWide = false;
+                ps.FitToPagesTall = false;
+                ps.Zoom = true;
+            }
+            else
+            {
+                ps.Zoom = false;
+                ps.FitToPagesWide = origWide;
+                ps.FitToPagesTall = origTall;
+            }
+        }
+        catch { }
+
+        // Ít trang ngang hơn thắng. Hòa = cùng fit hay cùng tràn: fit (1 trang) → portrait (nhiều hàng/trang
+        // hơn); tràn cả 2 → landscape (thu nhỏ ít hơn nhờ khổ rộng). Không đo được → mặc định portrait.
+        if (portrait < 0 && landscape < 0) return 1;
+        if (landscape < portrait) return 2;
+        if (portrait < landscape) return 1;
+        return portrait <= 1 ? 1 : 2;
     }
 
     /// <summary>Sheet trống = UsedRange không có ô dữ liệu (chỉ A1 rỗng). File xuất từ thiết bị hay
@@ -805,5 +862,90 @@ public sealed class OfficeComPrintEngine : IPrintEngine
             return n > 0 ? n : 1;
         }
         catch { return 1; }
+    }
+
+    /// <summary>
+    /// Đếm số trang file Excel TRƯỚC khi in (dùng cho trang bìa) — mở MỘT session Excel cho nhiều file
+    /// (Excel startup ~3s dominated → batch mới hiệu quả). Set thẳng job.PageCount cho job PageCount&lt;=0 &amp;&amp; IsExcel.
+    /// Lỗi từng file → bỏ qua file đó (PageCount giữ 0 → bìa ghi "?"), KHÔNG ném ra ngoài.
+    /// SYNC + tự dựng thread STA riêng (COM Excel bắt buộc STA): caller chỉ cần giá trị xong mới dựng bìa,
+    /// nên block vài giây là chấp nhận được (bìa vốn đã chờ render browser). Join có hạn 15s để Excel treo
+    /// không khoá UI vĩnh viễn — quá hạn thì PageCount giữ 0 và trả false (caller bỏ nhóm Office sau đó).
+    /// </summary>
+    public static bool ProbeExcelPageCounts(IEnumerable<PrintJob> jobs)
+    {
+        var targets = jobs.Where(j => j.PageCount <= 0 && j.IsExcel && System.IO.File.Exists(j.FilePath)).ToList();
+        if (targets.Count == 0) return true; // không có gì để đếm → 0 chi phí, KHÔNG mở Excel
+
+        var spawnedPid = new int[1];   // worker ghi PID Excel nó spawn — đọc ở nhánh hết hạn
+        var worker = new Thread(() =>
+        {
+            var before = SnapshotOfficePids("EXCEL");
+            try
+            {
+                var app = CreateApp("Excel.Application");
+                spawnedPid[0] = NewOfficePid("EXCEL", before) ?? 0;   // ghi PID TRƯỚC khi mở workbook
+                app.Visible = false;
+                app.DisplayAlerts = false;
+                try
+                {
+                    foreach (var job in targets)
+                    {
+                        dynamic? wb = null;
+                        try
+                        {
+                            wb = app.Workbooks.Open(job.FilePath, ReadOnly: true, AddToMru: false, UpdateLinks: 0);
+                            // Cộng dồn MỌI sheet không trống — khớp cách PrintWithExcel map range global.
+                            var total = 0;
+                            foreach (var sheet in wb.Worksheets)
+                            {
+                                if (IsSheetBlank(sheet)) continue;
+                                total += SheetPageCount(sheet);
+                            }
+                            if (total > 0) job.PageCount = total;
+                        }
+                        catch (Exception ex)
+                        {
+                            OfficeLog($"Probe page count lỗi '{job.FileName}': {ex.Message}"); // giữ PageCount=0 → bìa "?"
+                        }
+                        finally
+                        {
+                            Try(() => wb?.Close(SaveChanges: false));
+                        }
+                    }
+                }
+                finally
+                {
+                    Try(() => app.Quit());
+                    Try(() => Marshal.FinalReleaseComObject(app));
+                }
+            }
+            catch (Exception ex)
+            {
+                // Excel không có / không mở được → NUỐT: bìa không được chết vì probe (PageCount giữ 0).
+                OfficeLog($"Probe page count bỏ qua cả lô: {ex.Message}");
+            }
+        })
+        { IsBackground = true, Name = "ExcelPageCountProbe" };
+        worker.SetApartmentState(ApartmentState.STA);
+        worker.Start();
+
+        // Quá hạn → KILL đúng Excel engine tự spawn. Join hết hạn chỉ bỏ CHỜ, thread nền vẫn giữ Excel
+        // mở và không gọi Quit() → EXCEL.EXE mồ côi (đã gặp thật: 1 file .xlsx treo Workbooks.Open).
+        // 15s — file thường probe ~4s. Trả false = hết hạn (caller bỏ nhóm Office sau đó, không cộng dồn chờ).
+        if (worker.Join(TimeSpan.FromSeconds(15))) return true;
+        var pid = Volatile.Read(ref spawnedPid[0]);
+        if (pid > 0)
+        {
+            try
+            {
+                var p = System.Diagnostics.Process.GetProcessById(pid);
+                p.Kill(entireProcessTree: true);
+                p.WaitForExit(5000);
+            }
+            catch { }
+        }
+        OfficeLog("Probe page count quá 15s → kill Excel engine tự spawn (bìa ghi \"?\").");
+        return false;
     }
 }

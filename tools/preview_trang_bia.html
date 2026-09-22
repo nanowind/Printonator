@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Trang bìa — Printonator</title>
+<style>
+  html,body{margin:0;padding:0;background:#888;font-family:'Segoe UI',Arial,sans-serif;}
+  /* A4 @96dpi = 794x1123 px; lề 10mm ≈ 38px (khớp margin CDP 0.4in) */
+  .sheet{width:794px;height:1123px;box-sizing:border-box;padding:38px;background:#fff;
+         color:#000;font-size:14px;line-height:1.35;margin:20px auto;}
+  .tab{width:100%;border-collapse:collapse;}
+  .tab td{vertical-align:top;border:none;padding:0;}
+  .brand{font-size:17px;font-weight:700;color:#1B4F72;}
+  .brand-sub{font-size:12px;color:#444;}
+  .brandtab{border-collapse:collapse;}
+  .brandtab td{border:none;padding:0;vertical-align:middle;}
+  .brandtab img{display:block;width:36px;height:36px;}
+  .mark{background:#1B4F72;color:#fff;text-align:center;padding:5px 4px;border-radius:3px;}
+  .mark b{font-size:17px;display:block;letter-spacing:.5px;}
+  .mark span{font-size:12px;display:block;margin-top:2px;}
+  h1{font-size:23px;margin:14px 0 2px;}
+  .sub{font-size:13px;color:#444;margin:0 0 14px;}
+  .block{border:1px solid #000;padding:9px 11px;margin:0 0 12px;break-inside:avoid;page-break-inside:avoid;}
+  .block h2{font-size:12.5px;margin:0 0 5px;color:#1B4F72;letter-spacing:.4px;}
+  .block p{margin:0 0 2px;font-size:13px;}
+  .muted{font-size:12px;color:#444;}
+  table.list{width:100%;border-collapse:collapse;font-size:13px;margin-top:2px;}
+  table.list th,table.list td{border:1px solid #000;padding:4px 6px;text-align:left;vertical-align:top;
+                              overflow-wrap:anywhere;}
+  table.list th{background:#E8E8E8;font-size:12.5px;}
+  table.list thead{display:table-header-group;}
+  table.list tr{break-inside:avoid;page-break-inside:avoid;}
+  table.list tfoot td{font-weight:700;background:#F2F2F2;}
+  .c{text-align:center;}
+  .note{font-size:11.5px;color:#444;margin-top:6px;}
+</style></head>
+<body>
+<div class="sheet">
+
+  <!-- TAB NHAN DIEN GOC TREN-PHAI -->
+  <table class="tab"><tr>
+    <td style="width:62%">
+      <table class="brandtab"><tr>
+        <td><img src="../printonatorLogo.png" alt="Printonator"></td>
+        <td style="padding-left:9px">
+          <div class="brand">Printonator</div>
+          <div class="brand-sub">Phần mềm in hàng loạt</div>
+        </td>
+      </tr></table>
+    </td>
+    <td style="width:38%">
+      <div class="mark"><b>TRANG BÌA</b><span>12/09/2026&nbsp;&nbsp;14:30</span></div>
+    </td>
+  </tr></table>
+
+  <h1>DANH SÁCH FILE IN</h1>
+  <p class="sub">Lô in — Hồ sơ nghiệm thu</p>
+
+  <div class="block">
+    <h2>PHẦN MỀM</h2>
+    <p>Printonator 0.2.7 — phần mềm in hàng loạt cho Windows</p>
+    <p class="muted">github.com/nanowind/Printonator &nbsp;·&nbsp; Giấy in được tạo tự động, không cần kiểm tra tay</p>
+  </div>
+
+  <div class="block">
+    <h2>MÁY YÊU CẦU IN</h2>
+    <p><b>Máy tính:</b> NANOWINDPC</p>
+    <p><b>Máy in đích:</b> Canon LBP151 (222)</p>
+    <p><b>Thời điểm in:</b> 12/09/2026 14:30</p>
+  </div>
+
+  <div class="block">
+    <h2>TỔNG HỢP</h2>
+    <p><b>Số file:</b> 4 &nbsp;·&nbsp; <b>Tổng trang:</b> 24 &nbsp;·&nbsp;
+       <b>Tổng tờ (ước tính, đã nhân số bản):</b> 24 &nbsp;·&nbsp; <b>Khổ giấy:</b> A4</p>
+  </div>
+
+  <table class="list">
+    <thead><tr>
+      <th class="c" style="width:6%">STT</th>
+      <th style="width:40%">Tên file</th>
+      <th class="c" style="width:8%">Trang</th>
+      <th style="width:34%">Cấu hình in</th>
+      <th style="width:12%">Máy in riêng</th>
+    </tr></thead>
+    <tbody>
+      <tr><td class="c">1</td><td>01_Bien_ban_nghiem_thu.pdf</td><td class="c">3</td>
+          <td>1x · A4 · 2 mặt theo máy · màu theo máy · 1-tr/tờ</td><td></td></tr>
+      <tr><td class="c">2</td><td>02_Bang_ke_khoi_luong.xlsx</td><td class="c">5</td>
+          <td>1x · A4 · 1 mặt · B&amp;W · 1-tr/tờ</td><td></td></tr>
+      <tr><td class="c">3</td><td>03_Ban_ve_hoan_cong.pdf</td><td class="c">12</td>
+          <td>2x · A3 · 1 mặt · B&amp;W · 1-tr/tờ</td><td></td></tr>
+      <tr><td class="c">4</td><td>04_Bien_ban_ban_giao.docx</td><td class="c">4</td>
+          <td>1x · A4 · 2 mặt · màu theo máy · 1-tr/tờ</td><td>LBP242/243</td></tr>
+    </tbody>
+    <tfoot><tr>
+      <td colspan="2">TỔNG CỘNG — 4 file</td><td class="c">24</td>
+      <td colspan="2">24 tờ (ước tính)</td>
+    </tr></tfoot>
+  </table>
+  <p class="note">Số trang ghi trên đây là số trang của từng file; số tờ thực tế phụ thuộc cấu hình in và máy in.</p>
+
+</div>
+</body></html>

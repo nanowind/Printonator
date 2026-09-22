@@ -180,7 +180,9 @@ public sealed class PrintConfig
     /// <summary>Tên profile (preset) đang áp cho file — chỉ để hiển thị/ghi chú, không đổi hành vi.</summary>
     public string? ProfileName { get; set; }
 
-    /// <summary>In thêm 1 trang bìa trước lô (ghi tên lô, ngày, số lượng file).</summary>
+    /// <summary>In thêm 1 trang bìa trước lô — bìa ghi tên phần mềm + phiên bản, máy tính yêu cầu in,
+    /// máy in, thời điểm in, và danh sách file trong lô. Tiêu đề bìa do UI truyền vào lúc in
+    /// (PrintBatchOrchestrator.BatchName), KHÔNG lưu trong config — tên lô chỉ sống trong phiên.</summary>
     public bool CoverPage { get; set; }
 
     /// <summary>Gộp toàn bộ file được chọn thành 1 bản in (chỉ PDF/ảnh/TXT).</summary>
@@ -338,6 +340,11 @@ public sealed class PrintJob
     // Thuộc tính phẳng cho sort theo cột "Settings" (ListCollectionView không resolve path lồng "Config.Copies")
     public int SortCopies => Config.Copies;
     public string SortPaper => Config.PaperSize;
+
+    /// <summary>File Excel (đường in qua Excel COM — nơi 2 option FitToPageWide/AutoOrientation có tác dụng). CSV KHÔNG tính: CSV có thể rơi xuống engine browser nên 2 option thành no-op.</summary>
+    public bool IsExcel => Format.Equals("XLS", StringComparison.OrdinalIgnoreCase)
+        || Format.Equals("XLSX", StringComparison.OrdinalIgnoreCase)
+        || Format.Equals("XLSM", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Thư mục chứa file — khóa nhóm UI "folder cha → file con" (group bằng đường dẫn đầy đủ).</summary>
     public string FolderGroup => string.IsNullOrEmpty(FilePath) ? "" : (Path.GetDirectoryName(FilePath) ?? "");

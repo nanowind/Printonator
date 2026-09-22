@@ -27,6 +27,9 @@ public partial class MainWindow : Window
     private bool _sortDescending;
     private int _printerScanGeneration;   // scan cũ về sau không được ghi đè kết quả scan mới
     private Popup? _openPagePopup;        // popup Pages đang mở — đóng bằng field (không duyệt container grouped)
+    // ===== Trang bìa (thuộc tính cấp LÔ — xem SyncCoverState) =====
+    private bool _coverEnabled = true;    // mặc định BẬT khi lô có >= 2 file
+    private bool _coverUserSet;           // user đã chủ động bỏ tick chưa (bỏ tick = tôn trọng, không tự bật lại)
 
     // ===== Refactor T0.1: batch orchestration + footer/banner/toast tách sang class riêng =====
     private readonly PrintBatchOrchestrator _orchestrator;
@@ -99,8 +102,11 @@ public partial class MainWindow : Window
         _orchestrator.BatchStopped += OnBatchStopped;
         _orchestrator.ToastRequested += ShowToast;
         _orchestrator.BannerRequested += ShowBanner;
-        _orchestrator.FooterUpdated += UpdateFooter;
+        _orchestrator.FooterUpdated += () => { UpdateFooter(); SyncCoverState(); };
         _orchestrator.RefreshRequested += () => JobList.Items.Refresh();
+        // Nguồn thêm/xóa job duy nhất là _queue.Jobs (AddFiles, CtxRemove, watcher, popup "In xong") —
+        // bám CollectionChanged để cờ bìa + dòng bìa luôn khớp số file, khỏi sót đường nào.
+        Jobs.CollectionChanged += (_, _) => SyncCoverState();
 
         BellBadgeBorder.Visibility = Visibility.Collapsed;
         Notifications.CollectionChanged += (_, _) => UpdateNotificationBadge();
@@ -1560,6 +1566,89 @@ public partial class MainWindow : Window
     private void UpdateEmptyState()
     {
         _footer.UpdateEmptyState();
+    }
+
+    // ===== Trang bìa (VIỆC 1 + 2): chip "Bìa" trên toolbar + dòng bìa đầu danh sách =====
+
+    /// <summary>
+    /// Đồng bộ trạng thái bìa với hàng đợi. Đây là NƠI DUY NHẤT ghi cờ Config.CoverPage (không có nguồn
+    /// sự thật thứ 2). Gọi ở mọi chỗ danh sách đổi (hook Jobs.CollectionChanged + các chỗ UpdateFooter).
+    /// Bìa là thuộc tính cấp LÔ (PrintBatchOrchestrator kiểm ready.Any(j => j.Config.CoverPage)) → ép
+    /// cùng một giá trị cho MỌI job. Lite mode ÉP TẮT: tick bìa đã bỏ khỏi Cài đặt in nên ở Lite không
+    /// còn đường tắt — hàng đợi lưu từ Full mode còn cờ sẽ in bìa mà user không thấy control nào.
+    /// </summary>
+    private void SyncCoverState()
+    {
+        if (CoverToggleBtn is null) return;   // XAML chưa dựng xong
+
+        // Lô < 2 file không in bìa (khớp điều kiện ready.Count >= 2 trong orchestrator)
+        if (Jobs.Count < 2) { _coverEnabled = false; _coverUserSet = false; }
+        else if (!_coverUserSet) { _coverEnabled = true; }
+
+        var show = ModeResolver.IsFull && Jobs.Count >= 2;
+        foreach (var j in Jobs)
+            j.Config.CoverPage = _coverEnabled && ModeResolver.IsFull;
+
+        CoverToggleBtn.IsChecked = _coverEnabled;
+        CoverToggleBtn.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        CoverRow.Visibility = show && _coverEnabled ? Visibility.Visible : Visibility.Collapsed;
+        CoverRowSummary.Text = L10n.F(Keys.Main.CoverRowSummary, Jobs.Count);
+
+        if (Jobs.Count == 0 && CoverNameBox is not null && CoverNameBox.Text.Length > 0)
+            CoverNameBox.Text = "";   // hàng đợi trống → xóa tên lô cũ (TextChanged đặt lại BatchName = null)
+    }
+
+    /// <summary>Chip "Bìa" trên toolbar — user tự bật/tắt cho lô hiện tại.</summary>
+    private void CoverToggle_Click(object sender, RoutedEventArgs e)
+    {
+        _coverUserSet = true;
+        _coverEnabled = CoverToggleBtn.IsChecked == true;
+        SyncCoverState();
+        ShowToast(L10n.S(_coverEnabled ? Keys.Toast.CoverEnabled : Keys.Toast.CoverDisabled));
+    }
+
+    /// <summary>Tên lô in → orchestrator dùng làm tiêu đề trang bìa.
+    /// Tên lô CHỈ sống trong phiên: KHÔNG lưu vào PrintConfig/queue.json — đóng app mở lại thì
+    /// ô này trống và bìa dùng lại fallback tên thư mục / ngày giờ. Đừng thêm field persist lại.</summary>
+    private void CoverNameBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        _orchestrator.BatchName = CoverNameBox.Text;   // rỗng → orchestrator tự fallback tên thư mục / ngày giờ
+    }
+
+    /// <summary>Enter trong ô tên lô = chốt giá trị, trả focus về danh sách (không auto-focus ô này khi thêm file).</summary>
+    private void CoverNameBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter) return;
+        JobList.Focus();
+        e.Handled = true;
+    }
+
+    /// <summary>2 chip Excel trên mỗi row (Fit cột / Tự xoay chiều giấy).
+    /// Luật bulk giống PagesApply_Click: row nằm trong selection → áp cho mọi job Excel trong selection,
+    /// không → chỉ row đó. Lọc j.IsExcel trước khi ghi — đừng ghi cờ Excel lên PDF/Word.</summary>
+    private void RowExcelFlag_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ToggleButton chip || chip.DataContext is not PrintJob job) return;
+        if (chip.Tag is not string flag) return;
+        var on = chip.IsChecked == true;
+
+        var targets = JobList.SelectedItems.Contains(job)
+            ? JobList.SelectedItems.OfType<PrintJob>().Where(j => j.IsExcel).ToList()
+            : new List<PrintJob> { job };
+        foreach (var j in targets)
+        {
+            if (flag == "FitToPageWide") j.Config.FitToPageWide = on;
+            else if (flag == "AutoOrientation") j.Config.AutoOrientation = on;
+        }
+
+        // BẮT BUỘC refresh: PrintConfig không INPC nên binding OneWay không tự cập nhật.
+        // BeginInvoke: bấm chip có thể đổi Visibility của chính nó giữa sự kiện Click → refresh ngay dễ nổ.
+        Dispatcher.BeginInvoke(new Action(() => JobList.Items.Refresh()));
+        if (targets.Count > 1)
+        {
+            var label = L10n.S(flag == "FitToPageWide" ? Keys.Main.ExcelFitWide : Keys.Main.ExcelAutoOrient);
+            ShowToast(L10n.F(Keys.Toast.ExcelFlagApplied, label, targets.Count));
+        }
     }
 
     // ===== Sort theo cột (user yêu cầu) =====

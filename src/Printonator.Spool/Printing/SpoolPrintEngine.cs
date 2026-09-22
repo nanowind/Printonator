@@ -3,6 +3,7 @@ using System.IO;
 using Microsoft.Win32;
 using Printonator.Core;
 using Printonator.Core.Models;
+using Printonator.Core.Printing;
 
 namespace Printonator.Spool.Printing;
 
@@ -21,28 +22,11 @@ public sealed class SpoolPrintEngine : IPrintEngine
         Process? spawnedProc = null;   // process printto engine đã spawn — dọn khi cancel (scope ngoài try để catch thấy)
         try
         {
+            // PrinterName rỗng/null = "máy in mặc định Windows" (combo toolbar ở item "Theo máy thanh công cụ"
+            // → PrintJob.Config.PrinterName bị đặt null). Resolve TRƯỚC khi kiểm rỗng, giống GdiPrintEngine —
+            // nếu báo lỗi ở đây thì file Office/Excel chết PRINTER_NOT_FOUND dù lô PDF vẫn in được.
             var printerName = job.Config.PrinterName;
-            if (string.IsNullOrEmpty(printerName))
-                return Task.FromResult(Result<bool>.Fail(new PrintError
-                {
-                    Code = ErrorCodes.PrinterNotFound,
-                    Category = PrintErrorCategory.Config,
-                    Message = "Chưa chọn máy in.",
-                    Hint = "Chọn máy in ở thanh công cụ (ví dụ Microsoft Print to PDF)."
-                }));
-
-            if (!File.Exists(job.FilePath))
-                return Task.FromResult(Result<bool>.Fail(new PrintError
-                {
-                    Code = ErrorCodes.FileNotFound,
-                    Category = PrintErrorCategory.System,
-                    Message = $"File không tồn tại: {job.FilePath}",
-                    Hint = "File bị xóa hoặc di chuyển — kiểm tra lại đường dẫn."
-                }));
-
-            // "mặc định" = máy in mặc định của Windows
-            if (printerName.Equals("mặc định", StringComparison.OrdinalIgnoreCase)
-                || printerName.Equals("default", StringComparison.OrdinalIgnoreCase))
+            if (DefaultPrinter.IsDefault(printerName))
                 printerName = GetDefaultPrinterName();
 
             // Không có máy in mặc định → báo lỗi RÕ (tránh printto với tên rỗng → in nhầm máy/xuất PDF).
@@ -53,6 +37,15 @@ public sealed class SpoolPrintEngine : IPrintEngine
                     Category = PrintErrorCategory.Config,
                     Message = "Không tìm thấy máy in mặc định.",
                     Hint = "Chọn máy in cụ thể ở thanh công cụ.",
+                }));
+
+            if (!File.Exists(job.FilePath))
+                return Task.FromResult(Result<bool>.Fail(new PrintError
+                {
+                    Code = ErrorCodes.FileNotFound,
+                    Category = PrintErrorCategory.System,
+                    Message = $"File không tồn tại: {job.FilePath}",
+                    Hint = "File bị xóa hoặc di chuyển — kiểm tra lại đường dẫn."
                 }));
 
             ct.ThrowIfCancellationRequested();

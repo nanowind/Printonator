@@ -172,7 +172,7 @@ Xem chi tiết `docs/COMPARISON_PRINT_CONDUCTOR.md`. Tóm tắt:
 - .NET 8 SDK (dotnet 8.0.424), VSCode + C# Dev Kit (`ms-dotnettools.csdevkit`)
 - Launch debug: F5 (launch.json type=dotnet, projectPath → Printonator.UI.csproj)
 - Setup: `setup/printonator.iss` (Inno Setup, tiếng Việt) — build bằng `setup/build-setup.sh`
-- Git: repo đã init (branch master); các file cấu hình cục bộ (AI tooling, workflow state, .env) nằm ngoài git theo `.gitignore`
+- Git: repo đã init (branch main); các file cấu hình cục bộ (AI tooling, workflow state, .env) nằm ngoài git theo `.gitignore`
 - Printers test trên máy: "Microsoft Print to PDF", các Canon LBP, PDF-XChange...
 
 ## 9. Lỗi thường gặp & cách tránh

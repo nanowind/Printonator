@@ -1,4 +1,5 @@
 ﻿using System.Collections.ObjectModel;
+using System.IO;
 using System.Windows;
 using System.Windows.Data;
 using System.Windows.Threading;
@@ -37,6 +38,9 @@ public sealed class PrintBatchOrchestrator
 
     /// <summary>Fire khi cần refresh JobList (sau khi batch state thay đổi).</summary>
     public event Action? RefreshRequested;
+
+    /// <summary>Tên lô in do user đặt trên dòng bìa (MainWindow set). Rỗng → engine tự fallback tên thư mục/ngày giờ.</summary>
+    public string? BatchName { get; set; }
 
     public PrintBatchOrchestrator(PrintQueue queue, Dispatcher dispatcher,
         Func<PrinterInfo?> selectedPrinterGetter, Window owner)
@@ -107,20 +111,6 @@ public sealed class PrintBatchOrchestrator
 
         try
         {
-            // ===== Trang bìa (T2.1): in 1 trang bìa trước lô; fail → bỏ qua bìa, in lô bình thường (không chặn) =====
-            if (ready.Any(j => j.Config.CoverPage))
-            {
-                var cfg = ready.First().Config;
-                var html = CoverPageRenderer.BuildHtml(
-                    DateTime.Now.ToString("yyyy-MM-dd HH:mm"),
-                    ready.Count,
-                    ready.Sum(j => Math.Max(j.PageCount, 1)),
-                    DateTime.Now, cfg.PrinterName);
-                var (ok, b64) = await CoverPageRenderer.RenderCoverAsync(html, cfg, CancellationToken.None);
-                if (ok && b64 is not null)
-                    await CoverPageRenderer.PrintCoverAsync(b64, cfg.PrinterName ?? "mặc định", CancellationToken.None);
-            }
-
             // ===== Gộp file (T2.4): job bật MergeIntoOneFile → in chung 1 bản qua MergePrintEngine =====
             var mergeJobs = ready.Where(j => j.Config.MergeIntoOneFile).ToList();
             var normalJobs = ready.Where(j => !j.Config.MergeIntoOneFile).ToList();
@@ -152,7 +142,7 @@ public sealed class PrintBatchOrchestrator
         {
             // Fire-and-forget (PrintJobs wrapper) — exception phải biến thành banner, không được bay ra ngoài.
             BannerRequested?.Invoke(ErrorCodes.EngineFailed,
-                "Không dựng được trang bìa hoặc gộp file — in lại.",
+                "Không gộp được file — in từng file riêng.",
                 ex.Message);
             return;
         }
@@ -164,6 +154,67 @@ public sealed class PrintBatchOrchestrator
             && !PrintConfirmWindow.Show(_owner, _selectedPrinterGetter()?.Name ?? L10n.S(Keys.Main.PrinterDefaultName), ready, sheets))
         {
             return;
+        }
+
+        // ===== Trang bìa (T2.1): in 1 trang bìa TRƯỚC lô — đặt SAU cổng xác nhận để user bấm Hủy
+        // thì không tốn tờ bìa nào. Tính trên `ready` SAU merge (đúng số file/trang thực in).
+        // Bọc try/catch RIÊNG: bìa lỗi → toast + VẪN in lô (không được nuốt cả lô).
+        // Lô 1 file không in bìa (kể cả khi cờ CoverPage còn sót).
+        if (ready.Count >= 2 && ready.Any(j => j.Config.CoverPage))
+        {
+            try
+            {
+                var cfg = ready.First().Config;
+                // Bìa luôn khổ cố định A4 dọc 1 mặt 1 bản — không thừa hưởng AsDocument (Chromium rơi về Letter)
+                // hay zoom/duplex của lô.
+                var coverCfg = cfg.Clone();
+                coverCfg.PaperSize = "A4";
+                coverCfg.Orientation = PrintOrientation.Portrait;
+                coverCfg.ScaleMode = PrintScaleMode.Original;
+                coverCfg.ScalePercent = 100;
+                coverCfg.DuplexMode = PrintDuplexMode.Simplex;
+                coverCfg.Copies = 1;
+
+                var batchTitle = BatchName?.Trim();
+                if (batchTitle is { Length: > 60 }) batchTitle = batchTitle[..60];   // khớp MaxLength ô nhập
+                if (string.IsNullOrWhiteSpace(batchTitle)) batchTitle = null;         // để engine tự fallback
+
+                var appVersion = typeof(PrintBatchOrchestrator).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
+                var printerName = cfg.PrinterName ?? "mặc định";
+                var coverOutputDir = Path.GetDirectoryName(ready.First().FilePath);
+
+                // Mọi format đều ? khi bìa dựng TRƯỚC khi in (PageCount điền trong lúc in) → probe hết ở đây.
+                // PDF: nhanh (không mở app). Ảnh: 1. Office: 1 session/nhóm (~4s lần đầu Excel). TXT: giữ ? (không ước lượng bừa).
+                // Không bao giờ ném — probe lỗi → bìa ghi ? cho file đó.
+                try { await PageCountProber.ProbeAsync(ready, CancellationToken.None); }
+                catch { /* PageCount giữ 0 → bìa ghi "?" */ }
+
+                var html = CoverPageRenderer.BuildHtml(ready, batchTitle, DateTime.Now, appVersion, printerName);
+                var (ok, b64) = await CoverPageRenderer.RenderCoverAsync(html, coverCfg, CancellationToken.None);
+                if (ok && b64 is not null)
+                {
+                    var printed = await CoverPageRenderer.PrintCoverAsync(
+                        b64, printerName, coverOutputDir, batchTitle ?? "Trang bia", CancellationToken.None);
+                    // Lỗi in bìa = lỗi máy in → BANNER (giữ mã lỗi + gợi ý), KHÔNG toast
+                    // (toast tự ẩn sau vài giây, không vào bell/history → user mất dấu vết lỗi).
+                    if (!printed.IsSuccess)
+                        BannerRequested?.Invoke(
+                            printed.Error?.Code ?? ErrorCodes.SpoolerFailed,
+                            L10n.F(Keys.Banner.CoverPrintFailed, printed.Error?.Message ?? ""),
+                            printed.Error?.Hint ?? "");
+                }
+                else
+                {
+                    // Không dựng được bìa (thường do máy không có Chrome/Edge) — KHÔNG phải lỗi máy in,
+                    // chỉ là bỏ qua bìa → toast là đủ, lô vẫn in bình thường.
+                    ToastRequested?.Invoke(L10n.S(Keys.Toast.CoverSkipped));
+                }
+            }
+            catch (Exception ex)
+            {
+                // Bìa hỏng (vd base64 sai → FormatException) KHÔNG được chặn lô → banner + VẪN in lô.
+                BannerRequested?.Invoke(ErrorCodes.EngineFailed, L10n.S(Keys.Banner.CoverBuildFailed), ex.Message);
+            }
         }
 
         StartPrintBatch(ready, action);

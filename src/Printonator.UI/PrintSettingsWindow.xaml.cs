@@ -20,6 +20,11 @@ public partial class PrintSettingsWindow : Window
     private readonly IReadOnlyList<PrintJob> _targets;
     private readonly PrinterInfo? _printer;
     private readonly PrintConfig _source;
+    // 2 cờ Excel (FitToPageWide/AutoOrientation) KHÔNG có control trong dialog này (chỉnh bằng chip ở action
+    // bar mỗi row). Giá trị lấy từ preset user chọn, giữ tạm ở đây rồi chép vào cfg LÚC ÁP DỤNG — vì _source
+    // là THAM CHIẾU tới targets[0].Config (không clone), ghi ngay lúc chọn preset sẽ khiến nút Hủy cũng đổi cấu hình file.
+    private bool _fitWideFromPreset;
+    private bool _autoOrientFromPreset;
     private readonly PrintJob? _representative;
     private readonly PresetStore _store = new();
     private bool _loadingProfile;
@@ -39,7 +44,7 @@ public partial class PrintSettingsWindow : Window
         // ===== Chế độ Lite (mặc định): ẩn tính năng Phase 2 khỏi cửa sổ cấu hình =====
         if (!ModeResolver.IsFull)
         {
-            AdvancedBatchPanel.Visibility = Visibility.Collapsed;   // Cover page + Merge (tab Cơ bản)
+            AdvancedBatchPanel.Visibility = Visibility.Collapsed;   // Merge (tab Cơ bản)
             WatermarkPanel.Visibility = Visibility.Collapsed;       // Watermark (tab Nâng cao)
         }
 
@@ -161,9 +166,12 @@ public partial class PrintSettingsWindow : Window
 
         SelectTag(SheetCombo, cfg.SheetName, "");
 
-        FitToPageWideCheck.IsChecked = cfg.FitToPageWide;
-        AutoOrientationCheck.IsChecked = cfg.AutoOrientation;
-        CoverPageCheck.IsChecked = cfg.CoverPage;
+        // KHÔNG còn tick "Fit cột" / "Tự xoay chiều giấy" ở đây: 2 cờ FitToPageWide/AutoOrientation đi xuyên
+        // qua dialog (Apply_Click clone _source — vốn đã mang sẵn 2 cờ này — rồi MainWindow CopyInto job.Config).
+        // 2 cờ này chỉnh bằng chip ở action bar từng row. Đừng "thêm lại" checkbox vào cửa sổ này.
+        // KHÔNG còn tick "In trang bìa" ở đây: cờ CoverPage đi xuyên qua dialog (Apply_Click clone _source
+        // — vốn đã mang sẵn cờ này — rồi MainWindow CopyInto job.Config). Tick bìa nằm ở thanh công cụ
+        // dashboard. Đừng "thêm lại" checkbox bìa vào cửa sổ này.
         MergeCheck.IsChecked = cfg.MergeIntoOneFile;
         WatermarkText.Text = cfg.WatermarkText ?? "";
         WatermarkOpacitySlider.Value = Math.Clamp(cfg.WatermarkOpacity, 0.1, 1.0);
@@ -340,10 +348,21 @@ public partial class PrintSettingsWindow : Window
         if (string.IsNullOrEmpty(name))
         {
             LoadFromConfig(new PrintConfig());
+            // "No profile" = về mặc định: 2 cờ Excel cũng phải về false (không có control để user tự tắt).
+            _fitWideFromPreset = false;
+            _autoOrientFromPreset = false;
             return;
         }
         var preset = _store.Load().FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
-        if (preset is not null) LoadFromConfig(preset.ToPrintConfig());
+        if (preset is not null)
+        {
+            LoadFromConfig(preset.ToPrintConfig());
+            // 2 cờ Excel không còn control trong dialog (chỉnh bằng chip ở row). GIỮ TẠM giá trị preset ở đây
+            // rồi chép vào cfg lúc ÁP DỤNG — KHÔNG ghi thẳng vào _source, vì _source là THAM CHIẾU tới
+            // targets[0].Config (không clone) nên ghi ngay sẽ làm nút Hủy cũng đổi cấu hình file.
+            _fitWideFromPreset = preset.FitToPageWide;
+            _autoOrientFromPreset = preset.AutoOrientation;
+        }
     }
 
     private void SaveProfile_Click(object sender, RoutedEventArgs e)
@@ -367,6 +386,8 @@ public partial class PrintSettingsWindow : Window
         }
         var cfg = _source.Clone();
         WriteConfigInto(cfg);
+        cfg.FitToPageWide = _fitWideFromPreset;   // preset đang chọn (xem ProfileCombo_SelectionChanged)
+        cfg.AutoOrientation = _autoOrientFromPreset;
         if (!_store.Save(cfg.ToPreset(name)))
         {
             ProfileNameBox.ToolTip = L10n.S(Keys.Settings.ProfileSaveError);
@@ -515,6 +536,10 @@ public partial class PrintSettingsWindow : Window
         }
         var cfg = _source.Clone();
         WriteConfigInto(cfg);
+        // 2 cờ Excel lấy từ preset đã chọn (không có control trong dialog — xem ProfileCombo_SelectionChanged).
+        // Chép ở ĐÂY (không phải lúc chọn preset) để nút Hủy không làm đổi cấu hình file.
+        cfg.FitToPageWide = _fitWideFromPreset;
+        cfg.AutoOrientation = _autoOrientFromPreset;
         Result = cfg;
         DialogResult = true;
     }
@@ -590,9 +615,9 @@ public partial class PrintSettingsWindow : Window
         var sheet = SelectedTag(SheetCombo);
         cfg.SheetName = string.IsNullOrEmpty(sheet) ? null : sheet;
 
-        cfg.FitToPageWide = FitToPageWideCheck.IsChecked == true;
-        cfg.AutoOrientation = AutoOrientationCheck.IsChecked == true;
-        cfg.CoverPage = CoverPageCheck.IsChecked == true;
+        // FitToPageWide / AutoOrientation KHÔNG ghi ở đây — giữ nguyên 2 cờ có sẵn trong cfg
+        // (xem LoadFromConfig). Chip ở action bar từng row là nơi chỉnh 2 cờ này.
+        // CoverPage KHÔNG ghi ở đây — giữ nguyên cờ có sẵn trong cfg (xem LoadFromConfig).
         cfg.MergeIntoOneFile = MergeCheck.IsChecked == true;
         var watermark = WatermarkText.Text.Trim();
         cfg.WatermarkText = string.IsNullOrEmpty(watermark) ? null : watermark;

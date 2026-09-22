@@ -203,17 +203,12 @@
                                 </ComboBox>
                                 <TextBlock Text="{l10n:Loc Settings.HintColor}" Style="{StaticResource HintText}"/>
 
-                                <CheckBox x:Name="FitToPageWideCheck" Content="{l10n:Loc Settings.FitToPageWideCheck}" FontSize="12" Margin="0,10,0,0"/>
-                                <TextBlock Text="{l10n:Loc Settings.HintFitToPageWide}" Style="{StaticResource HintText}"/>
+                                <!-- KHÔNG có tick "Fit cột" / "Tự xoay chiều giấy" ở đây: 2 cờ này đã có chip
+                                     riêng ở action bar từng row (ExcelFitChip / ExcelOrientChip trong
+                                     MainWindow.xaml) — thêm nữa là 2 chỗ chỉnh cùng một thứ. Đừng "thêm lại". -->
 
-                                <CheckBox x:Name="AutoOrientationCheck" Content="{l10n:Loc Settings.AutoOrientationCheck}" FontSize="12" Margin="0,10,0,0"/>
-                                <TextBlock Text="{l10n:Loc Settings.HintAutoOrientation}" Style="{StaticResource HintText}"/>
-
-                                <!-- ===== Phase 2 (Lite): Cài đặt lô — Cover page + Merge, ẩn cả khối ở chế độ Lite ===== -->
+                                <!-- ===== Phase 2 (Lite): Cài đặt lô — Merge, ẩn cả khối ở chế độ Lite ===== -->
                                 <StackPanel x:Name="AdvancedBatchPanel">
-                                    <CheckBox x:Name="CoverPageCheck" Content="{l10n:Loc Settings.CoverPage}" FontSize="12" Margin="0,10,0,0"/>
-                                    <TextBlock Text="{l10n:Loc Settings.CoverPageHint}" Style="{StaticResource HintText}"/>
-
                                     <CheckBox x:Name="MergeCheck" Content="{l10n:Loc Settings.MergeIntoOne}" FontSize="12" Margin="0,10,0,0"/>
                                     <TextBlock Text="{l10n:Loc Settings.MergeHint}" Style="{StaticResource HintText}"/>
                                 </StackPanel>

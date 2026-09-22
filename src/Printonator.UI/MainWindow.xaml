@@ -44,6 +44,38 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <!-- Toggle dạng chip: nút "Bìa" trên toolbar + 2 chip Excel trong mỗi row.
+             Tự viết ControlTemplate vì GhostBtn/RoundedBtn là TargetType="Button" — WPF KHÔNG cho
+             BasedOn chéo sang ToggleButton (base style phải là base type của TargetType).
+             Tắt = nền trắng viền xám (như GhostBtn) · Bật = nền AccentBrush chữ trắng (như RoundedBtn). -->
+        <Style x:Key="ChipToggle" TargetType="ToggleButton">
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Bd" Background="{StaticResource BgBrush}" BorderBrush="{StaticResource BorderBrush}"
+                                BorderThickness="1" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource HeaderBgBrush}"/>
+                            </Trigger>
+                            <!-- Khai SAU IsMouseOver → trạng thái bật thắng khi vừa hover vừa bật -->
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource AccentBrush}"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
                                      <!-- ===== Context menu: popup bo góc + đổ bóng, item icon + hover tròn, xóa màu đỏ ===== -->
                                     <Style TargetType="ContextMenu">
                                         <Setter Property="Background" Value="White"/>
@@ -370,6 +402,21 @@
                     </StackPanel>
                 </Border>
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                                     <!-- Chip "Bìa": in thêm trang bìa trước lô. Đặt XA nút Print (CTA) để không misclick.
+                                          Visibility do code-behind (SyncCoverState): chỉ Full mode + lô >= 2 file.
+                                          Chữ ngắn "Bìa" — nhãn đầy đủ ở AutomationProperties.Name + tooltip. -->
+                                     <ToggleButton x:Name="CoverToggleBtn" Style="{StaticResource ChipToggle}"
+                                                   Content="{l10n:Loc Main.CoverToggle}" Padding="12,6" Margin="0,0,8,0"
+                                                   Visibility="Collapsed" Click="CoverToggle_Click"
+                                                   AutomationProperties.AutomationId="CoverToggleBtn"
+                                                   AutomationProperties.Name="{l10n:Loc Settings.CoverPage}">
+                                         <ToggleButton.ToolTip>
+                                             <StackPanel>
+                                                 <TextBlock Text="{l10n:Loc Settings.CoverPage}" FontWeight="SemiBold"/>
+                                                 <TextBlock Text="{l10n:Loc Settings.CoverPageHint}" TextWrapping="Wrap" MaxWidth="300"/>
+                                             </StackPanel>
+                                         </ToggleButton.ToolTip>
+                                     </ToggleButton>
 <Button Content="{l10n:Loc Main.PrintSettingsButton}" Style="{StaticResource GhostBtn}" Click="PrintSettings_Click"
                                               Padding="14,6" Margin="0,0,8,0" AutomationProperties.AutomationId="PrintSettingsBtn"
                                               ToolTip="{l10n:Loc Main.PrintSettingsTooltip}"/>
@@ -441,8 +488,9 @@
         <!-- ===== Job table ===== -->
         <Grid Grid.Row="4" Margin="16,4,16,0">
             <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>   <!-- 0: header cột -->
+                <RowDefinition Height="Auto"/>   <!-- 1: dòng bìa (CoverRow) -->
+                <RowDefinition Height="*"/>      <!-- 2: danh sách job -->
             </Grid.RowDefinitions>
 
             <!-- Header row -->
@@ -493,8 +541,50 @@
                 </Grid>
             </Border>
 
+            <!-- Dòng bìa — CỐ Ý nằm NGOÀI ListBox JobList: view của JobList là nguồn sự thật chung cho
+                 search, sort, OrderByDisplay (thứ tự in), grouping thư mục, chọn-tất-cả, GetTargetJobs/Delete
+                 và đếm ở footer — nhét item giả vào sẽ vỡ cả loạt đó. Ngoài ra strip ghim cố định nên không
+                 cuộn theo danh sách, và không dính KeyBinding Delete / Ctrl+A / Space của JobList
+                 (gõ tên lô không xóa nhầm file). -->
+            <Border x:Name="CoverRow" Grid.Row="1" Background="{StaticResource HeaderBgBrush}"
+                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4"
+                    Margin="0,4,0,0" Padding="0,4" Height="34" Visibility="Collapsed">
+                <DockPanel LastChildFill="True">
+                    <TextBlock DockPanel.Dock="Right" x:Name="CoverRowSummary" Margin="8,0,10,0"
+                               FontSize="11" Foreground="{StaticResource MutedBrush}" VerticalAlignment="Center"/>
+                    <Border DockPanel.Dock="Left" Width="46" Height="18" Margin="4,0,0,0" Background="{StaticResource AccentBrush}"
+                            CornerRadius="3" Padding="4,1" VerticalAlignment="Center">
+                        <TextBlock Text="{l10n:Loc Main.CoverRowBadge}" FontSize="9" FontWeight="SemiBold" Foreground="White"
+                                   TextAlignment="Center"/>
+                    </Border>
+                    <Grid Margin="6,0,8,0" VerticalAlignment="Center">
+                        <TextBox x:Name="CoverNameBox" MaxLength="60" TextWrapping="NoWrap" FontSize="12"
+                                 Background="{StaticResource BgBrush}" BorderBrush="{StaticResource BorderBrush}"
+                                 BorderThickness="1" Padding="6,2" VerticalContentAlignment="Center"
+                                 ToolTip="{l10n:Loc Main.CoverNameTooltip}"
+                                 AutomationProperties.AutomationId="CoverNameBox"
+                                 TextChanged="CoverNameBox_TextChanged" KeyDown="CoverNameBox_KeyDown"/>
+                        <!-- Placeholder: WPF không có sẵn → TextBlock overlay cùng cell, ẩn khi ô có chữ -->
+                        <TextBlock Text="{l10n:Loc Main.CoverNamePlaceholder}" FontSize="12"
+                                   Foreground="{StaticResource FaintBrush}" Margin="7,0,0,0"
+                                   VerticalAlignment="Center" IsHitTestVisible="False">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Text, ElementName=CoverNameBox}" Value="">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
+                </DockPanel>
+            </Border>
+
             <!-- Jobs list — grouped theo folder (main row = folder cha, sub rows = file) -->
-            <ListBox Grid.Row="1" x:Name="JobList" BorderThickness="0" Background="Transparent"
+            <ListBox Grid.Row="2" x:Name="JobList" BorderThickness="0" Background="Transparent"
                              ItemsSource="{Binding Jobs}" SelectionMode="Extended"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled" Margin="0,4,0,0">
                 <ListBox.GroupStyle>
@@ -671,12 +761,104 @@
                                                                         </StackPanel>
                                                                     </Border>
                                                                 </Popup>
-                                                                <!-- settings — bấm trực tiếp để mở cấu hình in của file (thay vì chỉ chuột phải → menu) -->
-                                                                                                <TextBlock Grid.Column="7" VerticalAlignment="Center"
+                                                                <!-- settings — bấm trực tiếp để mở cấu hình in của file (thay vì chỉ chuột phải → menu).
+                                                                     2 chip Excel là SIBLING của TextBlock trong DockPanel → bấm chip KHÔNG mở dialog. -->
+                                                                <DockPanel Grid.Column="7" LastChildFill="True">
+                                                                    <!-- Chip Excel: hiện 2 tầng — (1) chỉ file Excel; (2) khi cả 2 chip TẮT thì chỉ
+                                                                         hiện lúc rê chuột (cột 7 chỉ ~250px, để luôn hiện sẽ bóp SummaryText mọi row
+                                                                         Excel); bật ít nhất 1 chip → luôn hiện để thấy trạng thái đang áp. -->
+                                                                    <ToggleButton DockPanel.Dock="Right" x:Name="ExcelOrientChip"
+                                                                                  Content="{l10n:Loc Main.ExcelAutoOrient}" Tag="AutoOrientation"
+                                                                                  Padding="6,0" Margin="6,0,0,0" IsTabStop="False"
+                                                                                  IsChecked="{Binding Config.AutoOrientation, Mode=OneWay}"
+                                                                                  Click="RowExcelFlag_Click"
+                                                                                  AutomationProperties.AutomationId="ExcelOrientChip">
+                                                                        <ToggleButton.Style>
+                                                                            <Style TargetType="ToggleButton" BasedOn="{StaticResource ChipToggle}">
+                                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                <Setter Property="Height" Value="22"/>
+                                                                                <Setter Property="FontSize" Value="10"/>
+                                                                                <Style.Triggers>
+                                                                                    <MultiDataTrigger>
+                                                                                        <MultiDataTrigger.Conditions>
+                                                                                            <Condition Binding="{Binding IsExcel}" Value="True"/>
+                                                                                            <Condition Binding="{Binding IsMouseOver, ElementName=RowBg}" Value="True"/>
+                                                                                        </MultiDataTrigger.Conditions>
+                                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                                    </MultiDataTrigger>
+                                                                                    <MultiDataTrigger>
+                                                                                        <MultiDataTrigger.Conditions>
+                                                                                            <Condition Binding="{Binding IsExcel}" Value="True"/>
+                                                                                            <Condition Binding="{Binding IsChecked, RelativeSource={RelativeSource Self}}" Value="True"/>
+                                                                                        </MultiDataTrigger.Conditions>
+                                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                                    </MultiDataTrigger>
+                                                                                    <MultiDataTrigger>
+                                                                                        <MultiDataTrigger.Conditions>
+                                                                                            <Condition Binding="{Binding IsExcel}" Value="True"/>
+                                                                                            <Condition Binding="{Binding IsChecked, ElementName=ExcelFitChip}" Value="True"/>
+                                                                                        </MultiDataTrigger.Conditions>
+                                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                                    </MultiDataTrigger>
+                                                                                </Style.Triggers>
+                                                                            </Style>
+                                                                        </ToggleButton.Style>
+                                                                        <ToggleButton.ToolTip>
+                                                                            <StackPanel>
+                                                                                <TextBlock Text="{l10n:Loc Settings.AutoOrientationCheck}" FontWeight="SemiBold"/>
+                                                                                <TextBlock Text="{l10n:Loc Settings.HintAutoOrientation}" TextWrapping="Wrap" MaxWidth="300"/>
+                                                                            </StackPanel>
+                                                                        </ToggleButton.ToolTip>
+                                                                    </ToggleButton>
+                                                                    <ToggleButton DockPanel.Dock="Right" x:Name="ExcelFitChip"
+                                                                                  Content="{l10n:Loc Main.ExcelFitWide}" Tag="FitToPageWide"
+                                                                                  Padding="6,0" Margin="6,0,0,0" IsTabStop="False"
+                                                                                  IsChecked="{Binding Config.FitToPageWide, Mode=OneWay}"
+                                                                                  Click="RowExcelFlag_Click"
+                                                                                  AutomationProperties.AutomationId="ExcelFitChip">
+                                                                        <ToggleButton.Style>
+                                                                            <Style TargetType="ToggleButton" BasedOn="{StaticResource ChipToggle}">
+                                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                <Setter Property="Height" Value="22"/>
+                                                                                <Setter Property="FontSize" Value="10"/>
+                                                                                <Style.Triggers>
+                                                                                    <MultiDataTrigger>
+                                                                                        <MultiDataTrigger.Conditions>
+                                                                                            <Condition Binding="{Binding IsExcel}" Value="True"/>
+                                                                                            <Condition Binding="{Binding IsMouseOver, ElementName=RowBg}" Value="True"/>
+                                                                                        </MultiDataTrigger.Conditions>
+                                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                                    </MultiDataTrigger>
+                                                                                    <MultiDataTrigger>
+                                                                                        <MultiDataTrigger.Conditions>
+                                                                                            <Condition Binding="{Binding IsExcel}" Value="True"/>
+                                                                                            <Condition Binding="{Binding IsChecked, RelativeSource={RelativeSource Self}}" Value="True"/>
+                                                                                        </MultiDataTrigger.Conditions>
+                                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                                    </MultiDataTrigger>
+                                                                                    <MultiDataTrigger>
+                                                                                        <MultiDataTrigger.Conditions>
+                                                                                            <Condition Binding="{Binding IsExcel}" Value="True"/>
+                                                                                            <Condition Binding="{Binding IsChecked, ElementName=ExcelOrientChip}" Value="True"/>
+                                                                                        </MultiDataTrigger.Conditions>
+                                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                                    </MultiDataTrigger>
+                                                                                </Style.Triggers>
+                                                                            </Style>
+                                                                        </ToggleButton.Style>
+                                                                        <ToggleButton.ToolTip>
+                                                                            <StackPanel>
+                                                                                <TextBlock Text="{l10n:Loc Settings.FitToPageWideCheck}" FontWeight="SemiBold"/>
+                                                                                <TextBlock Text="{l10n:Loc Settings.HintFitToPageWide}" TextWrapping="Wrap" MaxWidth="300"/>
+                                                                            </StackPanel>
+                                                                        </ToggleButton.ToolTip>
+                                                                    </ToggleButton>
+                                                                                                <TextBlock VerticalAlignment="Center"
                                                                                                            Text="{Binding Config.SummaryText, Mode=OneWay}"
                                                                                                            TextWrapping="Wrap" TextTrimming="CharacterEllipsis" Cursor="Hand"
                                                                                                            MouseLeftButtonUp="SettingsCell_Click"
                                                                                                            ToolTip="{l10n:Loc Main.SettingsCellTooltip}"/>
+                                                                </DockPanel>
                                                                 <!-- máy in riêng per-file — chọn máy thật → HasPerFilePrinter; "Theo máy thanh công cụ" = dùng máy toolbar -->
                                                                 <ComboBox x:Name="RowPrinterCombo" Grid.Column="8" Width="Auto" MinWidth="90"
                                                                           ItemsSource="{Binding Printers, RelativeSource={RelativeSource AncestorType=Window}}"
@@ -748,7 +930,7 @@
             </ListBox>
 
             <!-- Empty state: hướng dẫn khi hàng đợi trống (ẩn khi có file hoặc đang tìm kiếm) -->
-            <StackPanel x:Name="EmptyState" Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center"
+            <StackPanel x:Name="EmptyState" Grid.Row="2" HorizontalAlignment="Center" VerticalAlignment="Center"
                         IsHitTestVisible="False">
                 <Border Width="64" Height="64" CornerRadius="16" Background="{StaticResource HeaderBgBrush}"
                         HorizontalAlignment="Center">
