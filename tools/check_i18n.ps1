@@ -6,6 +6,7 @@
       3. Placeholder {n} parity between vi and each language
       4. Flags "---" (untranslated keys)
       5. Flags Vietnamese diacritics leaking into the en column
+      6. Flags escaped XML entities (e.g. "&amp;") — WPF renders them literally, write a plain '&'
     Used in: pre-commit (dev) + release.yml (ship gate).
 #>
 param(
@@ -32,6 +33,18 @@ $enDiacritics = @('à','á','ạ','ả','ã','â','ấ','ầ','ẩ','ẫ','ậ',
 
 # Sentinel values that intentionally stay verbatim in every language (written into Config.PrinterName etc).
 $sentinelExempt = @('Main.PrinterDefaultName')
+
+# 6. Escaped XML entity — L10n.S returns it raw, WPF Text shows it literally.
+$entityPattern = '&(amp|lt|gt|quot|apos|#[0-9]+|#x[0-9A-Fa-f]+);'
+
+# 6. Entity trong CHÍNH cột vi — loop dưới chỉ chạy 4 ngôn ngữ kia, mà vi là bản gốc + fallback của UI,
+#    nên entity lọt vào đây vẫn ship xanh. Kiểm riêng, MỘT lần cho mỗi key (trước loop ngôn ngữ).
+foreach ($key in $viKeys) {
+    $v = [string]$vi.$key
+    if ($v -match $entityPattern) {
+        $issues.Add("[vi] '$key' contains escaped entity '$($Matches[0])' — write a plain '&' instead")
+    }
+}
 
 # 1. Key-set parity + 2. empty/null + 3. placeholder parity + 4. untranslated
 foreach ($lang in @('en','zh','ru','ja')) {
@@ -62,6 +75,10 @@ foreach ($lang in @('en','zh','ru','ja')) {
                     break
                 }
             }
+        }
+        # 6. Escaped XML entity — L10n.S returns it raw, WPF Text shows it literally
+        if ([string]$v -match $entityPattern) {
+            $issues.Add("[$lang] '$key' contains escaped entity '$($Matches[0])' — write a plain '&' instead")
         }
     }
 }

@@ -262,8 +262,9 @@
                                 <TextBlock Text="{l10n:Loc Settings.HintParity}" Style="{StaticResource HintText}"/>
 
                                 <TextBlock Text="{l10n:Loc Settings.OptionCollation}" Style="{StaticResource OptionLabel}"/>
+                                <!-- KHÔNG có "Theo máy in" (AsPrinter): engine GDI tự bơm bản nên driver
+                                     không nhận Copies → AsPrinter không có nghĩa gì; 2 lựa chọn dưới là thật. -->
                                 <ComboBox x:Name="CollationCombo" Width="280" FontSize="12" HorizontalAlignment="Left">
-                                    <ComboBoxItem Content="{l10n:Loc Option.AsPrinter}" Tag="AsPrinter"/>
                                     <ComboBoxItem Content="{l10n:Loc Option.ByDocuments}" Tag="ByDocuments"/>
                                     <ComboBoxItem Content="{l10n:Loc Option.ByPages}" Tag="ByPages"/>
                                 </ComboBox>

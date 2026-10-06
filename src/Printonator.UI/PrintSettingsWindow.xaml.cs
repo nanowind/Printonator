@@ -158,7 +158,9 @@ public partial class PrintSettingsWindow : Window
         SelectTag(ParityCombo, cfg.Parity.ToString(), "All");
         SelectTag(ColorModeCombo, cfg.ColorMode.ToString(), "AsPrinter");
         SelectTag(DuplexCombo, cfg.DuplexMode.ToString(), "AsPrinter");
-        SelectTag(CollationCombo, cfg.Collation.ToString(), "AsPrinter");
+        // Collation không còn item "AsPrinter" (chỉ ByDocuments/ByPages) → preset cũ mang
+        // AsPrinter phải rơi về ByDocuments (tương đương trung thực với hành vi Office).
+        SelectTag(CollationCombo, cfg.Collation.ToString(), "ByDocuments");
 
         SelectTag(PaperCombo, cfg.PaperSize, "A4"); // không tìm thấy (rỗng) → giữ item "Theo máy in" index 0
         if (string.IsNullOrEmpty(cfg.PaperSize)) PaperCombo.SelectedIndex = 0;

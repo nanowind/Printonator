@@ -60,7 +60,7 @@
 | **Collation: As in printer / By documents / By pages** | ✅ **Có (mới)** | Field Collation + combo trong Print Settings (engine COM truyền Collate) |
 | Print List N lần | ❌ Thiếu | v2 |
 | Max copies per job (chia nhỏ job nhiều bản) | ⚠️ Một phần | PrintGuard giới hạn copies/file (MCP); UI chưa có |
-| **Duplex: Simplex / Long-edge / Short-edge / As in printer** | ✅ **Có (mới)** | Combo 4 mức; Word engine dùng ManualDuplexPrint |
+| **Duplex: Simplex / Long-edge / Short-edge / As in printer** | ✅ **Có (mới)** | Combo 4 mức; engine Office đặt hướng lật cạnh qua DEVMODE của driver máy in (`ManualDuplexPrint` đã bỏ) |
 | **Paper source (khay giấy của máy in)** | ✅ **Có (mới)** | Print Settings combo "Theo máy in" + danh sách khay từ InputBinCapability (tên thân thiện VN) |
 | Paper source cho từng page range | ❌ Thiếu | v2 |
 | **Color mode: As in printer / As in document / Color / Grayscale** | ✅ **Có (mới)** | Enum PrintColorMode + combo 4 mức; Excel engine sẵn PageSetup.BlackAndWhite |

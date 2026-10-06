@@ -379,7 +379,7 @@ public sealed class GdiPrintEngine : IPrintEngine
             if (isLandscapeExplicit && !pd.PrinterSettings.DefaultPageSettings.Landscape)
                 pd.PrinterSettings.DefaultPageSettings.Landscape = true; // đồng bộ phòng driver đọc từ đây
             GdiLog($"GdiPrintEngine: orientation={userOrientation} paper='{sheet.PaperName ?? sheet.Kind.ToString()}' {sheet.Width}x{sheet.Height}(1/100in) landscape={pd.DefaultPageSettings.Landscape}");
-            pd.PrinterSettings.Copies = 1; // tự bơm N bản collate-by-document bên dưới — tránh driver nhân đôi
+            pd.PrinterSettings.Copies = 1; // tự bơm N bản (ByDocuments/ByPages) bên dưới — tránh driver nhân đôi
 
             // ===== 2 mặt (duplex) =====
             if (job.Config.DuplexMode == PrintDuplexMode.LongEdge)
@@ -396,9 +396,12 @@ public sealed class GdiPrintEngine : IPrintEngine
             else if (job.Config.ColorMode == PrintColorMode.Color)
                 pd.PrinterSettings.DefaultPageSettings.Color = true;
 
-            // Tự bơm N bản collate-by-document (hết mảng trang lại lặp) — KHÔNG set PrinterSettings.Copies
-            // (driver tự nhân Copies → in N×N). Collation ByPages/AsPrinter bỏ qua cho PDF (driver quyết).
+            // Tự bơm N bản (hết mảng trang lại lặp) — KHÔNG set PrinterSettings.Copies
+            // (driver tự nhân Copies → in N×N).
             var copies = Math.Max(job.Config.Copies, 1);
+            // Collation: ByPages = gom theo TRANG (1,1,1 rồi 2,2,2...) — ByDocuments/AsPrinter = gom từng bộ (1,2,3).
+            // N-up: 1 tờ chứa nUp trang KHÁC nhau → "theo trang" vô nghĩa, giữ theo tài liệu.
+            var byPages = job.Config.Collation == PrintCollation.ByPages && nUp == 1;
             var totalPages = images.Count * copies;
             var pumped = 0;
             var anyPageFailed = false;
@@ -436,7 +439,11 @@ public sealed class GdiPrintEngine : IPrintEngine
                 {
                     var imgIdx = sheetStart + c;
                     if (imgIdx >= totalPages) break;
-                    var img = images[imgIdx % images.Count];
+                    // ByPages: ảnh thứ i = trang (i / copies) — mọi bản của 1 trang in liền nhau.
+                    // ByDocuments: ảnh thứ i = trang (i % images.Count) — hết bộ trang này mới lặp bộ sau.
+                    var img = byPages
+                        ? images[(imgIdx / copies) % images.Count]
+                        : images[imgIdx % images.Count];
                     Bitmap? bmp = null;
                     bool disposeBmp = false;
                     try

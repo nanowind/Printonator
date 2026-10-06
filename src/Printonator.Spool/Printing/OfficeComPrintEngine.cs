@@ -112,6 +112,12 @@ public sealed class OfficeComPrintEngine : IPrintEngine
             // (mà CHÍNH engine này tạo) sẽ treo vô hình. Kill ĐÚNG PID engine đã spawn — tuyệt
             // đối không đụng Office người dùng đang mở (PID không nằm trong danh sách này).
             KillSpawnedOffice(spawnedOfficePids);
+            // STA bị bỏ rơi → using var duplexRestore trong PrintWithWord/Excel/PowerPoint KHÔNG bao giờ
+            // chạy Dispose, dmDuplex của máy in kẹt ở giá trị đã ghi (máy in hỏng cho MỌI app sau đó).
+            // ponytail: chỉ restore được lease CÒN SỐNG trong tiến trình này — nếu app bị kill cứng giữa
+            // chừng thì dmDuplex vẫn kẹt (không có bước đối soát lúc khởi động); nâng cấp: lưu giá trị
+            // gốc xuống đĩa + đối soát/khôi phục khi app start.
+            PrinterDialogs.RestoreActive();
             return Result<bool>.Fail(new PrintError
             {
                 Code = ErrorCodes.EngineTimeout,
@@ -126,6 +132,7 @@ public sealed class OfficeComPrintEngine : IPrintEngine
             // OCE lan tới PrintQueue.DrainLoopAsync → job chuyển Cancelled (KHÔNG Error, KHÔNG retry).
             // Timeout THẬT (TimeoutException ở trên) vẫn trả Fail(EngineTimeout) như cũ.
             KillSpawnedOffice(spawnedOfficePids);
+            PrinterDialogs.RestoreActive();   // cùng lý do nhánh timeout: Dispose trên STA bị bỏ rơi
             throw;
         }
     }
@@ -220,6 +227,15 @@ public sealed class OfficeComPrintEngine : IPrintEngine
             // SAU khi mở doc (cần doc để cắt PDF fallback). KHÔNG in lén sang máy default (thường là PDF).
             var (printToFile, outputPath) = PdfOutputArgs(job);
 
+            // Hướng lật cạnh (Simplex/LongEdge/ShortEdge) đặt qua DEVMODE driver — Word COM KHÔNG có tham số
+            // hướng. Phải đặt TRƯỚC khi Office gán ActivePrinter (bên dưới): Office dựng ngữ cảnh in theo
+            // driver ngay lúc đó. Lease khôi phục DEVMODE cũ khi thoát scope try — tức SAU khi PrintOut xong.
+            // Máy in ảo (printToFile) export PDF, KHÔNG được đụng DEVMODE.
+            var devModePrinter = printToFile ? null : ResolvePrinterNameForDevMode(printer);
+            var duplexRes = devModePrinter is null ? null : PrinterDialogs.ApplyDuplex(devModePrinter, job.Config.DuplexMode);
+            if (duplexRes is { IsSuccess: false }) return Result<bool>.Fail(duplexRes.Error!);
+            using var duplexRestore = duplexRes?.Value; // DuplexRestore? IDisposable — dispose khi thoát scope try (SAU PrintOut)
+
             // KHÔNG mở Visible:false — Word.PrintOut cần "document window active" (0x800A11FD)
             doc = app.Documents.Open(job.FilePath, ReadOnly: true, AddToRecentFiles: false);
             doc.Activate();
@@ -255,9 +271,6 @@ public sealed class OfficeComPrintEngine : IPrintEngine
                     Detail = PrinterUnsetMarker,
                 });
             }
-            // Ghi nhận trung thực: Word COM không phân biệt HƯỚNG lật cạnh (chỉ có ManualDuplexPrint bool) —
-            // ShortEdge qua shim Duplex (LongEdge|ShortEdge → true) cũng in 2 mặt theo driver-default.
-            // Không sửa logic; muốn chính xác hướng lật phải qua render/fallback có cờ riêng.
             // Máy in ảo (PDF/XPS) → export PDF TRỰC TIẾP bằng Word (không qua driver PDF — hết lỗi
             // "báo xong không ra file" vì ActivePrinter của PDF printer bị Word/Excel từ chối set).
             if (printToFile)
@@ -265,14 +278,18 @@ public sealed class OfficeComPrintEngine : IPrintEngine
                 doc.ExportAsFixedFormat(OutputFileName: outputPath, ExportFormat: 17 /* wdExportFormatPDF */);
                 return Result<bool>.Ok(true);
             }
+            // Collate: Office chỉ có cờ gom boolean — AsPrinter/ByDocuments cùng sang true (gom từng bộ),
+            // ByPages → false. GDI xử lý đủ 3 mode. ManualDuplexPrint đã XOÁ: đó là in 2 mặt thủ công 2 lượt
+            // của Word (dành cho máy KHÔNG có bộ 2 mặt) — gặp driver có duplex làm chỉ trang đầu ra giấy.
+            var collate = job.Config.Collation != PrintCollation.ByPages;
             if (all)
                 doc.PrintOut(Background: false, Range: 0 /* wdPrintAllDocument */,
-                    Copies: copies, ManualDuplexPrint: job.Config.Duplex);
+                    Copies: copies, Collate: collate);
             else
                 // wdPrintRangeOfPages (4) + Pages string — chỉ dùng bool/int/string
                 // (object/Missing/positional 19 làm COM binder crash "argument 0")
                 doc.PrintOut(Background: false, Range: 4 /* wdPrintRangeOfPages */, Pages: pages,
-                    Copies: copies, ManualDuplexPrint: job.Config.Duplex);
+                    Copies: copies, Collate: collate);
             return Result<bool>.Ok(true);
         }
         finally
@@ -316,6 +333,15 @@ public sealed class OfficeComPrintEngine : IPrintEngine
         // đã chọn TRƯỚC khi mở Excel: Excel đọc máy mặc định lúc khởi tạo → dùng đúng máy. (Set ActivePrinter
         // property bị Excel TỪ CHỐI trên máy WSD/mạng; đã xác minh: đổi default thì PrintOut range chạy được.)
         var (printToFile, outputPath) = PdfOutputArgs(job);
+
+        // Hướng lật cạnh qua DEVMODE (giống Word) — Excel COM không có cờ duplex. Đặt TRƯỚC khi đổi
+        // default + mở Excel (Excel đọc cấu hình driver lúc khởi tạo). Máy ảo → export, không đụng DEVMODE.
+        // Resolve null → bỏ qua (log), không fail: nghĩa là user in theo máy mặc định.
+        var devModePrinter = printToFile ? null : ResolvePrinterNameForDevMode(printer);
+        var duplexRes = devModePrinter is null ? null : PrinterDialogs.ApplyDuplex(devModePrinter, job.Config.DuplexMode);
+        if (duplexRes is { IsSuccess: false }) return Result<bool>.Fail(duplexRes.Error!);
+        using var duplexRestore = duplexRes?.Value; // dispose khi method thoát — SAU khi PrintOut xong
+
         string? prevDefault = null;
         if (!printToFile && !string.IsNullOrWhiteSpace(printer))
         {
@@ -420,12 +446,14 @@ public sealed class OfficeComPrintEngine : IPrintEngine
                     OfficeLog($"Excel range '{job.Config.PageRange}' → " + string.Join("; ", mapped.Select(m => $"'{m.Sheet.Name}' pages {string.Join(",", m.Groups.Select(g => $"{g.From}-{g.To}"))}")));
                     foreach (var (sheet, groups) in mapped)
                         foreach (var (f, t) in groups)
-                            sheet.PrintOut(From: f, To: t, Copies: copies, Collate: true);
+                            sheet.PrintOut(From: f, To: t, Copies: copies,
+                                Collate: job.Config.Collation != PrintCollation.ByPages);
                 }
                 else
                 {
                     foreach (var sheet in keptSheets)
-                        sheet.PrintOut(Copies: copies, Collate: true);
+                        sheet.PrintOut(Copies: copies,
+                            Collate: job.Config.Collation != PrintCollation.ByPages);
                 }
             }
             return Result<bool>.Ok(true);
@@ -571,6 +599,23 @@ public sealed class OfficeComPrintEngine : IPrintEngine
         return p is null ? (false, null) : (true, p);
     }
 
+    /// <summary>
+    /// Tên máy in THẬT để đặt DEVMODE (ApplyDuplex cần tên cụ thể — không nhận null kiểu "máy mặc định").
+    /// <paramref name="printer"/> đã qua DefaultPrinter.Resolve (null = user chọn "mặc định") → lấy tên máy
+    /// mặc định Windows; vẫn rỗng → trả null (caller bỏ qua ApplyDuplex, in theo cấu hình driver sẵn có).
+    /// </summary>
+    private static string? ResolvePrinterNameForDevMode(string? printer)
+    {
+        if (!string.IsNullOrWhiteSpace(printer)) return printer;
+        var def = DefaultPrinter.GetWindowsDefaultPrinterName();
+        if (string.IsNullOrWhiteSpace(def))
+        {
+            OfficeLog("ApplyDuplex: không xác định được tên máy in (mặc định Windows rỗng) — bỏ qua DEVMODE.");
+            return null;
+        }
+        return def;
+    }
+
     // ============ PowerPoint ============
     private static Result<bool> PrintWithPowerPoint(PrintJob job, string? printer, ICollection<int> spawnedOfficePids)
     {
@@ -582,6 +627,12 @@ public sealed class OfficeComPrintEngine : IPrintEngine
         try
         {
             var (printToFile, outputPath) = PdfOutputArgs(job);
+
+            // Hướng lật cạnh qua DEVMODE (giống Word/Excel) — đặt TRƯỚC khi Office gán ActivePrinter.
+            var devModePrinter = printToFile ? null : ResolvePrinterNameForDevMode(printer);
+            var duplexRes = devModePrinter is null ? null : PrinterDialogs.ApplyDuplex(devModePrinter, job.Config.DuplexMode);
+            if (duplexRes is { IsSuccess: false }) return Result<bool>.Fail(duplexRes.Error!);
+            using var duplexRestore = duplexRes?.Value; // dispose khi thoát scope try (SAU PrintOut)
 
             // Open(FileName, ReadOnly, Untitled, WithWindow)
             pres = app.Presentations.Open(job.FilePath, ReadOnly: -1 /* msoTrue */, Untitled: 0 /* msoFalse */, WithWindow: 0 /* msoFalse */);
@@ -620,10 +671,11 @@ public sealed class OfficeComPrintEngine : IPrintEngine
             if (hasRange && pages is not null)
             {
                 foreach (var g in PageGrouping.GroupConsecutive(pages))
-                    pres.PrintOut(From: g.From, To: g.To, Copies: copies, Collate: true);
+                    pres.PrintOut(From: g.From, To: g.To, Copies: copies,
+                        Collate: job.Config.Collation != PrintCollation.ByPages);
             }
             else
-                pres.PrintOut(Copies: copies, Collate: true);
+                pres.PrintOut(Copies: copies, Collate: job.Config.Collation != PrintCollation.ByPages);
             return Result<bool>.Ok(true);
         }
         finally
