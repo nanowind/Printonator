@@ -59,7 +59,7 @@ public static class PrintTools
 
     [McpServerTool, Description(
         "In hàng loạt các file (pdf/image/docx...). AI KHÔNG cần chỉ máy in — bỏ trống printer = hệ thống tự chọn máy in vật lý sẵn sàng (xem pick_printer). Trả job_id cho từng file + ước lượng trang. " +
-        "Nếu cấu hình yêu cầu duyệt (mặc định), jobs vào trạng thái awaitingapproval — dùng approve_job để duyệt (get_guard_config xem có cần duyệt không).")]
+        "Nếu cấu hình yêu cầu duyệt (mặc định), jobs vào trạng thái awaitingapproval và NGƯỜI DÙNG phải duyệt trong app Printonator (get_guard_config xem có cần duyệt không; AI không có tool tự duyệt).")]
     public static async Task<object> PrintFiles(
         [Description("Đường dẫn các file cần in")] string[] paths,
         [Description("Tên máy in (để trống hoặc 'mặc định' = máy in mặc định Windows)")] string? printer = null,
@@ -285,19 +285,9 @@ public static class PrintTools
 
     // ============ Duyệt job ============
 
-    [McpServerTool, Description(
-        "Duyệt 1 job từ AI đang chờ duyệt (state=awaitingapproval) để cho in. " +
-        "Chỉ duyệt được job nguồn AI đang chờ. Xem list_jobs status=awaitingapproval.")]
-    public static object ApproveJob([Description("job_id (UUID)")] string jobId)
-    {
-        var job = FindJob(jobId);
-        if (job is null) return Fail(JobNotFound(jobId));
-        if (job.State != JobState.AwaitingApproval || job.Source != JobSource.Mcp) return Fail(JobNotApprovable(job));
-        if (!AppServices.Queue.ApproveJob(job))
-            return Fail(JobNotApprovable(job));
-        AppServices.GuardInstance.Audit("approve_job", "ok", new Dictionary<string, object?> { ["jobId"] = jobId, ["ok"] = true });
-        return new Dictionary<string, object?> { ["ok"] = true, ["jobId"] = jobId, ["state"] = "Queued" };
-    }
+    // KHÔNG có tool approve_job ở đây (cố ý): nếu AI duyệt được job của chính nó thì
+    // RequireApprove không còn là biên giới an toàn. Duyệt in nằm ở UI (MainWindow ApproveAll).
+    // Muốn AI tự in (không cần duyệt) → đặt PRINTONATOR_REQUIRE_APPROVE=false + allowlist.
 
     [McpServerTool, Description(
         "Từ chối 1 job đang chờ duyệt (state=awaitingapproval) — job chuyển cancelled, không in.")]
@@ -427,8 +417,8 @@ public static class PrintTools
 
             if (guard.Config.RequireApprove)
             {
-                // LUỒNG DUYỆT THẬT qua MCP: jobs vào trạng thái AwaitingApproval (không hard-block nữa).
-                // AI/người dùng duyệt bằng approve_job (từ chối: reject_job). ApproveJob/RejectJob đã có trong Core.
+                // LUỒNG DUYỆT THẬT: jobs vào trạng thái AwaitingApproval (không hard-block nữa).
+                // Người dùng duyệt trong app Printonator (AI chỉ từ chối được qua reject_job — không tự duyệt).
                 foreach (var j in jobs) j.Config.PrinterName = string.IsNullOrWhiteSpace(printer) ? "mặc định" : printer;
                 AppServices.Queue.AddForApproval(jobs);
 
@@ -447,7 +437,7 @@ public static class PrintTools
                     ["jobIds"] = pendingIds,
                     ["estimatedPages"] = pendingTotal,
                     ["printer"] = jobs[0].Config.PrinterName,
-                    ["note"] = "Jobs đang CHỜ DUYỆT — dùng approve_job để cho in, hoặc reject_job để từ chối (list_jobs status=awaitingapproval).",
+                    ["note"] = "Jobs đang CHỜ DUYỆT — người dùng duyệt trong app Printonator (bấm Duyệt tất cả) mới in; AI chỉ hủy được bằng reject_job (list_jobs status=awaitingapproval).",
                 };
             }
 
@@ -553,7 +543,7 @@ public static class PrintTools
         Code = ErrorCodes.JobNotApprovable,
         Category = PrintErrorCategory.Config,
         Message = $"Job {job.Id} không ở trạng thái chờ duyệt (hiện: {job.State}).",
-        Hint = "Chỉ job nguồn AI (Mcp) đang awaitingapproval mới duyệt/từ chối được.",
+        Hint = "Chỉ job nguồn AI (Mcp) đang awaitingapproval mới từ chối được; job đã duyệt thì dùng cancel_job.",
     };
 
     private static object JobDto(PrintJob j) => new Dictionary<string, object?>
@@ -652,7 +642,7 @@ public static class PrintTools
         (ErrorCodes.MaxBatchExceeded, "Vượt giới hạn trang / file / bản in.",
             "Chia nhỏ lô (giảm số file/trang/bản), hoặc báo người dùng tăng PRINTONATOR_MAX_* nếu cần."),
         (ErrorCodes.ApprovalRequired, "Cấu hình yêu cầu duyệt — AI chưa được tự in.",
-            "Nếu job đã vào hàng đợi: list_jobs status=awaitingapproval + approve_job. Muốn AI tự in: báo người dùng đặt PRINTONATOR_REQUIRE_APPROVE=false + PRINTONATOR_ALLOWED_PRINTERS."),
+            "Báo người dùng mở app Printonator và bấm Duyệt tất cả (AI không tự duyệt được). Muốn AI tự in: báo người dùng đặt PRINTONATOR_REQUIRE_APPROVE=false + PRINTONATOR_ALLOWED_PRINTERS."),
         (ErrorCodes.JobNotFound, "job_id không tồn tại.",
             "Chạy list_jobs để lấy job_id đúng rồi thử lại."),
         (ErrorCodes.JobNotApprovable, "Job không ở trạng thái chờ duyệt (đã in/xong/lỗi, hoặc không phải nguồn AI).",
@@ -665,8 +655,8 @@ public static class PrintTools
             "Chuyển file sang PDF rồi in lại."),
         (ErrorCodes.EngineFailed, "Engine in gặp lỗi không xác định (vd không gộp được file).",
             "Thử lại với ít file hơn hoặc in từng file riêng; báo người dùng xem log nếu lặp lại."),
-        (ErrorCodes.EngineTimeout, "Engine in không phản hồi trong hạn.",
-            "Thử lại sau vài giây; nếu lặp lại, báo người dùng kiểm tra Word/Excel/LibreOffice."),
+        (ErrorCodes.EngineTimeout, "Engine in không phản hồi trong hạn (KHÔNG tự thử lại — có thể đã in một phần).",
+            "KHÔNG gọi lại print_files ngay: báo người dùng kiểm tra hàng đợi máy in xem job đã in chưa rồi mới quyết định in lại."),
         (ErrorCodes.OfficeAppBusy, "Word/Excel/PowerPoint đang bận.",
             "Chờ app đóng rồi thử lại."),
         (ErrorCodes.Unauthorized, "Thiếu quyền hệ thống.",

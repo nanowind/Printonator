@@ -89,8 +89,9 @@ public static class BrowserPrintPipeline
 
     private static PrintConfig BuildSpoolConfig(PrintJob job)
     {
-        var cfg = new PrintConfig { PrinterName = job.Config.PrinterName, Copies = Math.Max(job.Config.Copies, 1) };
-        job.Config.CopyInto(cfg);
+        var cfg = new PrintConfig { PrinterName = job.Config.PrinterName };
+        job.Config.CopyInto(cfg);   // GHI ĐÈ Copies — set sau, đừng set trước
+        cfg.Copies = Math.Max(job.Config.Copies, 1);
         return cfg;
     }
 }

@@ -123,7 +123,7 @@ public sealed class OfficeComPrintEngine : IPrintEngine
                 Code = ErrorCodes.EngineTimeout,
                 Category = PrintErrorCategory.System,
                 Message = $"Hết thời gian chờ {job.FileName} in qua app gốc ({TimeoutSeconds}s). Đã dọn phiên in đang treo.",
-                Hint = "App văn phòng có thể bị kẹt (dialog chờ). Thử in lại.",
+                Hint = "Kiểm tra hàng đợi máy in trước — job có thể đã in một phần rồi (in lại sẽ trùng). Nếu app văn phòng bị kẹt dialog, đóng rồi thử lại.",
             });
         }
         catch (OperationCanceledException)

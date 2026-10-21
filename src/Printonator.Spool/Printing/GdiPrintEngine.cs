@@ -179,7 +179,7 @@ public sealed class GdiPrintEngine : IPrintEngine
                 Code = ErrorCodes.EngineTimeout,
                 Category = PrintErrorCategory.System,
                 Message = $"In {job.FileName} tới \"{printer}\" quá lâu ({GdiPrintTimeoutSeconds}s) — đã hủy.",
-                Hint = "Máy in có thể bị treo/kẹt giấy. Kiểm tra hàng đợi máy in rồi in lại.",
+                Hint = "Kiểm tra hàng đợi máy in trước — nếu job đã in rồi thì đừng in lại; còn treo/kẹt giấy thì xử lý rồi in lại.",
             });
         }
         catch (OperationCanceledException) { throw; }   // cancel (per-job token) → OCE lan tới DrainLoopAsync

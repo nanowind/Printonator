@@ -16,7 +16,7 @@
 | Giá | Trả phí theo máy | Miễn phí, mã mở | Lợi thế cốt lõi |
 | Office engine | Dùng MS Office bản quyền | App gốc (COM) + **LibreOffice dynamic** (soffice có sẵn trên máy) | ✅ Cả 2 engine đã code; nếu máy không có gì → shell fallback |
 | PDF/ảnh/TXT render | PDFium nhúng sẵn | **Browser render dynamic** (Chrome/Edge headless CDP) + **Windows.Data.Pdf** (API có sẵn Win10/11) | ✅ KHÔNG bundle lib — máy ai cũng có |
-| Automation | CLI bản cao, đóng | **MCP AI-native** ✅ + watch-folder + shell verb in file | MCP server 13 tools đã có (xem docs/MCP.md); CLI wrapper đóng gói chưa có |
+| Automation | CLI bản cao, đóng | **MCP AI-native** ✅ + watch-folder + shell verb in file | MCP server 12 tools đã có (xem docs/MCP.md); CLI wrapper đóng gói chưa có |
 | Data/privacy | License server, activation | 100% local, no telemetry | — |
 | Tùy chọn in cơ bản (page range/màu/khay/scale/N-up/odd-even/res) | Đầy đủ, mức app + driver | ✅ Đầy đủ trên màn Print Settings (bảng 3) | Đợt 2026-08-26 |
 
@@ -170,7 +170,7 @@ Trước: option in cũ gói trong 1 BulkBar hàng ngang chật (copies/duplex/c
    nhận thêm colorMode/paperSource/scaleMode/pagesPerSheet/parity/quality; Preset lưu đủ trường (profile template).
 
 ## Điểm Printonator vượt Print Conductor (giữ và quảng bá)
-- **MCP AI-native** ✅ — PC không có: 13 tools (list_printers, pick_printer, print_files, print_with_preset, presets, approve/reject, list_jobs, job_status, cancel_job, get_guard_config, get_error_reference) + PrintGuard (allowlist, quota, approve mặc định, audit) — fail-closed.
+- **MCP AI-native** ✅ — PC không có: 12 tools (list_printers, pick_printer, print_files, print_with_preset, get_presets, save_preset, reject_job, list_jobs, job_status, cancel_job, get_guard_config, get_error_reference) + PrintGuard (allowlist, quota, approve mặc định, audit) — fail-closed. Duyệt job nằm ở app Printonator, KHÔNG có tool `approve_job` (AI tự duyệt thì cổng duyệt vô nghĩa).
 - **Không phụ thuộc bản quyền + app NHẸ**: engine dynamic theo máy — MS Office nếu có, LibreOffice nếu có,
   Chrome/Edge (máy ai cũng có) render đúng page range/scale/khổ giấy cho PDF/ảnh/TXT, ngược lại shell/handler mặc định.
   Không bundle thư viện nặng (PDFium/LibreOffice) vào installer.

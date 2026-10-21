@@ -72,15 +72,8 @@ public partial class AboutWindow : Window
         var ask = MessageBox.Show(S(Keys.Mode.RestartPrompt),
                                   S(Keys.About.WindowTitle),
                                   MessageBoxButton.YesNo, MessageBoxImage.Information);
-        if (ask == MessageBoxResult.Yes)
-        {
-            try
-            {
-                System.Diagnostics.Process.Start(System.Diagnostics.Process.GetCurrentProcess().MainModule!.FileName);
-            }
-            catch { }
+        if (ask == MessageBoxResult.Yes && TryRestartApp())
             Application.Current.Shutdown();
-        }
     }
 
     /// <summary>Đổi ngôn ngữ → ghi registry + nhắc khởi động lại app để áp dụng.</summary>
@@ -99,14 +92,42 @@ public partial class AboutWindow : Window
         var ask = MessageBox.Show(S("About.LanguageRestartPrompt"),
                                   S("About.LanguageRestartTitle"),
                                   MessageBoxButton.YesNo, MessageBoxImage.Information);
-        if (ask == MessageBoxResult.Yes)
-        {
-            try
-            {
-                System.Diagnostics.Process.Start(System.Diagnostics.Process.GetCurrentProcess().MainModule!.FileName);
-            }
-            catch { }
+        if (ask == MessageBoxResult.Yes && TryRestartApp())
             Application.Current.Shutdown();
+    }
+
+    /// <summary>Khởi động lại app: nhả mutex TRƯỚC khi mở tiến trình mới (nếu không, tiến trình mới
+    /// thua mutex → tự thoát, còn tiến trình cũ đóng → không còn cửa sổ nào). Start lỗi → giành LẠI mutex
+    /// cho app đang chạy (nếu không, lần mở sau từ Start menu sẽ mở cửa sổ thứ 2 và tranh named pipe),
+    /// rồi báo người dùng — không im lặng.</summary>
+    private static bool TryRestartApp()
+    {
+        // Kiểm tra exe TRƯỚC khi nhả mutex — không nhả khi chưa chắc mở được tiến trình mới.
+        var exe = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName;
+        if (string.IsNullOrEmpty(exe))
+        {
+            MessageBox.Show("Không xác định được đường dẫn ứng dụng — hãy mở lại Printonator bằng tay.",
+                            "Printonator", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+
+        SingleInstance.ReleaseForRestart();
+        try
+        {
+            System.Diagnostics.Process.Start(exe);
+            return true;
+        }
+        catch
+        {
+            // Mở tiến trình mới thất bại → giành lại mutex để app đang chạy vẫn được bảo vệ single-instance.
+            if (!SingleInstance.Acquire())
+                MessageBox.Show("Không mở lại được ứng dụng, và tiến trình Printonator khác đã chiếm quyền chạy đơn. "
+                                + "Đóng cửa sổ này rồi mở lại Printonator từ Start menu.",
+                                "Printonator", MessageBoxButton.OK, MessageBoxImage.Warning);
+            else
+                MessageBox.Show("Không mở lại được ứng dụng — Printonator vẫn đang chạy với cấu hình mới.",
+                                "Printonator", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
         }
     }
 

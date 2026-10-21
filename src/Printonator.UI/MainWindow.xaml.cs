@@ -464,6 +464,7 @@ public partial class MainWindow : Window
     private void PrinterPerFile_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (sender is not ComboBox combo) return;
+        if (_syncingPerFileCombo) return;   // set bằng code (row refresh) — KHÔNG phải user chọn
         if (combo.DataContext is not PrintJob job) return;
         if (combo.SelectedItem is not PrinterInfo sel) return; // null khi container khởi tạo / Printers chưa nạp — không đụng job
 
@@ -500,18 +501,36 @@ public partial class MainWindow : Window
         SelectComboForJob(combo, job);
     }
 
+    /// <summary>Đang đồng bộ combo bằng CODE (không phải user bấm) — chặn SelectionChanged ghi đè Config.PrinterName.
+    /// JobList.Items.Refresh() dựng lại row GIỮA LÚC IN → combo set lại item 0 → handler cũ xoá PrinterName
+    /// thành null → engine rơi về máy mặc định Windows (bug: chọn Canon LBP151 lại in sang LBP242/243).</summary>
+    private bool _syncingPerFileCombo;
+
     /// <summary>Đồng bộ ComboBox của 1 row về đúng lựa chọn per-file của job (khớp tên máy in, fallback item toolbar).</summary>
-    private static void SelectComboForJob(ComboBox combo, PrintJob job)
+    private void SelectComboForJob(ComboBox combo, PrintJob job)
     {
-        if (job.HasPerFilePrinter && job.Config.PrinterName is not null)
+        _syncingPerFileCombo = true;
+        try
         {
-            var match = combo.Items.OfType<PrinterInfo>()
-                .FirstOrDefault(p => !ReferenceEquals(p, ToolbarDefaultPrinter)
-                    && p.Name.Equals(job.Config.PrinterName, StringComparison.OrdinalIgnoreCase));
-            if (match is not null) { combo.SelectedItem = match; return; }
+            if (job.HasPerFilePrinter && job.Config.PrinterName is not null)
+            {
+                var match = combo.Items.OfType<PrinterInfo>()
+                    .FirstOrDefault(p => !ReferenceEquals(p, ToolbarDefaultPrinter)
+                        && p.Name.Equals(job.Config.PrinterName, StringComparison.OrdinalIgnoreCase));
+                if (match is not null) { combo.SelectedItem = match; return; }
+            }
+            // Chưa có / mất máy → item 0 (Theo máy thanh công cụ). ItemsSource chưa nạp → WPF để null, Refresh sau sẽ sửa.
+            // Handler bị chặn bởi _syncingPerFileCombo nên phải TỰ đồng bộ job: máy per-file đã bị gỡ/đổi tên
+            // → bỏ per-file để ApplySelectedPrinter áp máy thanh công cụ (nếu không, job in vào máy không tồn tại).
+            // Chỉ làm khi danh sách máy đã nạp (Items.Count > 1) — lúc mới khởi tạo combo rỗng, không được xoá lựa chọn.
+            if (job.HasPerFilePrinter && combo.Items.Count > 1)
+            {
+                job.HasPerFilePrinter = false;
+                job.Config.PrinterName = null;
+            }
+            combo.SelectedItem = ToolbarDefaultPrinter;
         }
-        // Chưa có / mất máy → item 0 (Theo máy thanh công cụ). ItemsSource chưa nạp → WPF để null, Refresh sau sẽ sửa.
-        combo.SelectedItem = ToolbarDefaultPrinter;
+        finally { _syncingPerFileCombo = false; }
     }
 
     /// <summary>ApplyPrinterList nạp lại Printers → resync selection mọi combo per-file (row viirtualized chưa dựng thì Loaded lo).</summary>
@@ -952,13 +971,14 @@ public partial class MainWindow : Window
         _ => "A4",
     };
 
-    /// <summary>Cấu hình mặc định cho file mới (base từ _defaultConfig, áp khổ giấy theo loại file).</summary>
-    private PrintConfig DefaultConfigFor(string paper, string range = "All", int copies = 1)
+    /// <summary>Cấu hình mặc định cho file mới (giữ _defaultConfig, áp khổ giấy theo loại file).</summary>
+    private PrintConfig DefaultConfigFor(string paper, string range = "All")
     {
         var cfg = _defaultConfig.Clone();
         cfg.PaperSize = paper;
         cfg.PageRange = range;
-        cfg.Copies = copies;
+        // Preset JSON user sửa tay được (không qua dialog validate 1..999) → chặn ở đây trước khi tới spooler.
+        cfg.Copies = Math.Clamp(cfg.Copies, 1, 999);
         // KHÔNG gán cfg.Duplex (=false): bool ghi đè làm mất DuplexMode=AsPrinter ("theo máy in")
         // mà user đã chọn trong _defaultConfig — CopyInto(_defaultConfig) đã giữ nguyên enum (Major #2 fix).
         cfg.PrinterName ??= SelectedPrinter?.Name;

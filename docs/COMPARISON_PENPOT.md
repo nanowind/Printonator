@@ -45,14 +45,14 @@
 | Element trong Penpot | Trong app? | Ghi chú |
 |---|---|---|
 | **Presets list (Hop dong Lien doanh 4x/A4/2-sided/HP M404 + Delete + New preset)** | ✅ **Có (mới)** | `PresetManagerWindow` (danh sách, đổi tên, xóa, áp dụng) + PresetStore JSON + MCP get_presets/save_preset/print_with_preset; Print Settings có combo profile + Lưu/Xóa |
-| **AI PRINT VIA MCP: Status Running, Endpoint http://localhost:3939/mcp, Tools list** | ⚠️ Một phần | **Server có** (Printonator.Mcp, HTTP/stdio, 13 tools, endpoint :3939/mcp — xem docs/MCP.md); **màn UI theo dõi MCP CHƯA có** |
+| **AI PRINT VIA MCP: Status Running, Endpoint http://localhost:3939/mcp, Tools list** | ⚠️ Một phần | **Server có** (Printonator.Mcp, HTTP/stdio, 12 tools, endpoint :3939/mcp — xem docs/MCP.md); **màn UI theo dõi MCP CHƯA có** |
 | **SAFETY: Approved printers only (5), Max pages/batch (200), Require approve (On), Audit (Yes)** | ⚠️ Một phần | **Guard có** (PrintGuard: allowlist, 200 trang/lô, RequireApprove=true mặc định, audit JSON); **nút duyệt job `AwaitingApproval` có trên MainWindow (Approve all/Reject all)**; màn UI Safety đầy đủ CHƯA có |
 
 ## 4. Màn Security Warning (board 7)
 
 | Element | Trong app? | Ghi chú |
 |---|---|---|
-| **Cảnh báo "This build is NOT trusted..."** | ⚠️ Một phần | AboutWindow có dòng "Bản build chưa xác thực chữ ký số" (About.SecurityNote, 5 ngôn ngữ); **minisign ký installer đã HOẠT ĐỘNG** (release.yml dùng minisign 0.12, asset `.minisig` xuất hiện từ v0.2.0-test-sign) — bản kế tiếp release sẽ có chữ ký; màn warning đầy đủ theo Penpot chưa làm |
+| **Cảnh báo "This build is NOT trusted..."** | ⚠️ Một phần | AboutWindow có dòng "Bản build chưa xác thực chữ ký số" (About.SecurityNote, 5 ngôn ngữ); **CI CÓ ký installer bằng minisign** (release.yml dùng minisign 0.12, asset `.minisig` xuất hiện từ v0.2.0-test-sign) — nhưng chữ ký chỉ để lưu trữ/kiểm tra thủ công: **app KHÔNG verify minisign**. App xác thực installer bằng dòng `SHA256: {HASH}` bắt buộc trong release notes (thiếu dòng này → từ chối cài, fail-closed — xem docs/CI-CD.md); màn warning đầy đủ theo Penpot chưa làm |
 
 ## 5. Tổng hợp nhanh — trạng thái sau đợt này
 
@@ -66,7 +66,7 @@
 7. **Màn Printer Config** — trạng thái + paper + capabilities + Scan + offline banner
 8. **Default paper theo loại file**
 9. **Sort theo cột** (Name/Pages/Settings/Status)
-10. **MCP server + guard** — 13 tools, allowlist/quota/approve/audit
+10. **MCP server + guard** — 12 tools, allowlist/quota/approve/audit (duyệt job ở app, không có tool `approve_job`; chỉ `reject_job`)
 11. **Engine app gốc Office** (Word/Excel/PPT COM) cho DOCX/XLSX/PPTX — fallback shell
 
 ### ✅ Đã xong thêm (các đợt 2026-08-26..30):

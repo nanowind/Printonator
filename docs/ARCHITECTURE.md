@@ -8,7 +8,7 @@
 **Printonator** = app in hàng loạt (bulk printing) cho Windows 10/11, C#/.NET 8 WPF, MIT.
 Luồng chính: kéo/thả N file → chọn máy in → cấu hình (bản, 2 mặt, khổ, page range) → **In tất cả / In selected** → theo dõi trạng thái từng job → lỗi có mã + tiếng Việt + gợi ý.
 
-Điểm khác biệt chiến lược (CONCEPT §6): **MCP server** để AI in giùm — đã code (13 tools, guard, approve qua MCP, skill + plugin; xem docs/MCP.md).
+Điểm khác biệt chiến lược (CONCEPT §6): **MCP server** để AI in giùm — đã code (12 tools, guard, duyệt job trong app — MCP không có tool duyệt, skill + plugin; xem docs/MCP.md).
 
 ## 2. Solution structure (4 projects)
 
@@ -42,7 +42,7 @@ Printonator.sln
 │  │  └─ Printing/SpoolPrintEngine.cs  # Engine shell "printto" fallback (mọi định dạng)
 │  ├─ Printonator.Mcp/           # MCP server "AI in giùm" (stdio + HTTP 127.0.0.1:3939/mcp)
 │  │  ├─ Program.cs / AppServices.cs
-│  │  ├─ PrintTools.cs           # 13 tools + PrintGuard chặn trước khi Enqueue (cổng tuần tự chống TOCTOU)
+│  │  ├─ PrintTools.cs           # 12 tools + PrintGuard chặn trước khi Enqueue (cổng tuần tự chống TOCTOU)
 │  │  ├─ Probing/PdfPageCountProbe.cs  # Đếm trang PDF best-effort cho quota
 │  └─ Printonator.UI/            # WPF (net8.0-windows)
 │     ├─ MainWindow.xaml(.cs)    # Toàn bộ UI: job table, toolbar, bulk bar, bell, search, sort, toast, progress
@@ -161,7 +161,7 @@ Xem chi tiết `docs/COMPARISON_PRINT_CONDUCTOR.md`. Tóm tắt:
 7. ✅ **History + Queue restore** — `HistoryStore` (lịch sử in, max 1000) + `QueueStore` (khôi phục hàng đợi chưa in).
 8. ✅ **Preset export/import** — `PresetExporter` (file `.printonator`).
 9. ✅ **Shell context menu** — "In với Printonator" (T2.8, registry shell verb qua SingleInstance).
-10. ✅ **MCP server** — `Printonator.Mcp` (13 tools, HTTP/stdio, guard fail-closed, approve qua MCP, skill `.claude/skills/printonator-mcp` + plugin `plugin/`, xem docs/MCP.md).
+10. ✅ **MCP server** — `Printonator.Mcp` (12 tools, HTTP/stdio, guard fail-closed, duyệt job trong app UI, skill `.claude/skills/printonator-mcp` + plugin `plugin/`, xem docs/MCP.md).
 11. ✅ **i18n 5 ngôn ngữ** (vi/en/zh/ru/ja) — Strings.json catalog, chọn ngôn ngữ trong AboutWindow; **Lite/Full mode** (ModeResolver).
 
 **Còn lại (thứ tự đề xuất tiếp):**

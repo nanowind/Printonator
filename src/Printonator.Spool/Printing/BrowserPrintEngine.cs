@@ -155,8 +155,9 @@ public sealed class BrowserPrintEngine : IPrintEngine
             // QUAN TRỌNG: bản sao config PHẢI giữ duplex/color/paper của job gốc để GdiPrintEngine
             // (trong chuỗi engine khi in PDF tạm) ép đúng 1/2 mặt. (Bug cũ: chỉ PrinterName+Copies
             // → in theo driver, user chọn 1 mặt vẫn ra 2 mặt.)
-            var tmpCfg = new PrintConfig { PrinterName = job.Config.PrinterName, Copies = 1 };
-            job.Config.CopyInto(tmpCfg);   // giữ duplex/color/paper của job gốc (CopyInto không đụng Copies đã set)
+            var tmpCfg = new PrintConfig { PrinterName = job.Config.PrinterName };
+            job.Config.CopyInto(tmpCfg);   // giữ duplex/color/paper của job gốc
+            tmpCfg.Copies = 1;             // SAU CopyInto — nó GHI ĐÈ Copies; vòng lặp dưới tự nhân bản (N×N nếu để nguyên)
             var tmp = new PrintJob
             {
                 FilePath = outPdf,

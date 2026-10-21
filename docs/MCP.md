@@ -43,7 +43,7 @@ claude mcp add printonator -t stdio -- <đường_dẫn>\Printonator.Mcp.exe --s
 **Client dùng `.mcp.json`** (VS Code / nhiều IDE): thêm entry `{ "command": "...", "args": ["--stdio"], "type": "stdio" }`.
 > ⚠️ **Đừng commit** entry trỏ đường dẫn tuyệt đối vào `.mcp.json` của repo — máy khác/CI sẽ vỡ. Bỏ vào user-scope hoặc docs như file này.
 
-## 2. Tools (13)
+## 2. Tools (12)
 
 | Tool | Mô tả |
 |---|---|
@@ -52,7 +52,7 @@ claude mcp add printonator -t stdio -- <đường_dẫn>\Printonator.Mcp.exe --s
 | `print_files` | In hàng loạt file (paths, printer?, copies, duplex, paper, pageRange, colorMode, paperSource, scaleMode, pagesPerSheet, parity, quality) → job_ids + ước lượng trang. **Bỏ trống `printer` = tự chọn máy vật lý sẵn sàng** (khi có allowlist) |
 | `print_with_preset` | In theo preset đã lưu (presetName, paths, printer?) |
 | `get_presets` / `save_preset` | Xem / lưu bộ cấu hình in tái sử dụng |
-| `approve_job` / `reject_job` | Duyệt / từ chối job đang chờ duyệt (state=awaitingapproval) |
+| `reject_job` | Từ chối job đang chờ duyệt (state=awaitingapproval). **Không có `approve_job`** — AI tự duyệt job của mình thì cổng duyệt vô nghĩa; duyệt nằm ở app |
 | `list_jobs` / `job_status` | Hàng đợi đầy đủ (id, state, error có code/message/hint/suggestedAction) |
 | `cancel_job` | Hủy job đang chờ (Queued) |
 | `get_guard_config` | Xem cấu hình an toàn đang áp dụng (AI có tự in được không) |
@@ -75,7 +75,7 @@ không ném, không lộ đường dẫn/Detail cho AI.
 
 | Biến env / config | Mặc định | Ý nghĩa |
 |---|---|---|
-| `PRINTONATOR_REQUIRE_APPROVE` | `true` | Job từ AI phải duyệt mới in. **Standalone không có màn duyệt → nếu true, `print_files` trả lỗi APPROVAL_REQUIRED.** Muốn AI tự in: đặt `false` + allowlist |
+| `PRINTONATOR_REQUIRE_APPROVE` | `true` | Job từ AI phải duyệt mới in. **Standalone KHÔNG lỗi: `print_files` trả `{ok:true, pendingApproval:true, jobIds}` và job vào `AwaitingApproval`** — duyệt trong app Printonator (xem "Duyệt lệnh in" bên dưới). Nếu standalone KHÔNG có cách duyệt thì đặt `false` + allowlist để AI tự in |
 | `PRINTONATOR_ALLOWED_PRINTERS` | rỗng | Chỉ in vào các máy này (phân tách `,`). **Rỗng + không duyệt = từ chối khởi hành (fail-closed)** |
 | `PRINTONATOR_MAX_PAGES_PER_BATCH` | `200` | Trang/lô (cộng dồn cả hàng đợi). File chưa probe số trang = ngân sách bảo thủ 50 trang |
 | `PRINTONATOR_MAX_FILES_PER_BATCH` | `50` | Số file/lô |
@@ -91,10 +91,12 @@ $env:PRINTONATOR_MAX_PAGES_PER_BATCH="300"
 dotnet run --project src/Printonator.Mcp
 ```
 
-**Duyệt lệnh in qua MCP** (khi `REQUIRE_APPROVE=true`, mặc định): `print_files` không trả lỗi nữa —
-jobs vào trạng thái `AwaitingApproval`, tool trả `{ok:true, pendingApproval:true, jobIds}`. Duyệt bằng
-`approve_job(jobId)` (cho in) hoặc `reject_job(jobId)` (từ chối → Cancelled). Chỉ duyệt được job nguồn AI
-(`Source=Mcp`) đang `AwaitingApproval`; xem hàng chờ duyệt bằng `list_jobs status=awaitingapproval`.
+**Duyệt lệnh in** (khi `REQUIRE_APPROVE=true`, mặc định): `print_files` không trả lỗi nữa —
+jobs vào trạng thái `AwaitingApproval`, tool trả `{ok:true, pendingApproval:true, jobIds}`. **Duyệt trong app
+Printonator** (nút "Duyệt tất cả" trên thanh Duyệt in — xem `docs/USER_GUIDE.md` §4). Cố ý KHÔNG có tool
+`approve_job`: client gọi được `print_files` thì cũng gọi được `approve_job`, cổng duyệt thành hình thức.
+AI chỉ được `reject_job(jobId)` (từ chối → Cancelled) — từ chối thì không in được nên không phải ranh giới.
+Xem hàng chờ duyệt bằng `list_jobs status=awaitingapproval`.
 
 ## 3b. Bảng mã lỗi (dùng được cho AI)
 
@@ -105,7 +107,8 @@ Tra cứu động: `get_error_reference` — gọi khi gặp `{ok:false, error:{
 |---|---|---|
 | `PRINTER_OFFLINE` | Máy offline | `list_printers` xem available; `pick_printer` chọn máy khác, in lại |
 | `PRINTER_NO_PERMISSION` | Máy ngoài allowlist | `get_guard_config` xem allowlist; chọn máy trong đó hoặc báo người dùng thêm `PRINTONATOR_ALLOWED_PRINTERS` |
-| `APPROVAL_REQUIRED` / `pendingApproval` | Cần duyệt | `list_jobs status=awaitingapproval` + `approve_job` |
+| `pendingApproval:true` (KHÔNG phải lỗi) | Job đang chờ duyệt | Báo người dùng bấm "Duyệt tất cả" trong app Printonator (`list_jobs status=awaitingapproval` để xem hàng chờ) |
+| `APPROVAL_REQUIRED` | Dự phòng — **hiện KHÔNG luồng nào sinh ra mã này** (duyệt giờ trả `ok:true` + `pendingApproval:true`) | Coi như tương đương `pendingApproval:true` nếu client cũ gặp |
 | `JOB_NOT_FOUND` | job_id không có | `list_jobs` lấy đúng job_id |
 | `MAX_BATCH_EXCEEDED` | Vượt giới hạn | Chia nhỏ lô |
 | `SPOOLER_BUSY` | Máy/queue bận | Chờ vài giây, thử lại |
@@ -136,7 +139,7 @@ Penpot không liên quan tới in. Bản thiết kế UI của app đã vẽ s�
 
 ```
 User(UI)  → Queued → Converting → Spooling → Done / Error(reason code + tiếng Việt)
-Mcp + approve on → AwaitingApproval → (approve_job) → Queued → ...
+Mcp + approve on → AwaitingApproval → (duyệt trong app) → Queued → ...
 Mcp approve off → Enqueue thẳng như User
 ```
 

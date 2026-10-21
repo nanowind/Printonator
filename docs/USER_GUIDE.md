@@ -67,7 +67,7 @@ Nút **Cấu hình** trên toolbar mở cửa sổ Quản lý cấu hình:
 Khi AI (MCP) gửi lệnh in, job sẽ ở trạng thái **chờ duyệt** (AwaitingApproval) — xuất hiện thanh Duyệt in phía trên danh sách:
 - **Duyệt tất cả** → job vào hàng đợi, in bình thường
 - **Từ chối tất cả** → job chuyển Cancelled
-- **✕** → đóng thanh, job giữ chờ duyệt (có thể duyệt qua MCP `approve_job`)
+- **✕** → đóng thanh, job giữ chờ duyệt (mở lại app lúc nào cũng duyệt được; **AI không tự duyệt được** — MCP không có công cụ duyệt)
 
 ---
 

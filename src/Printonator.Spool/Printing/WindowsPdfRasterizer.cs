@@ -39,16 +39,19 @@ public static class WindowsPdfRasterizer
     /// <summary>
     /// Đếm số trang PDF một cách ĐÁNG TIN CẬY: thử Windows.Data.Pdf trước, nhưng nếu nó trả 0/1
     /// mà file có khả năng nhiều trang (dung lượng lớn / có chỉ mục xref thật) thì đếm lại bằng
-    /// iText (nếu lib có mặt) hoặc parser "/Type /Page" thủ công (không cần lib).
+    /// iText (nếu lib có mặt) hoặc parser "/Type/Page" thủ công (không cần lib).
     /// Windows.Data.Pdf có bug đếm THIẾU trang với PDF linearized/tạo từ Word/Excel → in chỉ 1 trang.
+    /// BẢO ĐẢM: fallback chỉ được TĂNG số trang, KHÔNG BAO GIỜ kéo kết quả dương của Windows.Data.Pdf
+    /// về 0 (fallback sai/không đọc được file không được phép xoá một kết quả đúng).
     /// </summary>
     public static async Task<int> PdfPageCountReliableAsync(string filePath, CancellationToken ct)
     {
         var wdp = await PdfPageCountAsync(filePath, ct);
         if (wdp > 1) return wdp;              // >1 trang chắc chắn đúng
-        if (wdp == 0) return 0;               // file rỗng — không đếm lại
-        // wdp == 1 hoặc -1: nghi ngờ đếm thiếu → đếm lại bằng đường khác
-        return await CountPagesFallbackAsync(filePath, ct);
+        // wdp == 1 hoặc -1: nghi ngờ đếm thiếu → đếm lại bằng đường khác.
+        // wdp == 0: file rỗng, nhưng 0 cũng có thể là đếm thiếu → vẫn thử; nếu fallback cũng 0 thì kết quả là 0.
+        var fb = await CountPagesFallbackAsync(filePath, ct);
+        return fb > 0 ? fb : wdp;             // fallback chỉ cải thiện, không hạ về 0
     }
 
     /// <summary>Đếm trang bằng iText (nếu có) hoặc parser thủ công. Trả 0 nếu không xác định được.</summary>
@@ -59,8 +62,13 @@ public static class WindowsPdfRasterizer
         return await CountPagesViaParserAsync(filePath, ct);
     }
 
-    /// <summary>Đếm /Type /Page bằng cách scan raw — đủ chính xác cho PDF hợp lệ (kể cả linearized).</summary>
-    private static Task<int> CountPagesViaParserAsync(string filePath, CancellationToken ct)
+    /// <summary>
+    /// Đếm trang bằng cách scan raw token "/Type" + "/Page" — đủ chính xác cho PDF hợp lệ (kể cả linearized).
+    /// Chấp nhận MỌI khoảng trắng PDF (space, \r, \n, \t) giữa "/Type" và "/Page": Word/iTextSharp
+    /// ghi "/Type/Page" (không space) → parser cũ đếm 0 trang. Loại "/Pages" và "/PageLabels".
+    /// Trả 0 nếu không đọc được file.
+    /// </summary>
+    internal static Task<int> CountPagesViaParserAsync(string filePath, CancellationToken ct)
     {
         return Task.Run(() =>
         {
@@ -68,29 +76,42 @@ public static class WindowsPdfRasterizer
             {
                 using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
                 const int chunk = 256 * 1024;
-                var buf = new byte[chunk];
-                long pos = 0;
+                // Token "/Type" + whitespace + "/Page" + ký tự phân cách dài tối đa ~16 byte → đọc DƯ 16 byte
+                // mỗi lần (seek lùi lại) để token nằm VẮT QUA ranh giới chunk vẫn thấy đủ.
+                const int carry = 16;
+                var buf = new byte[chunk + carry];
+                long absolute = 0;   // offset tuyệt đối của buf[0]
+                long counted = 0;    // đã quét tới offset này — không quét lại phần carry
                 var len = fs.Length;
                 var count = 0;
-                while (pos < len)
+                while (absolute < len)
                 {
                     ct.ThrowIfCancellationRequested();
-                    var read = fs.Read(buf, 0, chunk);
+                    var read = fs.Read(buf, 0, buf.Length);
                     if (read <= 0) break;
-                    // Tìm "/Type /Page" (không phải /Pages) — cắt theo token "/Type"
-                    for (var i = 0; i < read - 9; i++)
+                    // Tìm token "/Type" rồi bỏ qua khoảng trắng tuỳ chọn để gặp "/Page"
+                    for (var i = 0; i + 4 < read; i++)
                     {
-                        if (buf[i] == '/' && i + 10 < read
-                            && buf[i + 1] == 'T' && buf[i + 2] == 'y' && buf[i + 3] == 'p' && buf[i + 4] == 'e'
-                            && buf[i + 5] == ' ' && buf[i + 6] == '/' && buf[i + 7] == 'P'
-                            && buf[i + 8] == 'a' && buf[i + 9] == 'g' && buf[i + 10] == 'e')
-                        {
-                            // Loại "/Pages" (i+11 == 's') và "/PageLabels" — chỉ đếm "/Page" đứng riêng
-                            if (i + 11 >= read || buf[i + 11] != 's')
-                                count++;
-                        }
+                        if (absolute + i < counted) continue;   // phần carry đã đếm ở chunk trước
+                        if (buf[i] != '/' || buf[i + 1] != 'T' || buf[i + 2] != 'y'
+                            || buf[i + 3] != 'p' || buf[i + 4] != 'e')
+                            continue;
+                        var j = i + 5;
+                        while (j < read && IsPdfWhite(buf[j])) j++;
+                        if (j + 5 >= read) continue;   // thiếu byte ký tự phân cách — không kết luận
+                        if (buf[j] != '/' || buf[j + 1] != 'P' || buf[j + 2] != 'a'
+                            || buf[j + 3] != 'g' || buf[j + 4] != 'e')
+                            continue;
+                        // Loại "/Pages" và "/PageLabels" — chỉ đếm "/Page" đứng riêng
+                        if (buf[j + 5] == 's' || buf[j + 5] == 'L')
+                            continue;
+                        count++;
                     }
-                    pos += read;
+                    counted = absolute + read;
+                    var consumed = read - carry;
+                    if (consumed <= 0) break;   // file nhỏ hơn carry — đã quét hết
+                    absolute += consumed;
+                    fs.Seek(absolute, SeekOrigin.Begin);
                 }
                 return count;
             }
@@ -98,6 +119,9 @@ public static class WindowsPdfRasterizer
             catch { return 0; }
         }, ct);
     }
+
+    /// <summary>Khoảng trắng theo chuẩn PDF (whitespace token separator).</summary>
+    private static bool IsPdfWhite(byte b) => b is (byte)' ' or (byte)'\r' or (byte)'\n' or (byte)'\t' or (byte)'\f' or 0;
 
     private static async Task<int> CountPagesViaITextAsync(string filePath, CancellationToken ct)
     {

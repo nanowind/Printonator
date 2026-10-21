@@ -343,16 +343,24 @@ public sealed class PrintQueue : IDisposable
             // Engine KHÔNG xử lý được định dạng (CanHandle=false nhưng vẫn được gọi do fallback)
             // hoặc lỗi config rõ ràng (file không tồn tại / máy in không có) → không fallback tiếp
             // để tránh in nhầm qua đường khác; lỗi spooler/engine (máy bận, render lỗi) → thử engine kế.
+            //
+            // EngineTimeout/OfficeAppBusy = kết cục MƠ HỒ: engine bỏ dở giữa lúc in (thread in còn chạy /
+            // Office còn mid-PrintOut) — trang CÓ THỂ đã vào spooler. Đẩy job sang engine khác là in lại
+            // lần hai → tốn giấy thật. Dừng chuỗi fallback, báo lỗi để người dùng tự kiểm tra.
             var code = r.Error?.Code;
             if (code is ErrorCodes.FileNotFound or ErrorCodes.PrinterNotFound or ErrorCodes.UnsupportedFormat
-                or ErrorCodes.InvalidPageRange or ErrorCodes.SectionNotFound or ErrorCodes.FileCorrupted)
+                or ErrorCodes.InvalidPageRange or ErrorCodes.SectionNotFound or ErrorCodes.FileCorrupted
+                or ErrorCodes.EngineTimeout or ErrorCodes.OfficeAppBusy)
                 break;
         }
         return lastFail ?? Result<bool>.Fail(PrintErrorFactory.SpoolerFailed("Không có engine in nào hoạt động."));
     }
 
+    // EngineTimeout/OfficeAppBusy KHÔNG retry được: in KHÔNG idempotent — timeout nghĩa là CÓ THỂ đã in
+    // rồi (trang đã vào spooler), thử lại nguyên lô là in trùng. Người dùng kiểm tra hàng đợi máy in rồi
+    // tự quyết định in lại.
     private static bool IsRetryable(PrintError error) =>
-        error.Code is ErrorCodes.SpoolerBusy or ErrorCodes.PrinterOffline or ErrorCodes.EngineTimeout or ErrorCodes.OfficeAppBusy;
+        error.Code is ErrorCodes.SpoolerBusy or ErrorCodes.PrinterOffline;
 
     private void SetState(PrintJob job, JobState state, PrintError? error = null)
     {

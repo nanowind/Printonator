@@ -161,7 +161,7 @@ watch_folder(path, rule)   → bắt đầu theo dõi + auto print (v2)
 
 **Đặc biệt quan trọng — an toàn khi AI được quyền in nháp:**
 - **Printer allowlist** — AI chỉ in vào máy trong danh sách được duyệt (ví dụ máy ở phòng in, KHÔNG phải máy ảo hay máy chậm).
-- **Approve mode (mặc định nên bật):** job từ AI vào hàng đợi "pending", nhấn OK trên UI (hoặc tool `approve_job`) mới vô máy — vì in = tiền giấy + mực thật.
+- **Approve mode (mặc định nên bật):** job từ AI vào hàng đợi "pending", nhấn OK trên UI mới vô máy — vì in = tiền giấy + mực thật. Duyệt CHỈ ở UI: MCP cố ý không có tool `approve_job` (AI gọi được `print_files` thì cũng gọi được `approve_job` → cổng duyệt thành hình thức).
 - **Giới hạn trang:** config max-trang/batch (vd 200), max 10k trang/ngày — chặn AI lỗi lặp in vô hạn.
 - **Audit log:** thời gian, tool, tham số, trạng thái — đủ cho việc hiếu (AI nói "in 100 bản" mà không cho máy? có log).
 - Local-only: hỗ trợ khởi chạy localhost; khóa remote trừ khi cấu hình rõ.
@@ -189,17 +189,19 @@ watch_folder(path, rule)   → bắt đầu theo dõi + auto print (v2)
 - **Thông báo bản mới:** khi có phiên bản mới → toast + badge dot trên bell "Versions mới" → click mở trang Auto-update
 
 **Auto-update — thiết kế chống mã độc (critical với mã nguồn mở):**
-Vì mã MIT ai cũng clone được, kẻ xấu có thể build bản chèn mã độc phát tán. Không mua code-signing cert (tốn tiền, không cần). Thay vào đó dùng cơ chế **không tốn phí nhưng xác thực được**:
-1. **Chỉ cập nhật từ nguồn chính thức:** GitHub Releases của repo chính chủ, qua HTTPS — so sánh `version` + `build id`
-2. **Xác thực bằng Minisign / Sigstore (miễn phí):** nhà phát hành ký manifest bằng khóa riêng (minisign — public key nhúng sẵn trong app source, ai build từ source chính chủ cũng có public key). Bản phát hành không ký đúng public key → từ chối
-3. **Checksum SHA-256:** so sánh với giá trị công bố trong manifest; lệch → từ chối & cảnh báo
-4. **Pin/bảo vệ:** auto-update MẶC ĐỊNH TẮT, bật thủ công; có nút "Kiểm tra cập nhật"
-5. **Phát hiện bản clone:** mỗi bản phát hành có `signature.json` (minisign sig + checksum); nếu app chạy từ bản không có signature hợp lệ hoặc bị sửa → hiện cảnh báo đỏ không tắt được: "This build is NOT trusted — download the official version"
-6. **Cảnh báo khi cài:** xác nhận trước khi áp bản mới, ghi log
+Vì mã MIT ai cũng clone được, kẻ xấu có thể build bản chèn mã độc phát tán. Không mua code-signing cert (tốn tiền, không cần). Thay vào đó dùng cơ chế **không tốn phí nhưng xác thực được** — phần nào ĐÃ LÀM, phần nào còn là kế hoạch ghi rõ dưới đây:
+1. **Chỉ cập nhật từ nguồn chính thức (ĐÃ LÀM):** GitHub Releases của repo chính chủ, qua HTTPS — so sánh `version` + `build id`
+2. **Checksum SHA-256 (ĐÃ LÀM — cơ chế xác thực DUY NHẤT app đang dùng):** app đọc dòng bắt buộc `SHA256: <hex>` trong release notes của bản phát hành; **thiếu dòng đó hoặc hash lệch → từ chối cài (fail-closed)**. Xem `src/Printonator.UI/UpdateChecker.cs`
+3. **Ký minisign trong CI (một nửa):** pipeline release có ký installer bằng minisign nếu secret tồn tại — nhưng **app KHÔNG xác thực chữ ký này**; chữ ký hiện chỉ để người dùng tự kiểm tra thủ công
+4. **Xác thực Minisign / Sigstore TRONG APP (KẾ HOẠCH — CHƯA LÀM):** nhúng public key vào app source, bản phát hành không ký đúng public key → từ chối. Chưa có mã nào làm việc này; `UpdateChecker` không giữ public key nào
+5. **Pin/bảo vệ:** auto-update MẶC ĐỊNH TẮT, bật thủ công; có nút "Kiểm tra cập nhật"
+6. **Phát hiện bản clone (KẾ HOẠCH — CHƯA LÀM):** ý tưởng là mỗi bản phát hành kèm `signature.json` (minisign sig + checksum); app chạy từ bản không có signature hợp lệ hoặc bị sửa → cảnh báo đỏ không tắt được: "This build is NOT trusted — download the official version". Hiện KHÔNG có `signature.json` nào được sinh hay đọc, cũng không có cảnh báo đỏ
+7. **Cảnh báo khi cài (ĐÃ LÀM):** xác nhận trước khi áp bản mới
 
 ```json
-// update manifest (từ GitHub releases)
-{ "version": "1.2.0", "url": "...", "sha256": "abc...", "minisign_sig": "MII...", "releaseNotes": "..." }
+// ĐỀ XUẤT cho giai đoạn sau — CHƯA có code nào parse manifest JSON.
+// Hiện app đọc trực tiếp GitHub Releases API + dòng "SHA256: <hex>" trong release notes.
+{ "version": "1.2.0", "url": "...", "sha256": "abc...", "releaseNotes": "..." }
 ```
 
 ---

@@ -90,7 +90,7 @@ public sealed class LibreOfficePrintEngine : IPrintEngine
                     Code = ErrorCodes.EngineTimeout,
                     Category = PrintErrorCategory.System,
                     Message = $"LibreOffice xử lý {job.FileName} quá lâu ({TimeoutSeconds}s) — đã hủy.",
-                    Hint = "LibreOffice có thể đang hiện dialog ẩn hoặc profile bị khóa. Thử khởi động lại máy in/LibreOffice.",
+                    Hint = "Kiểm tra hàng đợi máy in trước — máy có thể đã in một phần (in lại sẽ trùng); rồi xem LibreOffice có đang hiện dialog ẩn hoặc profile bị khóa không, nếu có thì đóng tiến trình soffice kẹt rồi thử lại.",
                 });
             }
             catch (OperationCanceledException)

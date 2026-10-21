@@ -88,7 +88,7 @@ dotnet run --project src/Printonator.UI     # chạy app
 dotnet run --project src/Printonator.Mcp    # chạy MCP server
 ```
 
-Cấu trúc: `Printonator.Core` (hàng đợi, state machine, preset, guard an toàn, lịch sử) → `Printonator.Spool` (máy in + engine: Office COM, LibreOffice, Chrome/Edge headless, watermark, gộp file, trang bìa, shell) → `Printonator.UI` (WPF, 5 ngôn ngữ, Lite/Full mode) và `Printonator.Mcp` (13 tools). Chi tiết ở [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) và [docs/COMPARISON_PRINT_CONDUCTOR.md](docs/COMPARISON_PRINT_CONDUCTOR.md).
+Cấu trúc: `Printonator.Core` (hàng đợi, state machine, preset, guard an toàn, lịch sử) → `Printonator.Spool` (máy in + engine: Office COM, LibreOffice, Chrome/Edge headless, watermark, gộp file, trang bìa, shell) → `Printonator.UI` (WPF, 5 ngôn ngữ, Lite/Full mode) và `Printonator.Mcp` (12 tools). Chi tiết ở [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) và [docs/COMPARISON_PRINT_CONDUCTOR.md](docs/COMPARISON_PRINT_CONDUCTOR.md).
 
 ## Từ tác giả
 

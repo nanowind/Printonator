@@ -8,19 +8,13 @@ namespace Printonator.UI;
 /// <summary>
 /// Auto-update theo thiết kế bảo mật CONCEPT.md §8b — KHÔNG cần code-sign cert (tốn tiền):
 ///  1. Chỉ cập nhật từ GitHub Releases chính chủ (HTTPS) — so `version` + build id.
-///  2. Xác thực bằng **minisign** (miễn phí): nhà phát hành ký manifest bằng khóa riêng;
-///     public key nhúng sẵn trong app — bản không đúng key → từ chối.
-///  3. Checksum SHA-256 so với manifest; lệch → từ chối.
-///  4. Auto-update MẶC ĐỊNH TẮT, bật thủ công.
+///  2. Xác thực installer bằng checksum SHA-256 đọc từ release notes (dòng "SHA256: <hex>").
+///     Thiếu hash hoặc lệch → từ chối cài (fail-closed). KHÔNG xác thực chữ ký minisign.
+///  3. Auto-update MẶC ĐỊNH TẮT, bật thủ công.
 /// Gọi CheckAsync() → có bản mới (version > hiện tại) + xác thực OK → trả UpdateInfo sẵn sàng.
 /// </summary>
 public sealed class UpdateChecker
 {
-    // Public key của minisign (signed comment 8B5A11BFA77B47C6) — nhúng sẵn, KHÔNG commit secret.
-    private const string PublicKey =
-        "untrusted comment: minisign public key 8B5A11BFA77B47C6\n" +
-        "RWTGR3unvxFai0Vtk40gWla0Z6zi2/4u85u8zso/2Oo3YSkItdF+lG2R\n";
-
     private const string RepoOwner = "nanowind";
     private const string RepoName = "Printonator";
     private const string ManifestUrl =
@@ -50,7 +44,7 @@ public sealed class UpdateChecker
             // version mới?
             if (!Version.TryParse(rel.tag_name.TrimStart('v'), out var remote) || remote <= _current) return null;
 
-            // Tìm assets: installer + minisig + checksum manifest
+            // Tìm asset installer + checksum trong body release notes
             var installer = rel.assets?.FirstOrDefault(a => a.name?.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) == true);
             if (installer is null) return null;
 
@@ -59,13 +53,12 @@ public sealed class UpdateChecker
                 Name: rel.name ?? $"Printonator {rel.tag_name}",
                 InstallerUrl: installer.browser_download_url ?? "",
                 InstallerSha256: rel.body is null ? null : ExtractInstallerChecksum(rel.body),
-                MinisigUrl: installer.browser_download_url + ".minisig",
                 Notes: rel.body);
         }
         catch { return null; } // im lặng — update hỏng không được làm hỏng app
     }
 
-    /// <summary>VD trong release notes có dòng "SHA256: <hex>"; bỏ qua nếu thiếu.</summary>
+    /// <summary>VD trong release notes có dòng "SHA256: <hex>"; thiếu → null (coi như không xác thực được).</summary>
     private static string? ExtractInstallerChecksum(string body)
     {
         foreach (var line in body.Split('\n'))
@@ -98,7 +91,6 @@ public record UpdateInfo(
     string Name,
     string InstallerUrl,
     string? InstallerSha256,
-    string? MinisigUrl,
     string? Notes)
 {
     /// <summary>Tải installer xuống temp; trả đường dẫn hoặc null nếu lỗi.</summary>
@@ -114,10 +106,11 @@ public record UpdateInfo(
         catch { return null; }
     }
 
-    /// <summary>Xác thực SHA-256 của file tải về (null expected = không kiểm tra).</summary>
+    /// <summary>Xác thực SHA-256 của file tải về. FAIL-CLOSED: thiếu hash kỳ vọng (release notes
+    /// không có dòng "SHA256:") → trả false, KHÔNG cài khi không có hash.</summary>
     public async Task<bool> VerifySha256Async(string path, string? expected)
     {
-        if (string.IsNullOrEmpty(expected)) return true;
+        if (string.IsNullOrEmpty(expected)) return false;
         try
         {
             using var fs = File.OpenRead(path);

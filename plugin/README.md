@@ -24,7 +24,7 @@ Plugin Claude Code tối giản để đăng ký MCP server Printonator + kèm s
 
 | Env | Ý nghĩa |
 |---|---|
-| `PRINTONATOR_REQUIRE_APPROVE` | `false` = AI tự in (không cần duyệt); `true` = job chờ `approve_job`. Mặc định plugin để `false` cho flow auto-print. |
+| `PRINTONATOR_REQUIRE_APPROVE` | `false` = AI tự in (không cần duyệt); `true` = job chờ người dùng duyệt trong app Printonator (AI không tự duyệt được — MCP không có tool approve). Mặc định plugin để `false` cho flow auto-print. |
 | `PRINTONATOR_ALLOWED_PRINTERS` | Chỉ cho AI in vào các máy này (danh sách cách dấu phẩy). Rỗng + không duyệt = cấm tự in (fail-closed). |
 | `PRINTONATOR_MAX_*` | Giới hạn trang/file/bản (xem SKILL §3). |
 

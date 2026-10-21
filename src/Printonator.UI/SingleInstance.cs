@@ -60,22 +60,27 @@ public static class SingleInstance
     /// <summary>Vòng lặp server: nhận 1 dòng paths từ instance 2 → onPaths. Chạy trên task nền.</summary>
     public static void StartServer(Action<string> onPaths)
     {
-        _ = Task.Run(() =>
+        _ = Task.Run(async () =>
         {
             while (!_cts.IsCancellationRequested)
             {
                 try
                 {
-                    var server = new NamedPipeServerStream(PipeName);
-                    server.WaitForConnection();
-                    if (_cts.IsCancellationRequested) { server.Dispose(); return; }
+                    using var server = new NamedPipeServerStream(PipeName);
+                    await server.WaitForConnectionAsync(_cts.Token);
+                    if (_cts.IsCancellationRequested) return;
                     using var reader = new StreamReader(server);
-                    var line = reader.ReadLine();
+                    var line = await reader.ReadLineAsync(_cts.Token);
                     if (!string.IsNullOrEmpty(line)) onPaths(line);
-                    server.Dispose();
                 }
                 catch (OperationCanceledException) { return; }
-                catch { /* pipe lỗi tạm thời — loop tiếp */ }
+                catch
+                {
+                    // pipe lỗi tạm thời (vd tiến trình cũ đang restart còn giữ tên pipe) — chờ ngắn rồi thử lại,
+                    // tránh hot-spin chiếm CPU.
+                    try { await Task.Delay(250, _cts.Token); }
+                    catch (OperationCanceledException) { return; }
+                }
             }
         });
     }
@@ -84,6 +89,17 @@ public static class SingleInstance
     public static void StopServer()
     {
         _cts.Cancel();
+        _mutex?.Dispose();
+        _mutex = null;
+    }
+
+    /// <summary>Nhả CHỈ mutex NGAY để tiến trình khởi động lại giành được (app restart: gọi trước khi
+    /// Process.Start exe mới; nếu không tiến trình mới thua mutex → tự thoát → không còn cửa sổ nào).
+    /// KHÔNG cancel `_cts`: pipe server của tiến trình CŨ phải còn sống để nhận args nếu tiến trình mới
+    /// thua mutex (instance 3 giành mất) — nếu cancel ở đây, args gửi vào hư không và cửa sổ cũ treo lại.
+    /// `_cts` được cancel lúc tiến trình cũ Shutdown → StopServer() (App.xaml.cs Exit).</summary>
+    public static void ReleaseForRestart()
+    {
         _mutex?.Dispose();
         _mutex = null;
     }
