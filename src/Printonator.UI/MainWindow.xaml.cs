@@ -160,9 +160,10 @@ public partial class MainWindow : Window
 
     private async Task InitializeAsync()
     {
-        // Engine ưu tiên — single source of truth trong EngineRegistry.
+        // Engine ưu tiên — single source of truth trong EngineRegistry (đã gồm SpoolPrintEngine).
+        // KHÔNG đăng ký thêm SpoolPrintEngine ở đây: bản trùng làm chuỗi fallback chạy lại shell
+        // lần hai → in trùng cả file khi engine trước lỗi giữa chừng.
         EngineRegistry.RegisterAll(_queue);
-        _queue.RegisterEngine(new SpoolPrintEngine());
         RestorePendingJobs();
         LoadPrinters();
         _queue.MaxRetries = 2;

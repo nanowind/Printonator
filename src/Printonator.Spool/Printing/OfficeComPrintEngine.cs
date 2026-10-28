@@ -233,7 +233,13 @@ public sealed class OfficeComPrintEngine : IPrintEngine
             // Máy in ảo (printToFile) export PDF, KHÔNG được đụng DEVMODE.
             var devModePrinter = printToFile ? null : ResolvePrinterNameForDevMode(printer);
             var duplexRes = devModePrinter is null ? null : PrinterDialogs.ApplyDuplex(devModePrinter, job.Config.DuplexMode);
-            if (duplexRes is { IsSuccess: false }) return Result<bool>.Fail(duplexRes.Error!);
+            if (duplexRes is { IsSuccess: false })
+            {
+                // Nhánh Fail DUY NHẤT trước SetPrinter mà trước đây không để lại dấu vết — job rớt xuống
+                // shell trong ~1s, log trống, không phân biệt được với lỗi khác (bug 2026-10-21).
+                OfficeLog($"ApplyDuplex lỗi → bỏ Word COM, rớt shell: {job.FileName} — {duplexRes.Error!.Code} {duplexRes.Error.Message}");
+                return Result<bool>.Fail(duplexRes.Error!);
+            }
             using var duplexRestore = duplexRes?.Value; // DuplexRestore? IDisposable — dispose khi thoát scope try (SAU PrintOut)
 
             // KHÔNG mở Visible:false — Word.PrintOut cần "document window active" (0x800A11FD)
@@ -339,7 +345,11 @@ public sealed class OfficeComPrintEngine : IPrintEngine
         // Resolve null → bỏ qua (log), không fail: nghĩa là user in theo máy mặc định.
         var devModePrinter = printToFile ? null : ResolvePrinterNameForDevMode(printer);
         var duplexRes = devModePrinter is null ? null : PrinterDialogs.ApplyDuplex(devModePrinter, job.Config.DuplexMode);
-        if (duplexRes is { IsSuccess: false }) return Result<bool>.Fail(duplexRes.Error!);
+        if (duplexRes is { IsSuccess: false })
+        {
+            OfficeLog($"ApplyDuplex lỗi → bỏ Excel COM, rớt shell: {job.FileName} — {duplexRes.Error!.Code} {duplexRes.Error.Message}");
+            return Result<bool>.Fail(duplexRes.Error!);
+        }
         using var duplexRestore = duplexRes?.Value; // dispose khi method thoát — SAU khi PrintOut xong
 
         string? prevDefault = null;
@@ -631,7 +641,11 @@ public sealed class OfficeComPrintEngine : IPrintEngine
             // Hướng lật cạnh qua DEVMODE (giống Word/Excel) — đặt TRƯỚC khi Office gán ActivePrinter.
             var devModePrinter = printToFile ? null : ResolvePrinterNameForDevMode(printer);
             var duplexRes = devModePrinter is null ? null : PrinterDialogs.ApplyDuplex(devModePrinter, job.Config.DuplexMode);
-            if (duplexRes is { IsSuccess: false }) return Result<bool>.Fail(duplexRes.Error!);
+            if (duplexRes is { IsSuccess: false })
+            {
+                OfficeLog($"ApplyDuplex lỗi → bỏ PowerPoint COM, rớt shell: {job.FileName} — {duplexRes.Error!.Code} {duplexRes.Error.Message}");
+                return Result<bool>.Fail(duplexRes.Error!);
+            }
             using var duplexRestore = duplexRes?.Value; // dispose khi thoát scope try (SAU PrintOut)
 
             // Open(FileName, ReadOnly, Untitled, WithWindow)
