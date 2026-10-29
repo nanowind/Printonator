@@ -167,6 +167,192 @@ public static class PrinterDialogs
     private const int MinDevModeSize = 96;         // DEVMODE phải chứa tới dmDuplex
     private const int PDevModeFieldIndex = 7;      // PRINTER_INFO_2.pDevMode (x64: 7*8 = 56)
 
+    // ===================== Khổ giấy + chiều: DEVMODE (PowerPoint không có PageSetup) =====================
+
+    private const int DM_ORIENTATION = 0x00000001; // dmFields
+    private const int DM_PAPERSIZE = 0x00000002;   // dmFields
+    private const int DM_PAPERWIDTH = 0x00000004;  // dmFields
+    private const int DM_PAPERLENGTH = 0x00000008; // dmFields
+    private const int DmOrientationOffset = 76;    // dmOrientation (Int16)
+    private const int DmPaperSizeOffset = 78;      // dmPaperSize (Int16)
+    private const int DmPaperLengthOffset = 80;    // dmPaperLength (Int16), đơn vị 1/10 mm  ← TRƯỚC width
+    private const int DmPaperWidthOffset = 82;     // dmPaperWidth  (Int16), đơn vị 1/10 mm
+    private const short DmOrientPortrait = 1;
+    private const short DmOrientLandscape = 2;
+    private const int MinDevModeSizePaper = 84;    // DEVMODE phải chứa tới dmPaperLength
+
+    /// <summary>Trả DEVMODE về cấu hình ban đầu — Dispose để restore.</summary>
+    public sealed class DevModeRestore : IDisposable
+    {
+        private readonly IntPtr _hPrinter;
+        private readonly IntPtr _buffer;           // buffer PRINTER_INFO_2 tròn vẹn (SetPrinter cần đủ driver data)
+        private readonly IntPtr _devMode;
+        private readonly byte[] _original;         // bản chụp DEVMODE gốc (chỉ phần ta đã đụng)
+        private readonly int _originalFields;
+        private readonly object _lock = new();
+        private bool _disposed;
+
+        internal DevModeRestore(IntPtr hPrinter, IntPtr buffer, IntPtr devMode, byte[] original, int originalFields)
+        {
+            _hPrinter = hPrinter;
+            _buffer = buffer;
+            _devMode = devMode;
+            _original = original;
+            _originalFields = originalFields;
+        }
+
+        /// <summary>Restore nguyên vùng đã đụng + dmFields, rồi ClosePrinter + LocalFree.
+        /// Idempotent, thread-safe, không ném ra ngoài (an toàn trong finally).</summary>
+        public void Dispose()
+        {
+            lock (_lock)
+            {
+                if (_disposed) return;
+                _disposed = true;
+                try
+                {
+                    // Ghi lại đúng vùng dmOrientation..dmPaperLength (76..83) + dmFields (72..75).
+                    Marshal.Copy(_original, 0, _devMode + DmFieldsOffset, _original.Length);
+                    if (!SetPrinter(_hPrinter, 2, _buffer, 0))
+                        DuplexLog($"restore paper/orientation: SetPrinter fail err={Marshal.GetLastWin32Error()}");
+                }
+                catch (Exception ex)
+                {
+                    DuplexLog($"restore paper/orientation: {ex.Message}");
+                }
+                finally
+                {
+                    try
+                    {
+                        ClosePrinter(_hPrinter);
+                        LocalFree(_buffer);
+                    }
+                    finally
+                    {
+                        if (ReferenceEquals(Volatile.Read(ref _activeDevMode), this)) Volatile.Write(ref _activeDevMode, null);
+                    }
+                }
+            }
+        }
+    }
+
+    private static DevModeRestore? _activeDevMode;
+
+    /// <summary>Dọn lease paper/orientation đang treo khi STA thread bị abandon (timeout/cancel).</summary>
+    public static void RestoreActiveDevMode()
+    {
+        var lease = Volatile.Read(ref _activeDevMode);
+        lease?.Dispose();
+    }
+
+    /// <summary>
+    /// Đặt KHỔ GIẤY + CHIỀU giấy qua DEVMODE driver — dùng cho PowerPoint (COM không có PageSetup).
+    /// <paramref name="paperName"/> rỗng/AsDocument → không đụng khổ giấy; orientation AsDocument/AsPrinter → không đụng chiều.
+    /// Trả lease khôi phục khi Dispose. Không bao giờ nuốt lỗi: lỗi trả Result.Fail(PrintError).
+    /// </summary>
+    public static Result<DevModeRestore?> ApplyPaperOrientation(string printerName, string? paperName, PrintOrientation orientation)
+    {
+        var wantPaper = !string.IsNullOrWhiteSpace(paperName)
+                        && !paperName.Equals(PaperCatalog.AsDocument, StringComparison.OrdinalIgnoreCase)
+                        && PaperCatalog.Dimensions(paperName) is not null;
+        var wantOrient = orientation is PrintOrientation.Portrait or PrintOrientation.Landscape;
+        if (!wantPaper && !wantOrient)
+            return Result<DevModeRestore?>.Ok(null);   // không có gì để đặt — không mở máy in
+
+        if (string.IsNullOrWhiteSpace(printerName))
+            return FailDevMode("Chưa có máy in để đặt khổ giấy.", "Chọn máy in trước.");
+
+        if (!OpenPrinter(printerName, out var hPrinter, IntPtr.Zero))
+            return FailDevModeWin32($"Không mở được máy in \"{printerName}\" để đặt khổ giấy.",
+                "Kiểm tra tên máy in còn tồn tại và spooler đang chạy.");
+
+        var buffer = IntPtr.Zero;
+        var leaseGiven = false;
+        try
+        {
+            GetPrinter(hPrinter, 2, IntPtr.Zero, 0, out var needed);
+            if (needed <= 0)
+                return FailDevModeWin32($"Không lấy được cài đặt của máy in \"{printerName}\".",
+                    "Mở 'Printing Preferences' một lần hoặc cài lại driver máy in.");
+
+            buffer = Marshal.AllocHGlobal(needed);
+            if (!GetPrinter(hPrinter, 2, buffer, needed, out _))
+                return FailDevModeWin32($"Không đọc được bảng cài đặt (DEVMODE) của \"{printerName}\".",
+                    "Mở 'Printing Preferences' một lần hoặc cài lại driver máy in.");
+
+            var devMode = Marshal.ReadIntPtr(buffer, PDevModeFieldIndex * IntPtr.Size);
+            if (devMode == IntPtr.Zero)
+                return FailDevMode($"Máy in \"{printerName}\" không trả về bảng cài đặt (DEVMODE).",
+                    "Mở 'Printing Preferences' để driver tạo cài đặt, rồi thử lại.");
+
+            if (Marshal.ReadInt16(devMode, DmSizeOffset) < MinDevModeSizePaper)
+                return FailDevMode($"Bảng cài đặt của \"{printerName}\" quá ngắn (không có ô khổ giấy).",
+                    "Cập nhật driver máy in — bản cũ không hỗ trợ đổi khổ.");
+
+            // Chụp nguyên vùng 72..83 (dmFields + dmOrientation + dmPaperSize/Width/Length) để restore chính xác.
+            const int snapLen = 12;
+            var snapshot = new byte[snapLen];
+            Marshal.Copy(devMode + DmFieldsOffset, snapshot, 0, snapLen);
+            var originalFields = Marshal.ReadInt32(devMode, DmFieldsOffset);
+
+            var fields = originalFields;
+            if (wantOrient)
+            {
+                Marshal.WriteInt16(devMode, DmOrientationOffset,
+                    orientation == PrintOrientation.Landscape ? DmOrientLandscape : DmOrientPortrait);
+                fields |= DM_ORIENTATION;
+            }
+            if (wantPaper)
+            {
+                var dims = PaperCatalog.Dimensions(paperName!)!.Value;
+                // dmPaperLength/Width tính bằng 1/10 mm. Luôn mô tả tờ theo chiều DỌC
+                // (dmOrientation lo việc xoay) — giống cách GDI in PDF tránh driver clamp.
+                Marshal.WriteInt16(devMode, DmPaperLengthOffset, (short)(dims.H * 10));
+                Marshal.WriteInt16(devMode, DmPaperWidthOffset, (short)(dims.W * 10));
+                // Xoá dmPaperSize để driver dùng width/length thay vì mã chuẩn.
+                Marshal.WriteInt16(devMode, DmPaperSizeOffset, 0);
+                fields |= DM_PAPERWIDTH | DM_PAPERLENGTH;
+                fields &= ~DM_PAPERSIZE;
+            }
+            Marshal.WriteInt32(devMode, DmFieldsOffset, fields);
+
+            if (!SetPrinter(hPrinter, 2, buffer, 0))
+                return FailDevModeWin32($"Không ghi được khổ giấy vào máy in \"{printerName}\".",
+                    "Đặt tay trong 'Printing Preferences' → khổ giấy.");
+
+            leaseGiven = true;
+            var lease = new DevModeRestore(hPrinter, buffer, devMode, snapshot, originalFields);
+            Volatile.Write(ref _activeDevMode, lease);
+            return Result<DevModeRestore?>.Ok(lease);
+        }
+        catch (Exception ex)
+        {
+            return FailDevMode($"Lỗi đặt khổ giấy cho máy in \"{printerName}\".",
+                "Đặt tay trong 'Printing Preferences' → khổ giấy.", ex.Message);
+        }
+        finally
+        {
+            if (!leaseGiven)
+            {
+                if (buffer != IntPtr.Zero) LocalFree(buffer);
+                ClosePrinter(hPrinter);
+            }
+        }
+    }
+
+    private static Result<DevModeRestore?> FailDevModeWin32(string message, string hint)
+        => FailDevMode(message, hint, Marshal.GetLastWin32Error().ToString());
+
+    private static Result<DevModeRestore?> FailDevMode(string message, string hint, string? detail = null)
+        => Result<DevModeRestore?>.Fail(new PrintError
+        {
+            Code = ErrorCodes.SpoolerFailed,
+            Category = PrintErrorCategory.Printer,
+            Message = message,
+            Hint = hint,
+            Detail = detail,
+        });
+
     /// <summary>Trả duplex về cấu hình ban đầu — Dispose để restore.</summary>
     public sealed class DuplexRestore : IDisposable
     {

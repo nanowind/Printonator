@@ -125,6 +125,7 @@ public sealed class OfficeComPrintEngine : IPrintEngine
             // chừng thì dmDuplex vẫn kẹt (không có bước đối soát lúc khởi động); nâng cấp: lưu giá trị
             // gốc xuống đĩa + đối soát/khôi phục khi app start.
             PrinterDialogs.RestoreActive();
+            PrinterDialogs.RestoreActiveDevMode();   // khổ giấy/chiều cũng phải trả lại
             return Result<bool>.Fail(new PrintError
             {
                 Code = ErrorCodes.EngineTimeout,
@@ -140,6 +141,7 @@ public sealed class OfficeComPrintEngine : IPrintEngine
             // Timeout THẬT (TimeoutException ở trên) vẫn trả Fail(EngineTimeout) như cũ.
             KillSpawnedOffice(spawnedOfficePids);
             PrinterDialogs.RestoreActive();   // cùng lý do nhánh timeout: Dispose trên STA bị bỏ rơi
+            PrinterDialogs.RestoreActiveDevMode();
             try { worker.Join(TimeSpan.FromSeconds(3)); } catch { }
             throw;
         }
@@ -655,6 +657,20 @@ public sealed class OfficeComPrintEngine : IPrintEngine
                 return Result<bool>.Fail(duplexRes.Error!);
             }
             using var duplexRestore = duplexRes?.Value; // dispose khi thoát scope try (SAU PrintOut)
+
+            // KHỔ GIẤY + CHIỀU GIẤY: PowerPoint KHÔNG có PageSetup như Word/Excel — phải đặt qua
+            // DEVMODE driver (cùng cơ chế duplex). KHÔNG đụng SlideWidth/Height: đó là kích thước
+            // thiết kế slide, đổi sẽ làm méo nội dung. Máy ảo (export PDF) → bỏ qua, giữ khổ gốc file.
+            var paperDevModePrinter = printToFile ? null : ResolvePrinterNameForDevMode(printer);
+            var paperRes = paperDevModePrinter is null
+                ? null
+                : PrinterDialogs.ApplyPaperOrientation(paperDevModePrinter, job.Config.PaperSize, job.Config.Orientation);
+            if (paperRes is { IsSuccess: false })
+            {
+                // Không fail cứng: khổ giấy là tuỳ chọn, in được quan trọng hơn — nhưng phải để dấu vết.
+                OfficeLog($"ApplyPaperOrientation lỗi (in tiếp theo khổ driver): {job.FileName} — {paperRes.Error!.Code} {paperRes.Error.Message}");
+            }
+            using var paperRestore = paperRes?.Value;   // dispose SAU PrintOut
 
             // Open(FileName, ReadOnly, Untitled, WithWindow)
             pres = app.Presentations.Open(job.FilePath, ReadOnly: -1 /* msoTrue */, Untitled: 0 /* msoFalse */, WithWindow: 0 /* msoFalse */);
