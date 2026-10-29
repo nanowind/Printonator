@@ -64,10 +64,16 @@ Nút **Cấu hình** trên toolbar mở cửa sổ Quản lý cấu hình:
 
 ## 4. Duyệt in (Job từ AI)
 
-Khi AI (MCP) gửi lệnh in, job sẽ ở trạng thái **chờ duyệt** (AwaitingApproval) — xuất hiện thanh Duyệt in phía trên danh sách:
+Thanh Duyệt in trên danh sách hiển thị job đang chờ duyệt (AwaitingApproval):
 - **Duyệt tất cả** → job vào hàng đợi, in bình thường
 - **Từ chối tất cả** → job chuyển Cancelled
 - **✕** → đóng thanh, job giữ chờ duyệt (mở lại app lúc nào cũng duyệt được; **AI không tự duyệt được** — MCP không có công cụ duyệt)
+
+> **Lưu ý:** MCP server chạy ở tiến trình riêng, không chia hàng đợi với app. Vì vậy job do AI gửi trong
+> phiên sẽ KHÔNG hiện trên thanh này — app chỉ thấy job do chính nó thêm (kể cả job khôi phục từ lần chạy
+> trước). Khi `REQUIRE_APPROVE=true`, `print_files` trả lỗi `APPROVAL_REQUIRED` để AI biết là chưa in được,
+> thay vì báo thành công rồi không có gì ra giấy. Muốn AI tự in: đặt biến môi trường
+> `PRINTONATOR_REQUIRE_APPROVE=false` và `PRINTONATOR_ALLOWED_PRINTERS="Tên máy in"` (xem `docs/MCP.md`).
 
 ---
 

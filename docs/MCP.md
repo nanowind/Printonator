@@ -79,7 +79,7 @@ không ném, không lộ đường dẫn/Detail cho AI.
 
 | Biến env / config | Mặc định | Ý nghĩa |
 |---|---|---|
-| `PRINTONATOR_REQUIRE_APPROVE` | `true` | Job từ AI phải duyệt mới in. **Standalone KHÔNG lỗi: `print_files` trả `{ok:true, pendingApproval:true, jobIds}` và job vào `AwaitingApproval`** — duyệt trong app Printonator (xem "Duyệt lệnh in" bên dưới). Nếu standalone KHÔNG có cách duyệt thì đặt `false` + allowlist để AI tự in |
+| `PRINTONATOR_REQUIRE_APPROVE` | `true` | Bắt buộc duyệt mới in. **Standalone: `print_files` trả `APPROVAL_REQUIRED` (không in)** vì job chờ duyệt không hiện được trong app (khác tiến trình). Đặt `false` + `PRINTONATOR_ALLOWED_PRINTERS` để AI tự in |
 | `PRINTONATOR_ALLOWED_PRINTERS` | rỗng | Chỉ in vào các máy này (phân tách `,`). **Rỗng + không duyệt = từ chối khởi hành (fail-closed)** |
 | `PRINTONATOR_MAX_PAGES_PER_BATCH` | `200` | Trang/lô (cộng dồn cả hàng đợi). File chưa probe số trang = ngân sách bảo thủ 50 trang |
 | `PRINTONATOR_MAX_FILES_PER_BATCH` | `50` | Số file/lô |
@@ -95,12 +95,15 @@ $env:PRINTONATOR_MAX_PAGES_PER_BATCH="300"
 dotnet run --project src/Printonator.Mcp
 ```
 
-**Duyệt lệnh in** (khi `REQUIRE_APPROVE=true`, mặc định): `print_files` không trả lỗi nữa —
-jobs vào trạng thái `AwaitingApproval`, tool trả `{ok:true, pendingApproval:true, jobIds}`. **Duyệt trong app
-Printonator** (nút "Duyệt tất cả" trên thanh Duyệt in — xem `docs/USER_GUIDE.md` §4). Cố ý KHÔNG có tool
-`approve_job`: client gọi được `print_files` thì cũng gọi được `approve_job`, cổng duyệt thành hình thức.
-AI chỉ được `reject_job(jobId)` (từ chối → Cancelled) — từ chối thì không in được nên không phải ranh giới.
-Xem hàng chờ duyệt bằng `list_jobs status=awaitingapproval`.
+**Duyệt lệnh in** (khi `REQUIRE_APPROVE=true`, mặc định): `print_files` trả **`APPROVAL_REQUIRED`** và
+KHÔNG in. Lý do: MCP server chạy ở tiến trình riêng, không chia hàng đợi với app Printonator — job chờ duyệt
+đặt vào queue của chính tiến trình MCP sẽ không bao giờ hiện trong màn duyệt của app, tức là kẹt vĩnh viễn.
+Trả lỗi rõ còn hơn báo `ok:true` rồi không in gì.
+
+Muốn AI tự in: đặt `PRINTONATOR_REQUIRE_APPROVE=false` **và** `PRINTONATOR_ALLOWED_PRINTERS` (bắt buộc —
+allowlist rỗng + không duyệt = fail-closed `PRINTER_NO_PERMISSION`). Cố ý KHÔNG có tool `approve_job`:
+client gọi được `print_files` thì cũng gọi được `approve_job`, cổng duyệt thành hình thức.
+AI chỉ được `reject_job(jobId)` (từ chối → Cancelled).
 
 ## 3b. Bảng mã lỗi (dùng được cho AI)
 
@@ -111,8 +114,7 @@ Tra cứu động: `get_error_reference` — gọi khi gặp `{ok:false, error:{
 |---|---|---|
 | `PRINTER_OFFLINE` | Máy offline | `list_printers` xem available; `pick_printer` chọn máy khác, in lại |
 | `PRINTER_NO_PERMISSION` | Máy ngoài allowlist | `get_guard_config` xem allowlist; chọn máy trong đó hoặc báo người dùng thêm `PRINTONATOR_ALLOWED_PRINTERS` |
-| `pendingApproval:true` (KHÔNG phải lỗi) | Job đang chờ duyệt | Báo người dùng bấm "Duyệt tất cả" trong app Printonator (`list_jobs status=awaitingapproval` để xem hàng chờ) |
-| `APPROVAL_REQUIRED` | Dự phòng — **hiện KHÔNG luồng nào sinh ra mã này** (duyệt giờ trả `ok:true` + `pendingApproval:true`) | Coi như tương đương `pendingApproval:true` nếu client cũ gặp |
+| `APPROVAL_REQUIRED` | `REQUIRE_APPROVE=true` (mặc định) nên AI không được tự in, và không có màn duyệt nào đọc được queue của tiến trình MCP | Báo người dùng: đặt `PRINTONATOR_REQUIRE_APPROVE=false` + `PRINTONATOR_ALLOWED_PRINTERS="Tên máy"`, hoặc tự in qua app Printonator |
 | `JOB_NOT_FOUND` | job_id không có | `list_jobs` lấy đúng job_id |
 | `MAX_BATCH_EXCEEDED` | Vượt giới hạn | Chia nhỏ lô |
 | `SPOOLER_BUSY` | Máy/queue bận | Chờ vài giây, thử lại |

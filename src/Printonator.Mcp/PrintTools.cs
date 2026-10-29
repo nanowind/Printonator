@@ -59,7 +59,7 @@ public static class PrintTools
 
     [McpServerTool, Description(
         "In hàng loạt các file (pdf/image/docx...). AI KHÔNG cần chỉ máy in — bỏ trống printer = hệ thống tự chọn máy in vật lý sẵn sàng (xem pick_printer). Trả job_id cho từng file + ước lượng trang. " +
-        "Nếu cấu hình yêu cầu duyệt (mặc định), jobs vào trạng thái awaitingapproval và NGƯỜI DÙNG phải duyệt trong app Printonator (get_guard_config xem có cần duyệt không; AI không có tool tự duyệt).")]
+        "Nếu cấu hình còn bắt buộc duyệt (mặc định), tool trả APPROVAL_REQUIRED và KHÔNG in — chạy get_guard_config để biết, và người dùng cần đặt PRINTONATOR_REQUIRE_APPROVE=false + allowlist để AI tự in được.")]
     public static async Task<object> PrintFiles(
         [Description("Đường dẫn các file cần in")] string[] paths,
         [Description("Tên máy in (để trống hoặc 'mặc định' = máy in mặc định Windows)")] string? printer = null,
@@ -289,11 +289,14 @@ public static class PrintTools
     // ============ Duyệt job ============
 
     // KHÔNG có tool approve_job ở đây (cố ý): nếu AI duyệt được job của chính nó thì
-    // RequireApprove không còn là biên giới an toàn. Duyệt in nằm ở UI (MainWindow ApproveAll).
-    // Muốn AI tự in (không cần duyệt) → đặt PRINTONATOR_REQUIRE_APPROVE=false + allowlist.
+    // RequireApprove không còn là biên giới an toàn.
+    // Muốn AI tự in → đặt PRINTONATOR_REQUIRE_APPROVE=false + PRINTONATOR_ALLOWED_PRINTERS.
+    // (RequireApprove=true giờ trả APPROVAL_REQUIRED ngay từ print_files vì không có màn duyệt nào
+    // đọc được queue của tiến trình MCP — xem PrintTools.BuildAndQueue.)
 
     [McpServerTool, Description(
-        "Từ chối 1 job đang chờ duyệt (state=awaitingapproval) — job chuyển cancelled, không in.")]
+        "Từ chối 1 job đang chờ duyệt (state=awaitingapproval) — job chuyển cancelled, không in. "
+        + "Giữ lại để client cũ không vỡ; hiện print_files không tạo job chờ duyệt nữa.")]
     public static object RejectJob([Description("job_id (UUID)")] string jobId)
     {
         var job = FindJob(jobId);
@@ -420,28 +423,25 @@ public static class PrintTools
 
             if (guard.Config.RequireApprove)
             {
-                // LUỒNG DUYỆT THẬT: jobs vào trạng thái AwaitingApproval (không hard-block nữa).
-                // Người dùng duyệt trong app Printonator (AI chỉ từ chối được qua reject_job — không tự duyệt).
-                foreach (var j in jobs) j.Config.PrinterName = string.IsNullOrWhiteSpace(printer) ? "mặc định" : printer;
-                AppServices.Queue.AddForApproval(jobs);
-
-                var pendingIds = jobs.Select(j => j.Id.ToString()).ToArray();
-                var pendingTotal = jobs.Sum(PrintQueue.EstimatedPages);
-                guard.Audit(tool, "pending_approval", new Dictionary<string, object?>(SafeArgs(jobs, printer))
+                // LUỒNG DUYỆT: jobs vào AwaitingApproval chờ NGƯỜI duyệt. Nhưng UI và MCP server là
+                // HAI tiến trình với hai PrintQueue riêng (UI không reference Mcp) → job trong queue
+                // của tiến trình MCP này KHÔNG BAO GIỜ hiện trong màn duyệt của app. Trừ khi chính
+                // tiến trình MCP host màn duyệt (chưa có), job sẽ kẹt vĩnh viễn mà AI vẫn nhận ok:true
+                // → AI tưởng đã in xong. Trả lỗi RÕ thay vì nói dối.
+                var unreachable = new PrintError
                 {
-                    ["jobIds"] = pendingIds,
-                    ["totalPages"] = pendingTotal,
-                });
-
-                return new Dictionary<string, object?>
-                {
-                    ["ok"] = true,
-                    ["pendingApproval"] = true,
-                    ["jobIds"] = pendingIds,
-                    ["estimatedPages"] = pendingTotal,
-                    ["printer"] = jobs[0].Config.PrinterName,
-                    ["note"] = "Jobs đang CHỜ DUYỆT — người dùng duyệt trong app Printonator (bấm Duyệt tất cả) mới in; AI chỉ hủy được bằng reject_job (list_jobs status=awaitingapproval).",
+                    Code = ErrorCodes.ApprovalRequired,
+                    Category = PrintErrorCategory.Config,
+                    Message = "Cấu hình đang BẮT BUỘC duyệt, nhưng job AI không hiện được trong app Printonator để duyệt "
+                              + "(MCP server chạy ở tiến trình riêng, không chia hàng đợi với UI) — nên job sẽ không bao giờ được in.",
+                    Hint = "Đặt PRINTONATOR_REQUIRE_APPROVE=false + PRINTONATOR_ALLOWED_PRINTERS=\"Tên máy in\" để cho phép AI tự in, "
+                           + "hoặc in qua app Printonator.",
                 };
+                guard.Audit(tool, "blocked", new Dictionary<string, object?>(SafeArgs(jobs, printer))
+                {
+                    ["error"] = unreachable.Code,
+                });
+                return Fail(unreachable);
             }
 
             if (!guard.Config.IsStandaloneAutoPrintAllowed())

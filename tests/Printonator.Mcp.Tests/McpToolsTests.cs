@@ -110,4 +110,35 @@ public class McpToolsTests
         Assert.True(result.ContainsKey("maxFilesPerBatch"));
         Assert.True(result.ContainsKey("maxCopiesPerFile"));
     }
+
+    // ============ print_files khi RequireApprove=true (mặc định) ============
+
+    /// <summary>
+    /// Mặc định guard bắt buộc duyệt. MCP server chạy ở tiến trình riêng, không chia hàng đợi với
+    /// app Printonator → job chờ duyệt sẽ kẹt vĩnh viễn. Vì vậy print_files PHẢI trả lỗi
+    /// APPROVAL_REQUIRED thay vì ok:true — nếu trả ok:true thì AI tưởng đã in và KHÔNG in gì ra giấy.
+    /// Test này chạy với env mặc định (không đặt PRINTONATOR_REQUIRE_APPROVE=false).
+    /// </summary>
+    [Fact]
+    public async Task PrintFiles_RequireApproveDefault_ReturnsApprovalRequired()
+    {
+        if (AppServices.GuardConfig.RequireApprove == false)
+            return;   // máy dev có env riêng → bỏ qua, test này chỉ có nghĩa với cấu hình mặc định
+
+        var file = Path.Combine(Path.GetTempPath(), $"printonator-mcptest-{Guid.NewGuid():N}.txt");
+        File.WriteAllText(file, "x");
+        try
+        {
+            var result = (Dictionary<string, object?>)await PrintTools.PrintFiles([file]);
+
+            Assert.False((bool)result["ok"]!);
+            var err = (Dictionary<string, object?>)result["error"]!;
+            Assert.Equal(ErrorCodes.ApprovalRequired, err["code"]);
+            Assert.NotEmpty((string)err["hint"]!);
+        }
+        finally
+        {
+            try { File.Delete(file); } catch { }
+        }
+    }
 }
