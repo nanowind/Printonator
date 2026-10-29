@@ -5,6 +5,8 @@ cd "$(dirname "$0")/.."
 
 echo "== 1/4 Publish app (Release) =="
 dotnet publish src/Printonator.UI -c Release -r win-x64 --self-contained false -o setup/app 2>&1 | tail -2
+# MCP server standalone (app AI spawn trực tiếp) — cùng thư mục stage để ISCC có file để nhúng
+dotnet publish src/Printonator.Mcp -c Release -r win-x64 --self-contained false -o setup/app 2>&1 | tail -2
 
 echo "== 2/4 Build setup EXE =="
 ISCC="/c/Users/scraw/AppData/Local/Programs/Inno Setup 6/ISCC.exe"

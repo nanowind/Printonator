@@ -322,7 +322,9 @@
                             <ComboBoxItem Content="{l10n:Loc Option.PerSheet6}" Tag="6"/>
                             <ComboBoxItem Content="{l10n:Loc Option.PerSheet9}" Tag="9"/>
                             <ComboBoxItem Content="{l10n:Loc Option.PerSheet16}" Tag="16"/>
-                            <ComboBoxItem Content="{l10n:Loc Option.Booklet}" Tag="booklet"/>
+                            <!-- Booklet BỎ: chưa engine nào imposition (gấp sách thật) — trước đây chỉ
+                                 set PagesPerSheet=2 mà quảng cáo "gấp sách" = hứa suông. Preset cũ có
+                                 Booklet=true được quy về 2-tr/tờ khi nạp (LoadFrom). -->
                         </ComboBox>
                         <TextBlock Text="{l10n:Loc Settings.HintPerSheet}" Style="{StaticResource HintText}"/>
 
@@ -352,6 +354,15 @@
                                            VerticalAlignment="Center" Margin="10,0,0,0"/>
                             </StackPanel>
                             <TextBlock Text="{l10n:Loc Settings.WatermarkOpacityHint}" Style="{StaticResource HintText}"/>
+
+                            <TextBlock Text="{l10n:Loc Settings.WatermarkPosition}" Style="{StaticResource OptionLabel}"/>
+                            <ComboBox x:Name="WatermarkPositionCombo" Width="200" HorizontalAlignment="Left" FontSize="12">
+                                <ComboBoxItem Content="{l10n:Loc Settings.WatermarkPositionCenter}" Tag="center"/>
+                                <ComboBoxItem Content="{l10n:Loc Settings.WatermarkPositionTopLeft}" Tag="top-left"/>
+                                <ComboBoxItem Content="{l10n:Loc Settings.WatermarkPositionTopRight}" Tag="top-right"/>
+                                <ComboBoxItem Content="{l10n:Loc Settings.WatermarkPositionBottomLeft}" Tag="bottom-left"/>
+                                <ComboBoxItem Content="{l10n:Loc Settings.WatermarkPositionBottomRight}" Tag="bottom-right"/>
+                            </ComboBox>
                         </StackPanel>
                     </StackPanel>
                 </TabItem>

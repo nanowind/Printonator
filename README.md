@@ -83,7 +83,7 @@ Cần .NET 8 SDK:
 
 ```bash
 dotnet build Printonator.sln                # build toàn bộ
-dotnet test Printonator.sln                 # Core 103 + Spool 4 + Mcp 6 + UI 27 = 140 tests
+dotnet test Printonator.sln                 # chạy toàn bộ test (chi tiết + log: tools/test_full.ps1)
 dotnet run --project src/Printonator.UI     # chạy app
 dotnet run --project src/Printonator.Mcp    # chạy MCP server
 ```

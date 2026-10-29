@@ -44,7 +44,15 @@ public class MainWindowTests
         // dòng test khác thêm). Kill trước khi launch = mỗi test có app TRỐNG thật sự.
         var stale = Process.GetProcessesByName("Printonator.UI");
         foreach (var p in stale) { try { p.Kill(); p.WaitForExit(); } catch { } }
-        var app = FlaUI.Core.Application.Launch(AppPath);
+        // Hermetic: ép tiếng Việt qua env (ưu tiên cao nhất trong CultureResolver) — máy dev có
+        // HKCU Language=en thì assertion tiếng Việt sẽ fail dù code đúng.
+        var psi = new ProcessStartInfo(AppPath)
+        {
+            UseShellExecute = false,
+            WorkingDirectory = Path.GetDirectoryName(AppPath)!,
+        };
+        psi.Environment["PRINTONATOR_LANGUAGE"] = "vi";
+        var app = FlaUI.Core.Application.Launch(psi);
         using var automation = new UIA3Automation();
         var main = app.GetMainWindow(automation, TimeSpan.FromSeconds(20));
         Assert.NotNull(main);
@@ -63,7 +71,8 @@ public class MainWindowTests
             Assert.NotNull(list);
             Assert.Empty(list.Items); // 0 hàng — không còn demo jobs
 
-            var empty = main.FindFirstDescendant(c => c.ByAutomationId("EmptyState"));
+            // EmptyState là StackPanel (không có UIA peer) → automation id gắn vào TextBlock tiêu đề.
+            var empty = Retry(() => main.FindFirstDescendant(c => c.ByAutomationId("EmptyState")), TimeSpan.FromSeconds(10));
             Assert.NotNull(empty);
             Assert.False(empty.IsOffscreen); // ĐANG hiển thị hướng dẫn (không phải Collapsed)
         }
@@ -136,14 +145,18 @@ public class MainWindowTests
             var list = main.FindFirstDescendant(c => c.ByAutomationId("JobList")).AsListBox();
             WaitRows(list, 2);
 
-            // Chọn nhiều dòng (AddToSelection — ListBox SelectionMode=Extended hỗ trợ)
-            list.Items[0].AddToSelection();
-            list.Items[1].AddToSelection();
+            // Chọn nhiều dòng: focus window + ListBox rồi Ctrl+A (ListBox WPF tự xử lý SelectAll ở
+            // SelectionMode=Extended; MainWindow KHÔNG bind riêng ApplicationCommands.SelectAll).
+            // Tránh mouse-click toạ độ và AddToSelection: ListBox có GROUP (folder) nên row job là con
+            // của group container → cả hai đều không cộng đủ 2 dòng, và click toạ độ trượt khi cửa sổ
+            // không có focus trong full suite.
+            main.Focus();
+            list.Focus();
             Thread.Sleep(300);
+            Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_A);
+            Thread.Sleep(700);
 
-            // Bulk bar hiện ra — kiểm tra text "Đã chọn 2 file" (BulkCountText — TextBlock có AutomationPeer,
-            // giờ đi qua i18n: Main.BulkCountFormat = "Đã chọn {0} file")
-            var bulkCount = main.FindFirstDescendant(c => c.ByAutomationId("BulkCountText"));
+            var bulkCount = Retry(() => main.FindFirstDescendant(c => c.ByAutomationId("BulkCountText")), TimeSpan.FromSeconds(5));
             Assert.NotNull(bulkCount);
             Assert.Contains("Đã chọn 2 file", bulkCount.Name);
         }
@@ -224,6 +237,20 @@ public class MainWindowTests
     }
 
     // ===== Seed hàng đợi bằng file TẠM THẬT qua paste Ctrl+V (thay cho demo jobs đã bỏ) =====
+
+    /// <summary>Thử tìm element tới khi có hoặc hết giờ — UIA tree của WPF dựng dần sau khi window show.</summary>
+    private static FlaUI.Core.AutomationElements.AutomationElement? Retry(
+        Func<FlaUI.Core.AutomationElements.AutomationElement?> find, TimeSpan timeout)
+    {
+        var sw = Stopwatch.StartNew();
+        while (sw.Elapsed < timeout)
+        {
+            var found = find();
+            if (found is not null) return found;
+            Thread.Sleep(200);
+        }
+        return find();
+    }
 
     private static string CreateTempSeedDir()
     {

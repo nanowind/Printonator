@@ -16,7 +16,7 @@
 | Giá | Trả phí theo máy | Miễn phí, mã mở | Lợi thế cốt lõi |
 | Office engine | Dùng MS Office bản quyền | App gốc (COM) + **LibreOffice dynamic** (soffice có sẵn trên máy) | ✅ Cả 2 engine đã code; nếu máy không có gì → shell fallback |
 | PDF/ảnh/TXT render | PDFium nhúng sẵn | **Browser render dynamic** (Chrome/Edge headless CDP) + **Windows.Data.Pdf** (API có sẵn Win10/11) | ✅ KHÔNG bundle lib — máy ai cũng có |
-| Automation | CLI bản cao, đóng | **MCP AI-native** ✅ + watch-folder + shell verb in file | MCP server 12 tools đã có (xem docs/MCP.md); CLI wrapper đóng gói chưa có |
+| Automation | CLI bản cao, đóng | **MCP AI-native** ✅ + watch-folder + shell verb in file | MCP server 12 tools đã có (xem docs/MCP.md); CLI wrapper `tools/printonator.ps1` đã có |
 | Data/privacy | License server, activation | 100% local, no telemetry | — |
 | Tùy chọn in cơ bản (page range/màu/khay/scale/N-up/odd-even/res) | Đầy đủ, mức app + driver | ✅ Đầy đủ trên màn Print Settings (bảng 3) | Đợt 2026-08-26 |
 

@@ -56,11 +56,13 @@ Printonator.sln
 │     ├─ PageRangeDialog.xaml    # Dialog chọn trang (+ preview "→ Will print physical pages")
 │     ├─ ModeResolver            # Lite/Full mode (registry)
 │     └─ app.ico
-└─ tests/
-   ├─ Printonator.Core.Tests/    # xUnit — 102 tests (page-range, section, queue, approve, preset, guard, error-routing, store)
-   ├─ Printonator.Spool.Tests/   # xUnit — 4 E2E print-to-PDF
-   ├─ Printonator.Mcp.Tests/     # xUnit — 6 (tool shape, error reference, pick printer)
-   └─ Printonator.UITests/       # xUnit + FlaUI.UIA3 — 27 UI tests
+├─ tests/
+│  ├─ Printonator.Core.Tests/    # xUnit — 102 tests (page-range, section, queue, approve, preset, guard, error-routing, store)
+│  ├─ Printonator.Spool.Tests/   # xUnit — 4 E2E print-to-PDF
+│  ├─ Printonator.Mcp.Tests/     # xUnit — 6 (tool shape, error reference, pick printer)
+│  └─ Printonator.UITests/       # xUnit + FlaUI.UIA3 — 27 UI tests
+└─ tools/
+   └─ printonator.ps1            # CLI wrapper (PowerShell → MCP HTTP); KHÔNG phải project .NET
 ```
 
 **Tóm tắt 1 dòng mỗi class:**
@@ -165,7 +167,7 @@ Xem chi tiết `docs/COMPARISON_PRINT_CONDUCTOR.md`. Tóm tắt:
 11. ✅ **i18n 5 ngôn ngữ** (vi/en/zh/ru/ja) — Strings.json catalog, chọn ngôn ngữ trong AboutWindow; **Lite/Full mode** (ModeResolver).
 
 **Còn lại (thứ tự đề xuất tiếp):**
-- Report page đầy đủ (mới chỉ có cover) · CLI wrapper đóng gói · Email (.msg/.eml)/CAD/HEIC/signature validate · UI log file phiên · Reverse order/blank skip/job name · Import danh sách TXT/Excel/URL · Archives ZIP · Shell menu registry thường trực khi cài
+- Report page đầy đủ (mới chỉ có cover) · Email (.msg/.eml)/CAD/HEIC/signature validate · UI log file phiên · Reverse order/blank skip/job name · Import danh sách TXT/Excel/URL · Archives ZIP · Shell menu registry thường trực khi cài
 
 ## 8. Môi trường & tooling
 

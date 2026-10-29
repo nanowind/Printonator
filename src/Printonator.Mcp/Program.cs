@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -44,6 +45,8 @@ public static class Program
     private static async Task RunHttpAsync()
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions());
+        var mcpToken = Environment.GetEnvironmentVariable("PRINTONATOR_MCP_TOKEN");
+
         builder.Logging.AddConsole();
         builder.Services
             .AddMcpServer()
@@ -51,6 +54,30 @@ public static class Program
             .WithToolsFromAssembly();
 
         var app = builder.Build();
+
+        // HTTP transport bắt yêu cầu Bearer token nếu env PRINTONATOR_MCP_TOKEN có set.
+        // Stdio transport không cần token (IDE spawn trực tiếp cùng user). Loopback-only vẫn giữ.
+        if (!string.IsNullOrEmpty(mcpToken))
+        {
+            app.Use(async (ctx, next) =>
+            {
+                if (!ctx.Request.Path.StartsWithSegments("/mcp", StringComparison.OrdinalIgnoreCase))
+                {
+                    await next();
+                    return;
+                }
+                var header = ctx.Request.Headers.Authorization.ToString();
+                var expected = $"Bearer {mcpToken}";
+                if (!string.Equals(header, expected, StringComparison.Ordinal))
+                {
+                    ctx.Response.StatusCode = 401;
+                    await ctx.Response.WriteAsync("Unauthorized");
+                    return;
+                }
+                await next();
+            });
+        }
+
         app.MapMcp("/mcp");
 
         // Chỉ loopback (127.0.0.1), không mở CORS, không "*" — chặn máy khác trong LAN ra lệnh in

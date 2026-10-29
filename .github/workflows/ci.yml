@@ -29,6 +29,16 @@ jobs:
       - name: Core unit tests (55)
         run: dotnet test tests/Printonator.Core.Tests -c Release --no-build
 
+      - name: Spool tests
+        run: dotnet test tests/Printonator.Spool.Tests -c Release --no-build
+
+      - name: MCP tests
+        run: dotnet test tests/Printonator.Mcp.Tests -c Release --no-build
+
+      - name: i18n gate
+        shell: pwsh
+        run: ./tools/check_i18n.ps1
+
   # ---- Layer 2: E2E (FlaUI) — CẦN phiên desktop thật (runner tự quản / lab). ----
   # GitHub hosted windows chạy headless → không mở WPF được → gated bằng workflow_dispatch.
   ui-e2e:

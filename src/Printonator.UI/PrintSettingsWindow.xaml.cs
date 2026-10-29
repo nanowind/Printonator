@@ -178,6 +178,7 @@ public partial class PrintSettingsWindow : Window
         WatermarkText.Text = cfg.WatermarkText ?? "";
         WatermarkOpacitySlider.Value = Math.Clamp(cfg.WatermarkOpacity, 0.1, 1.0);
         UpdateWatermarkOpacityText();
+        SelectTag(WatermarkPositionCombo, cfg.WatermarkPosition, "center");
 
         SelectTag(OrientationCombo, cfg.Orientation.ToString(), "Portrait");
         SelectTag(QualityCombo, cfg.Quality.ToString(), "AsPrinter");
@@ -185,7 +186,9 @@ public partial class PrintSettingsWindow : Window
         ZoomBox.Text = cfg.ScalePercent.ToString();
         UpdateZoomState();
 
-        if (cfg.Booklet) SelectTag(PerSheetCombo, "booklet", "1");
+        // Booklet không còn trong combo (chưa engine nào imposition thật) — preset cũ có cờ này
+        // được quy về 2 trang/tờ, đúng hành vi cũ khi engine đọc.
+        if (cfg.Booklet) SelectTag(PerSheetCombo, "2", "1");
         else SelectTag(PerSheetCombo, Math.Max(cfg.PagesPerSheet, 1).ToString(), "1");
     }
 
@@ -624,7 +627,7 @@ public partial class PrintSettingsWindow : Window
         var watermark = WatermarkText.Text.Trim();
         cfg.WatermarkText = string.IsNullOrEmpty(watermark) ? null : watermark;
         cfg.WatermarkOpacity = Math.Round(Math.Clamp(WatermarkOpacitySlider.Value, 0.1, 1.0), 2);
-        cfg.WatermarkPosition = "center";
+        cfg.WatermarkPosition = SelectedTag(WatermarkPositionCombo) ?? "center";
 
         cfg.Parity = SelectedTag(ParityCombo) switch
         {
@@ -694,16 +697,10 @@ public partial class PrintSettingsWindow : Window
             : 100;
 
         var perSheet = SelectedTag(PerSheetCombo) ?? "1";
-        if (perSheet == "booklet")
-        {
-            cfg.Booklet = true;
-            cfg.PagesPerSheet = 2;
-        }
-        else
-        {
-            cfg.Booklet = false;
-            cfg.PagesPerSheet = int.TryParse(perSheet, out var n) ? Math.Clamp(n, 1, 16) : 1;
-        }
+        // Booklet luôn false: combo không còn mục booklet (xem LoadFrom). Giữ field false để
+        // preset cũ không mang cờ chết sang lần lưu tiếp theo.
+        cfg.Booklet = false;
+        cfg.PagesPerSheet = int.TryParse(perSheet, out var n) ? Math.Clamp(n, 1, 16) : 1;
 
         cfg.ProfileName = SelectedTag(ProfileCombo) is { Length: > 0 } profile ? profile : null;
     }

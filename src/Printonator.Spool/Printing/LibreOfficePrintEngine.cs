@@ -57,14 +57,20 @@ public sealed class LibreOfficePrintEngine : IPrintEngine
         // -p            → in ra máy in MẶC ĐỊNH của Windows (tài liệu chính thức LibreOffice)
         // --pt "Tên máy" → in ra máy chỉ định, đóng file sau khi in
         var printArg = printer is null ? "-p" : $"--pt \"{printer}\"";
+        // Chống argument injection: dùng ArgumentList thay vì ghép chuỗi → đường dẫn file có ký tự đặc biệt
+        // (dấu nháy, gạch chéo ngược, null) không bị tách/sửa tham số của soffice.
         var psi = new ProcessStartInfo
         {
             FileName = soffice,
-            Arguments = $"--headless --norestore --nologo {printArg} \"{job.FilePath}\"",
             UseShellExecute = false,
             CreateNoWindow = true,
             WindowStyle = ProcessWindowStyle.Hidden,
         };
+        psi.ArgumentList.Add("--headless");
+        psi.ArgumentList.Add("--norestore");
+        psi.ArgumentList.Add("--nologo");
+        psi.ArgumentList.Add(printArg);
+        psi.ArgumentList.Add(job.FilePath);
 
         try
         {

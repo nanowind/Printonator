@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Printonator.Core;
 using Printonator.Core.Models;
 using Printonator.Core.Printing;
@@ -95,11 +96,12 @@ public sealed class OfficeComPrintEngine : IPrintEngine
         worker.SetApartmentState(ApartmentState.STA);
         worker.Start();
 
-        return WaitWithTimeoutAsync(tcs.Task, job, ct, spawnedOfficePids);
+        return WaitWithTimeoutAsync(tcs.Task, job, ct, spawnedOfficePids, worker);
     }
 
     private static async Task<Result<bool>> WaitWithTimeoutAsync(
-        Task<Result<bool>> work, PrintJob job, CancellationToken ct, IReadOnlyCollection<int> spawnedOfficePids)
+        Task<Result<bool>> work, PrintJob job, CancellationToken ct,
+        IReadOnlyCollection<int> spawnedOfficePids, Thread worker)
     {
         try
         {
@@ -112,6 +114,11 @@ public sealed class OfficeComPrintEngine : IPrintEngine
             // (mà CHÍNH engine này tạo) sẽ treo vô hình. Kill ĐÚNG PID engine đã spawn — tuyệt
             // đối không đụng Office người dùng đang mở (PID không nằm trong danh sách này).
             KillSpawnedOffice(spawnedOfficePids);
+            // Kill office process làm PrintOut ném exception trên STA thread → finally của
+            // PrintWithWord/Excel/PowerPoint chạy → duplexRestore.Dispose khôi phục dmDuplex,
+            // doc.Close + app.Quit + FinalReleaseComObject dọn COM. Join ngắn chờ thread thoát;
+            // nếu vẫn kẹt (thread background) thì app đóng sẽ dọn nó.
+            try { worker.Join(TimeSpan.FromSeconds(3)); } catch { }
             // STA bị bỏ rơi → using var duplexRestore trong PrintWithWord/Excel/PowerPoint KHÔNG bao giờ
             // chạy Dispose, dmDuplex của máy in kẹt ở giá trị đã ghi (máy in hỏng cho MỌI app sau đó).
             // ponytail: chỉ restore được lease CÒN SỐNG trong tiến trình này — nếu app bị kill cứng giữa
@@ -133,6 +140,7 @@ public sealed class OfficeComPrintEngine : IPrintEngine
             // Timeout THẬT (TimeoutException ở trên) vẫn trả Fail(EngineTimeout) như cũ.
             KillSpawnedOffice(spawnedOfficePids);
             PrinterDialogs.RestoreActive();   // cùng lý do nhánh timeout: Dispose trên STA bị bỏ rơi
+            try { worker.Join(TimeSpan.FromSeconds(3)); } catch { }
             throw;
         }
     }

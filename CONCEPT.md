@@ -71,11 +71,11 @@ In qua mạng/fleet, scheduling ngày giờ, app Android.
 
 ## 4. Phần mềm viết bằng gì? (câu trả lời trực tiếp)
 
-**Đề xuất: C# / .NET 10 (WPF hoặc WinUI 3)** — dễ bảo trì nhất cho bài này. Lý do:
+**Đề xuất: C# / .NET 8 (WPF)** — dễ bảo trì nhất cho bài này. Lý do:
 
 | Tiêu chí | C#/.NET ✅ | Python ⚠️ | Rust ⚠️ |
 |---|---|---|---|
-| UI Windows native (drag&drop, list 10,000 dòng) | WPF/WinUI3 trưởng thành | không có UI native xịn (PyQt/Tkinter yếu, còn lại giao diện web) | egui/iced mới, chưa chín cho desktop phức tạp |
+| UI Windows native (drag&drop, list 10,000 dòng) | WPF trưởng thành | không có UI native xịn (PyQt/Tkinter yếu, còn lại giao diện web) | egui/iced mới, chưa chín cho desktop phức tạp |
 | Windows Print Spooler / Printer API | native / first-class (System.Drawing.Printing, P/Invoke, XOR w/ WinRT) | pywin32 đủ dùng nhưng cập nhật thủ công | cần crate WinRT (windows-rs) — tự build nhiều |
 | Packaging cho Win10/11 | 1 file .exe (publish single-file, AOT) | cần đóng gói PyInstaller to đầu, dính antivirus hay bắn | 1 exe gọn, tốt — nhưng đó là điểm duy nhất nổi trội |
 | Thư viện chuyển đổi file | PDFium, LibreOffice bridge qua NuGet | pypdfium2, unoconv — ok | PDFium binding qua crate, LibreOffice cũng gọi được |
@@ -95,7 +95,7 @@ Nếu sau này thấy cần một core in cực gọn headless **hoặc tích h�
 
 ```
 ┌───────────────────────────────────────────────┐
-│  UI (WPF/WinUI3) — drag&drop, job list, log,  │
+│  UI (WPF)        — drag&drop, job list, log,  │
 │  preset, nút Start/Stop + trình duyệt MCP     │
 └───────────────┬───────────────┬───────────────┘
                 ▼               ▼
@@ -109,32 +109,31 @@ Nếu sau này thấy cần một core in cực gọn headless **hoặc tích h�
     ▼            ▼            ▼
 Format Engines  Spooler       MCP Server
 ┌────────────┐ ┌──────────┐ ┌────────────────┐
-│ PDF→PDFium │ │ Windows  │ │ mcp://printona- │
-│ Office→Libre│ │ Spooler  │ │  tor — expose   │
-│ office →PDF │ │ (printer │ │ list/print/     │
-│ Images→WIC  │ │ handle,  │ │ status/cancel,  │
-│ TXT/CSV→raw │ │ DDI)     │ │ approval queue  │
+│ PDF→Windows│ │ Windows  │ │ mcp://printona- │
+│   .Data.Pdf│ │ Spooler  │ │  tor — expose   │
+│ Office→COM │ │ (printer │ │ list/print/     │
+│   →LibreOff│ │ handle,  │ │ status/cancel,  │
+│ ảnh→browser│ │ DDI)     │ │ approval queue  │
+│ TXT→browser│ │          │ │                 │
 └────────────┘ └──────────┘ └────────────────┘
 ```
 
 **Các promise:**
 1. **In file Office bằng chính app gốc của user — KHÔNG ép convert PDF** (giữ đúng cài đặt in trong file: page setup, margins, section, printer-specific):
-   - Quét máy user đã cài gì → ưu tiên: **Microsoft Word/Excel/PowerPoint** (COM automation → PrintOut với đúng cài đặt) → nếu không có MS Office thì **LibreOffice/OpenOffice** (UNO API PrintOut) → fallback cuối mới convert PDF qua LibreOffice headless + in bằng PDFium (mất cài đặt gốc, cảnh báo user)
-   - **PDF → PDFium** render trực tiếp; **ảnh → WIC**; **TXT/CSV → HTML/PDF**
+   - Quét máy user đã cài gì → ưu tiên: **Microsoft Word/Excel/PowerPoint** (COM automation → PrintOut với đúng cài đặt) → nếu không có MS Office thì **LibreOffice/OpenOffice** (UNO API PrintOut) → fallback cuối là shell `printto` / handler mặc định của Windows (mất cài đặt gốc, cảnh báo user)
+   - **PDF → cắt trang bằng Windows.Data.Pdf** (API có sẵn Win10/11, không bundle lib) → render bằng Chrome/Edge headless; **ảnh → browser render**; **TXT/CSV → HTML/PDF**
 2. **Print qua Windows Spooler API** — không dialog từng file, kiểm soát được setting theo doc.
 3. **UI và Engine tách rời** — MCP server, CLI dùng chung Core.
 4. **State machine rõ** — không bao giờ "treo im".
 5. **No cloud, no telemetry** — dữ liệu in cục bộ 100%.
 
 **Module:**
-- `Printonator.Core` — queue, scheduler, engine registry (MIT)
-- `Printonator.Formats.Pdf` — PDFium (Apache-2.0)
-- `Printonator.Formats.Office` — **engine chọn app in gốc** (MS Office COM → LibreOffice UNO → fallback PDF) + section-map reader (parse document.xml `sectPr`)
-- `Printonator.Spool` — Windows Spooler/Printer API + emulated PDF merge
-- `Printonator.Mcp` — MCP server (stdlib/HTTP): list_printers, print_files, list_jobs, job_status, cancel_job, presets
-- `Printonator.Cli` — headless (reuse core + mcp)
-- `Printonator.UI` — WPF/WinUI, dark mode, list virtualized
-- `Printonator.Tests` — unit + integration trên "Microsoft Print to PDF"
+- `Printonator.Core` — queue, scheduler, engine registry, state machine, preset, guard (MIT)
+- `Printonator.Spool` — Windows Spooler/Printer API + engine dynamic: Office COM → LibreOffice → Browser render (Chrome/Edge headless CDP) + WindowsPdfRasterizer (cắt trang PDF bằng Windows.Data.Pdf, không bundle lib)
+- `Printonator.Mcp` — MCP server (stdio/HTTP): list_printers, print_files, list_jobs, job_status, cancel_job, presets, guard
+- `Printonator.UI` — WPF, dark mode, list virtualized
+- `tools/printonator.ps1` — CLI wrapper (PowerShell) gọi MCP server, không phải project .NET
+- `tests/` — unit (Core/Spool/Mcp) + integration trên "Microsoft Print to PDF"
 
 ---
 
@@ -209,7 +208,7 @@ Vì mã MIT ai cũng clone được, kẻ xấu có thể build bản chèn mã 
 ## 8. Lộ trình kỹ thuật
 
 1. **Tuần 1:** Repo MIT, skeleton Core + UI file-list + MCP server lộ `list_printers` (chứng minh app → AI kết nối được)
-2. **Tuần 2:** PDFium + Spool → in PDF thật, job log, retry; MCP `print_files` + `approve` flow
+2. **Tuần 2:** Windows.Data.Pdf + Spool → in PDF thật, job log, retry; MCP `print_files` + `approve` flow
 3. **Tuần 3:** LibreOffice bridge → đủ định dạng; per-job config (bản, duplex, range); MCP presets + quota/allowlist
 4. **Tuần 4:** CSV import, gộp PDF, watch-folder, CLI hoàn thiện, test trên máy + máy ảo Win10/11 + kết nối thử từ Hermes/Claude
 5. **Sau:** i18n, packaging, GitHub Actions CI (build + publish), docs cho MCP đăng ký client
@@ -227,4 +226,4 @@ Vì mã MIT ai cũng clone được, kẻ xấu có thể build bản chèn mã 
 
 ---
 
-*Tiếp theo: nếu a đồng ý hướng (C#/.NET + MCP kèm guard an toàn), mình chốt thiết kế kỹ (spool flow, schema job, list tool của MCP server, selection PDFium binding) rồi scaffold tuần 1.*
+*Tiếp theo: nếu a đồng ý hướng (C#/.NET + MCP kèm guard an toàn), mình chốt thiết kế kỹ (spool flow, schema job, list tool của MCP server, cắt trang PDF bằng Windows.Data.Pdf) rồi scaffold tuần 1.*

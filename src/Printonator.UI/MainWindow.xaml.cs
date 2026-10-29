@@ -1,4 +1,5 @@
 ﻿using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
@@ -62,8 +63,17 @@ public partial class MainWindow : Window
 
     public ObservableCollection<PrintJob> Jobs => _queue.Jobs;
 
-    /// <summary>Máy in đang chọn (PrinterInfo đầy đủ trạng thái/khả năng) — combo bind TwoWay.</summary>
-    public PrinterInfo? SelectedPrinter { get; set; }
+    /// <summary>Máy in đang chọn (PrinterInfo đầy đủ trạng thái/khả năng) — combo bind TwoWay.
+    /// Dùng DependencyProperty để binding từ XAML cập nhật đúng khi code-set.</summary>
+    public static readonly DependencyProperty SelectedPrinterProperty =
+        DependencyProperty.Register(nameof(SelectedPrinter), typeof(PrinterInfo), typeof(MainWindow),
+            new PropertyMetadata(null));
+
+    public PrinterInfo? SelectedPrinter
+    {
+        get => (PrinterInfo?)GetValue(SelectedPrinterProperty);
+        set => SetValue(SelectedPrinterProperty, value);
+    }
 
     public MainWindow()
     {
@@ -106,10 +116,10 @@ public partial class MainWindow : Window
         _orchestrator.RefreshRequested += () => JobList.Items.Refresh();
         // Nguồn thêm/xóa job duy nhất là _queue.Jobs (AddFiles, CtxRemove, watcher, popup "In xong") —
         // bám CollectionChanged để cờ bìa + dòng bìa luôn khớp số file, khỏi sót đường nào.
-        Jobs.CollectionChanged += (_, _) => SyncCoverState();
+        Jobs.CollectionChanged += OnJobsCollectionChanged;
 
         BellBadgeBorder.Visibility = Visibility.Collapsed;
-        Notifications.CollectionChanged += (_, _) => UpdateNotificationBadge();
+        Notifications.CollectionChanged += OnNotificationsCollectionChanged;
         JobList.SelectionChanged += OnSelectionChanged;
         _queue.JobStateChanged += OnJobStateChanged;
 
@@ -126,6 +136,11 @@ public partial class MainWindow : Window
             catch { /* Đóng app: lưu lỗi (disk full, file bị khóa...) không đáng để phá shutdown — cleanup dưới vẫn phải chạy */ }
             try { if (_watchService is not null) WatchFolderService.SaveConfig(WatchFolderService.FilePath, new WatchFolderService.WatchConfig { Folder = _watchService.Folder, Enabled = _watchService.IsConfigured }); }
             catch { /* lưu watch config lỗi — không đáng phá shutdown */ }
+            Jobs.CollectionChanged -= OnJobsCollectionChanged;
+            Notifications.CollectionChanged -= OnNotificationsCollectionChanged;
+            JobList.SelectionChanged -= OnSelectionChanged;
+            _queue.JobStateChanged -= OnJobStateChanged;
+            PrinterCombo.SelectionChanged -= PrinterCombo_SelectionChanged;
             _watchService?.Dispose();
             _lifeCts.Cancel();
             _queue.Dispose();
@@ -419,6 +434,10 @@ public partial class MainWindow : Window
         IsVirtual = true,
         StatusDetail = "",
     };
+
+    private void OnJobsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e) => SyncCoverState();
+
+    private void OnNotificationsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e) => UpdateNotificationBadge();
 
     private void PrinterCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {

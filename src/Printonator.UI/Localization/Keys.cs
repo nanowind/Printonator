@@ -300,7 +300,6 @@ public static class Keys
         public const string AllPages = "Option.AllPages";
         public const string AsDocument = "Option.AsDocument";
         public const string AsPrinter = "Option.AsPrinter";
-        public const string Booklet = "Option.Booklet";
         public const string ByDocuments = "Option.ByDocuments";
         public const string ByPages = "Option.ByPages";
         public const string Color = "Option.Color";
@@ -450,6 +449,12 @@ public static class Keys
         public const string TitlePlural = "Settings.TitlePlural";
         public const string WatermarkOpacity = "Settings.WatermarkOpacity";
         public const string WatermarkOpacityHint = "Settings.WatermarkOpacityHint";
+        public const string WatermarkPosition = "Settings.WatermarkPosition";
+        public const string WatermarkPositionCenter = "Settings.WatermarkPositionCenter";
+        public const string WatermarkPositionTopLeft = "Settings.WatermarkPositionTopLeft";
+        public const string WatermarkPositionTopRight = "Settings.WatermarkPositionTopRight";
+        public const string WatermarkPositionBottomLeft = "Settings.WatermarkPositionBottomLeft";
+        public const string WatermarkPositionBottomRight = "Settings.WatermarkPositionBottomRight";
         public const string WatermarkText = "Settings.WatermarkText";
         public const string WatermarkTextHint = "Settings.WatermarkTextHint";
         public const string WindowTitle = "Settings.WindowTitle";

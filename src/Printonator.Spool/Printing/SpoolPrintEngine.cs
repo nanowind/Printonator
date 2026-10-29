@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using System.Text.RegularExpressions;
 using Microsoft.Win32;
 using Printonator.Core;
 using Printonator.Core.Models;
@@ -63,6 +64,17 @@ public sealed class SpoolPrintEngine : IPrintEngine
                     $"{DateTimeOffset.Now:O} SpoolPrintEngine printto printer='{printerName}' copies={copies} file={job.FileName}\n");
             }
             catch { }
+
+            // Command injection guard: tên máy in chỉ được chứa chữ, số, khoảng trắng, gạch nối, gạch dưới, dấu chấm.
+            // Tên máy in thật không chứa ký tự đặc biệt shell → chặn AI/đường dẫn mác malicious ép shell chạy lệnh ngoài.
+            if (!ValidPrinterName(printerName))
+                return Task.FromResult(Result<bool>.Fail(new PrintError
+                {
+                    Code = ErrorCodes.PrinterNotFound,
+                    Category = PrintErrorCategory.Config,
+                    Message = $"Tên máy in không hợp lệ: \"{printerName}\".",
+                    Hint = "Chọn máy in khác (tên máy in chỉ chứa chữ, số, khoảng trắng, gạch nối, gạch dưới).",
+                }));
 
             var psi = new ProcessStartInfo
             {
@@ -157,10 +169,7 @@ public sealed class SpoolPrintEngine : IPrintEngine
             }
             finally
             {
-                foreach (var p in spawned)
-                {
-                    try { p.Dispose(); } catch { }
-                }
+                foreach (var p in spawned) CleanupSpawnedProc(p);
                 try { q?.Dispose(); } catch { }
                 try { server?.Dispose(); } catch { }
             }
@@ -248,7 +257,7 @@ public sealed class SpoolPrintEngine : IPrintEngine
         catch { return PrintWaitResult.Completed; /* máy in lỗi/lỗi đọc queue — không chờ (best-effort) */ }
     }
 
-    /// <summary>Dọn process printto engine đã spawn khi job bị cancel — tránh app đọc file mồ côi.</summary>
+    /// <summary>Dọn 1 process spawn bởi printto: kill nếu chưa exit, sau đó Dispose an toàn (không ném InvalidOperationException khi process vẫn chạy).</summary>
     private static void CleanupSpawnedProc(Process? proc)
     {
         if (proc is null) return;
@@ -256,14 +265,14 @@ public sealed class SpoolPrintEngine : IPrintEngine
         {
             if (!proc.HasExited)
             {
-                proc.Kill(entireProcessTree: true);
-                proc.WaitForExit(5000);
+                try { proc.Kill(entireProcessTree: true); } catch { }
+                proc.WaitForExit(3000);
             }
         }
-        catch { /* best-effort — process có thể đã tự thoát */ }
+        catch { /* process có thể đã bị kernel dọn, bỏ qua */ }
         finally
         {
-            proc.Dispose();
+            try { proc.Dispose(); } catch { }
         }
     }
 
@@ -280,4 +289,9 @@ public sealed class SpoolPrintEngine : IPrintEngine
         }
         catch { return 0; }
     }
+
+    /// <summary>Kiểm tra tên máy in chỉ chứa ký tự an toàn cho ShellExecute: chữ (kể cả tiếng Việt),
+    /// số, khoảng trắng, . - _ ( ) # @ , ' — đủ cho tên máy in thật, chặn &amp; | ; $ ` " \ ngoặc nhọn.</summary>
+    private static bool ValidPrinterName(string? name)
+        => !string.IsNullOrWhiteSpace(name) && Regex.IsMatch(name, @"^[\p{L}\p{N}\s.\-_()#@,']+$");
 }

@@ -315,6 +315,8 @@
             <DockPanel Margin="16,8">
                 <Button Content="{l10n:Loc Main.AddFilesButton}" Style="{StaticResource RoundedBtn}" Padding="16,7" Click="AddFiles_Click" ToolTip="{l10n:Loc Main.AddFilesButton}"/>
                 <ComboBox x:Name="PrinterCombo" Width="340" Margin="16,0,0,0" VerticalAlignment="Center"
+                          ItemsSource="{Binding Printers}"
+                          SelectedItem="{Binding SelectedPrinter, Mode=TwoWay}"
                           ToolTip="{Binding SelectedItem.Name, RelativeSource={RelativeSource Self}}">
                     <ComboBox.ItemTemplate>
                         <DataTemplate>
@@ -938,7 +940,8 @@
                                Foreground="{StaticResource FaintBrush}"
                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Border>
-                <TextBlock Text="{l10n:Loc Main.EmptyStateTitle}" FontSize="14" FontWeight="SemiBold"
+                <TextBlock x:Name="EmptyStateTitle" Text="{l10n:Loc Main.EmptyStateTitle}" FontSize="14" FontWeight="SemiBold"
+                           AutomationProperties.AutomationId="EmptyState"
                            Foreground="{StaticResource MutedBrush}" HorizontalAlignment="Center" Margin="0,14,0,0"
                            TextWrapping="Wrap" TextTrimming="CharacterEllipsis"/>
                 <TextBlock Text="{l10n:Loc Main.EmptyStateHint}" FontSize="12"

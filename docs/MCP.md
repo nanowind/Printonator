@@ -15,8 +15,12 @@ dotnet run --project src/Printonator.Mcp -- --stdio
 
 - **Chỉ bind loopback** (`127.0.0.1`), không CORS — người khác trong LAN không ra lệnh in được.
 
-> **CLI wrapper:** file `tools/printonator.ps1` (wrapper gọi nhanh server bằng đường dẫn exe cố định) **chưa có** —
-> hiện chạy trực tiếp `dotnet run --project src/Printonator.Mcp` hoặc exe đã build như bên trên.
+> **CLI wrapper:** `tools/printonator.ps1` — PowerShell gọi nhanh MCP server (Streamable HTTP + JSON-RPC),
+> không cần nhớ tên tool. Lệnh chạy được khi app Printonator đang MỞ:
+> ```powershell
+> .\tools\printonator.ps1 list-printers
+> .\tools\printonator.ps1 print-files C:\hopdong.docx C:\hopdong2.pdf -Printer "Canon LBP151 (222)" -Copies 2
+> ```
 > Shell verb "In với Printonator" gọi app chính (UI), không đi qua MCP server.
 
 ## Cấu hình client (đăng ký server)

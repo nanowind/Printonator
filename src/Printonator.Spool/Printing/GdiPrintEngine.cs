@@ -2,6 +2,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.Drawing.Printing;
 using System.IO;
+using System.Printing;
 using Printonator.Core;
 using Printonator.Core.Models;
 using Printonator.Core.Printing;
@@ -270,6 +271,37 @@ public sealed class GdiPrintEngine : IPrintEngine
         return Result<bool>.Ok(true);
     }
 
+    /// <summary>Tên khay thân thiện (PrinterService.FriendlyTrayName) → InputBin của driver.</summary>
+    private static InputBin? TrayBinFromFriendlyName(string friendly) => friendly switch
+    {
+        _ when friendly.Contains("Tự chọn", StringComparison.OrdinalIgnoreCase) => InputBin.AutoSelect,
+        _ when friendly.Contains("Nạp tự động", StringComparison.OrdinalIgnoreCase) => InputBin.AutoSheetFeeder,
+        _ when friendly.Contains("cassette", StringComparison.OrdinalIgnoreCase) => InputBin.Cassette,
+        _ when friendly.Contains("Tractor", StringComparison.OrdinalIgnoreCase) => InputBin.Tractor,
+        _ when friendly.Contains("Nạp tay", StringComparison.OrdinalIgnoreCase) => InputBin.Manual,
+        _ => null,
+    };
+
+    /// <summary>Từ khoá khớp tên khay trong driver (PaperSource.SourceName) theo InputBin.</summary>
+    private static string TrayMatchKey(InputBin bin) => bin switch
+    {
+        InputBin.AutoSelect => "Auto",
+        InputBin.AutoSheetFeeder => "Auto",
+        InputBin.Cassette => "Cassette",
+        InputBin.Tractor => "Tractor",
+        InputBin.Manual => "Manual",
+        _ => "",
+    };
+
+    /// <summary>Hệ số phóng/thu theo ScaleMode config (GDI trước đây bỏ qua option này hoàn toàn).
+    /// Zoom → ScalePercent/100; các mode khác → 1.0 (ảnh vốn đã fit khung, khác biệt thật chỉ có ở Zoom).</summary>
+    private static double ZoomFactor(PrintConfig config)
+    {
+        if (config.ScaleMode != PrintScaleMode.Zoom) return 1.0;
+        var pct = Math.Clamp(config.ScalePercent, 10, 400);
+        return pct / 100.0;
+    }
+
     /// <summary>
     /// Đẩy từng ảnh trang đã render vào spooler máy in vật lý qua PrintDocument (GDI).
     /// Khổ giấy = khổ GỐC của trang PDF (in đúng cỡ file, không bị co/dãn theo khổ default máy),
@@ -390,6 +422,22 @@ public sealed class GdiPrintEngine : IPrintEngine
                 pd.PrinterSettings.Duplex = Duplex.Simplex;
             // AsPrinter → giữ mặc định driver (không set)
 
+            // ===== Khay giấy (PaperSource) — trước đây option này CHẾT với GDI =====
+            // Tên khay lưu trong config là tên thân thiện (PrinterService.FriendlyTrayName) → map ngược
+            // sang InputBin của driver. Khay không khớp → giữ auto (không fail: tên khay khác nhau giữa
+            // máy in, fail ở đây sẽ chặn oan job vốn in được bằng khay mặc định).
+            if (!string.IsNullOrWhiteSpace(job.Config.PaperSource))
+            {
+                var trayBin = TrayBinFromFriendlyName(job.Config.PaperSource);
+                if (trayBin is { } bin)
+                {
+                    var src = pd.PrinterSettings.PaperSources
+                        .Cast<PaperSource>().FirstOrDefault(s => s.SourceName.Contains(TrayMatchKey(bin), StringComparison.OrdinalIgnoreCase));
+                    if (src is not null) pd.DefaultPageSettings.PaperSource = src;
+                    else GdiLog($"GdiPrintEngine: khay '{job.Config.PaperSource}' không có trên '{printer}' → dùng khay mặc định");
+                }
+            }
+
             // ===== Màu (ép đen trắng / ép màu) — driver quyết khi AsPrinter/AsDocument =====
             if (job.Config.ColorMode == PrintColorMode.Grayscale)
                 pd.PrinterSettings.DefaultPageSettings.Color = false;
@@ -487,7 +535,8 @@ public sealed class GdiPrintEngine : IPrintEngine
                             {
                                 // Vẽ ảnh fit trong vùng printable (đã trừ safe margin). Graphics origin
                                 // đã là góc printable — KHÔNG cộng HardMargin (sửa bug lệch góc dưới).
-                                var scale = Math.Min(areaW / (double)bmp.Width, areaH / (double)bmp.Height);
+                                var scale = Math.Min(areaW / (double)bmp.Width, areaH / (double)bmp.Height)
+                                            * ZoomFactor(job.Config);
                                 var dw = (float)(bmp.Width * scale);
                                 var dh = (float)(bmp.Height * scale);
                                 e.Graphics.DrawImage(bmp,

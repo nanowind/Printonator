@@ -106,7 +106,8 @@ public sealed class PrintQueue : IDisposable
         // → đảm bảo drain tiếp tục in các file chưa in.
         lock (_sync)
         {
-            foreach (var j in Jobs)
+            var snapshot = Jobs.ToList();
+            foreach (var j in snapshot)
                 if (j.State == JobState.Queued && !_pending.Contains(j))
                     _pending.Enqueue(j);
         }
@@ -140,22 +141,32 @@ public sealed class PrintQueue : IDisposable
                     await Task.Delay(200, _cts.Token);   // theo _cts.Token — Dispose (app đóng) thoát được
 
                 PrintJob? job = null;
+                var batchDone = false;
                 try
                 {
                     lock (_sync)
                     {
                         if (_pending.Count == 0)
                         {
-                            _drainRunning = false;   // ra ngoài lock nhả cờ — Enqueue/ProcessBatch sau sẽ mở vòng mới
-                                                     // Reset pause state khi lô in xong — tránh UI kẹt ở trạng thái "Resume"
-                                                     // (user pause rồi in hết trước khi bấm Resume).
+                            // _drainRunning sẽ được nhả ở finally bên ngoài — giữ true cho tới khi
+                            // vòng này hoàn toàn thoát, tránh Enqueue song song mở drain thứ 2.
                             _isPaused = false;
                             _stoppedByError = false;
-                            if (_activeWorkers == 0) AllJobsCompleted?.Invoke();
-                            return;
+                            // KHÔNG invoke trong lock: subscriber (UI) gọi RemoveJob/deadlock nếu lock
+                            // đang giữ bởi chính thread này. Đánh dấu rồi invoke NGOÀI lock.
+                            batchDone = _activeWorkers == 0;
+                            if (!batchDone) return;
                         }
-                        job = _pending.Dequeue();
-                        _activeWorkers++;
+                        else
+                        {
+                            job = _pending.Dequeue();
+                            _activeWorkers++;
+                        }
+                    }
+                    if (batchDone)
+                    {
+                        FireAllCompletedSafely();
+                        return;
                     }
                 }
                 catch (Exception ex)
@@ -166,31 +177,37 @@ public sealed class PrintQueue : IDisposable
                     throw;
                 }
 
+                // batchDone nhánh đã return; tới đây job chắc chắn đã được dequeue (compiler không
+                // suy ra qua lock → khai báo lại biến non-null tường minh).
+                var current = job!;
                 try
                 {
                     await _gate.WaitAsync(_cts.Token);
-                    await ProcessWithRetryAsync(job);
+                    await ProcessWithRetryAsync(current);
                 }
                 catch (OperationCanceledException)
                 {
-                    SetState(job, JobState.Cancelled);
+                    SetState(current, JobState.Cancelled);
                 }
                 catch (Exception ex)
                 {
                     // Không nuốt lỗi — nếu exception kèm PrintError CỤ THỂ (PrintErrorException) thì GIỮ NGUYÊN
                     // (engine đã báo PRINTER_OFFLINE/FILE_LOCKED... rõ ràng), không re-wrap thành SPOOLER_FAILED.
                     var err = ExtractPrintError(ex);
-                    SetState(job, JobState.Error, err ?? WrapError(job, ex));
+                    SetState(current, JobState.Error, err ?? WrapError(current, ex));
                 }
                 finally
                 {
                     _gate.Release();   // BẮT BUỘC — không release → _gate (1 slot) kẹt → job sau WaitAsync treo mãi
                     lock (_sync) _activeWorkers--;
+                    // KHÔNG nhả _drainRunning ở đây: chỉ finally NGOÀI CÙNG của DrainLoopAsync được nhả,
+                    // nếu không Enqueue chen vào giữa 2 vòng → mở drain thứ 2, rồi finally của vòng 1
+                    // clear cờ của vòng 2 → 2 drain chạy song song, in trùng.
                 }
 
                 // Stop-on-error: 1 file lỗi (hết retry) → DỪNG cả lô, các file sau giữ Queued chờ Resume.
                 // Lỡ máy in lỗi giữa lô thì không tự in tiếp phần còn lại (in nhầm mất giấy/mực).
-                if (job.State == JobState.Error)
+                if (current.State == JobState.Error)
                 {
                     lock (_sync)
                     {
@@ -215,6 +232,23 @@ public sealed class PrintQueue : IDisposable
         finally
         {
             lock (_sync) { _drainRunning = false; _isPaused = false; _stoppedByError = false; }
+        }
+    }
+
+    /// <summary>Báo "in xong cả lô" — gọi NGOÀI lock và NUỐT lỗi subscriber (cùng lý do FireJobStateChanged:
+    /// subscriber ném làm drain chết → MarkAllUnfinishedAsError đánh Error oan mọi job còn lại).</summary>
+    private void FireAllCompletedSafely()
+    {
+        try { AllJobsCompleted?.Invoke(); }
+        catch (Exception ex)
+        {
+            try
+            {
+                System.IO.File.AppendAllText(
+                    System.IO.Path.Combine(System.IO.Path.GetTempPath(), "printonator-office.log"),
+                    $"{DateTimeOffset.Now:O} PrintQueue AllJobsCompleted subscriber threw: {ex}\n");
+            }
+            catch { }
         }
     }
 
@@ -373,16 +407,24 @@ public sealed class PrintQueue : IDisposable
 
     /// <summary>Fire JobStateChanged AN TOÀN — subscriber lỗi (UI đang đóng, Dispatcher shutdown, handler ném...)
     /// KHÔNG được phá vòng drain / call site đang giữ lock. Exception lan ra làm _drainRunning kẹt true
-    /// → queue chết vĩnh viễn (mọi KickDrain no-op, job "Converting mãi" không bao giờ in tiếp).</summary>
+    /// → queue chết vĩnh viễn (mọi KickDrain no-op, job "Converting mãi" không bao giờ in tiếp).
+    /// Exception của subscriber được log (không ném ra ngoài) để chẩn đoán thay vì nuốt câm.</summary>
     private void FireJobStateChanged(PrintJob job)
     {
         try
         {
             JobStateChanged?.Invoke(job);
         }
-        catch
+        catch (Exception ex)
         {
             // Nuốt lỗi subscriber — KHÔNG lan ra (xem comment trên).
+            try
+            {
+                System.IO.File.AppendAllText(
+                    System.IO.Path.Combine(System.IO.Path.GetTempPath(), "printonator-office.log"),
+                    $"{DateTimeOffset.Now:O} PrintQueue subscriber threw: {ex}\n");
+            }
+            catch { }
         }
     }
 
@@ -563,11 +605,27 @@ public sealed class PrintQueue : IDisposable
     /// <summary>Bọc exception thành PrintError đầy đủ — dùng chung cho cả 2 đường drain.</summary>
     private static PrintError WrapError(PrintJob job, Exception ex) => new()
     {
-        Code = ErrorCodes.SpoolerFailed,
-        Category = PrintErrorCategory.App,
+        Code = MapWrapCode(ex),
+        Category = MapWrapCategory(ex),
         Message = $"Lỗi không xác định khi in {job.FileName}.",
         Hint = "Xem log chi tiết. Nếu lặp lại, báo lỗi kèm file đang in.",
         Detail = ex.ToString(),
+    };
+
+    private static string MapWrapCode(Exception ex) => ex switch
+    {
+        FileNotFoundException => ErrorCodes.FileNotFound,
+        UnauthorizedAccessException => ErrorCodes.PrinterNoPermission,
+        System.IO.IOException => ErrorCodes.FileLocked,
+        _ => ErrorCodes.SpoolerFailed,
+    };
+
+    private static PrintErrorCategory MapWrapCategory(Exception ex) => ex switch
+    {
+        FileNotFoundException => PrintErrorCategory.System,
+        UnauthorizedAccessException => PrintErrorCategory.Printer,
+        System.IO.IOException => PrintErrorCategory.System,
+        _ => PrintErrorCategory.App,
     };
 
     private bool _disposed;

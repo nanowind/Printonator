@@ -2,14 +2,37 @@
 
 Việc còn lại của Printonator — ưu tiên cho các lần làm sau. Cập nhật khi làm xong (xóa hoặc chuyển sang "Đã làm").
 
+## Đã làm (2026-10-29 — rà soát toàn app + tối ưu)
+
+- [x] **MCP HTTP không có xác thực** — thêm middleware Bearer token khi env `PRINTONATOR_MCP_TOKEN` set (`src/Printonator.Mcp/Program.cs`).
+- [x] **Command injection qua tên máy in** — `SpoolPrintEngine.ValidPrinterName` chặn ký tự shell (giữ tiếng Việt, ngoặc, gạch nối); 13 test trong `PrinterNameValidationTests`.
+- [x] **Argument injection vào LibreOffice** — chuyển sang `ProcessStartInfo.ArgumentList`.
+- [x] **STA thread bị bỏ rơi giữ COM + DEVMODE kẹt** — `WaitWithTimeoutAsync` nhận `worker`, `Join(3s)` sau khi kill Office để `finally` chạy (doc.Close/app.Quit/FinalReleaseComObject/duplexRestore.Dispose).
+- [x] **PrintQueue double-drain race** — `_drainRunning` chỉ nhả ở finally ngoài cùng của `DrainLoopAsync`.
+- [x] **Deadlock `AllJobsCompleted`** — invoke ra ngoài lock, bọc `FireAllCompletedSafely` (nuốt + log lỗi subscriber).
+- [x] **Enumeration `Jobs` dưới lock** — snapshot `ToList()` trong `Resume()`.
+- [x] **`WrapError` mất loại lỗi** — map `FileNotFoundException`/`IOException`/`UnauthorizedAccessException` sang mã lỗi đúng.
+- [x] **`SpoolPrintEngine` dispose process đang chạy** — `CleanupSpawnedProc` kill + wait + dispose an toàn.
+- [x] **SelectedPrinter không notify** — đổi sang `DependencyProperty` + bind `SelectedItem` TwoWay.
+- [x] **UI test không hermetic** — set `PRINTONATOR_LANGUAGE=vi` qua env khi launch.
+- [x] **`EmptyState` không có UIA peer** — gắn AutomationId vào TextBlock tiêu đề.
+- [x] **`PaperSource` (khay) là option chết** — wire vào `GdiPrintEngine` (map tên khay thân thiện → InputBin → `PaperSource` của driver).
+- [x] **`ScaleMode`/`ScalePercent` không tác dụng với PDF** — `GdiPrintEngine.ZoomFactor` áp zoom khi vẽ.
+- [x] **`WatermarkPosition` không có picker** — combo 5 vị trí trong Cài đặt in + 6 key i18n × 5 ngôn ngữ.
+- [x] **Watermark nuốt page range** — rasterize theo `ResolveSelectedPages` thay vì toàn bộ trang.
+- [x] **`Booklet` là option chết** — bỏ khỏi combo + hint (chưa engine nào imposition thật); preset cũ quy về 2 trang/tờ.
+- [x] **Version skew** — Mcp/plugin.json/WiX đồng bộ 0.2.12.
+- [x] **Installer thiếu Printonator.Mcp** — thêm 4 file vào `[Files]` + bước stage CI/build-setup.
+- [x] **CI chỉ chạy Core** — thêm Spool + Mcp tests + i18n gate.
+- [x] **Docs sai** — .NET 10→8, module không tồn tại (PDFium/Formats.*/Cli), CLI "chưa có"→đã có, số test bỏ con số cứng.
+
 ## Fix nhỏ (nên làm trong lần fix lỗi kế tiếp)
 
-- [ ] **Test UI `PrintSelected_DoesNot_Duplicate_Rows` không tin được trên máy dev** — paste clipboard không vào được ("chờ 2 dòng — thấy 0"), fail lê thê dù code không đổi (đã A/B worktree xác nhận có sẵn từ trước). Sửa cách seed file vào hàng đợi (dùng API nội bộ thay vì Ctrl+V), hoặc đánh dấu skip trên máy dev.
 - [ ] **Banner lỗi trang bìa hiện màu vàng** — `ErrorCodes.SpoolerFailed` nằm trong danh sách banner vàng + nút "Thử lại". Với lỗi bìa nên cân nhắc banner đỏ (mất trang bìa là mất hẳn, retry không tự gắn lại). Quyết: giữ vàng (có retry) hay đổi đỏ.
 - [ ] **Xóa key i18n mồ côi `Settings.HintAutoOrientationLock`** — tồn tại sau khi bỏ tick AutoOrientation khỏi Cài đặt in. Không ai dùng; xóa khỏi `Keys.cs` + `Strings.json` (5 ngôn ngữ).
 - [ ] **Cột Settings trong MainWindow vẫn tiếng Việt ở UI EN/ZH/RU/JA** — đã có mapper `LocalizeSummary` cho TRANG BÌA (`PrintBatchOrchestrator.cs`), áp lại cho cột Settings bằng converter/rename để UI và bìa nhất quán.
-- [ ] **Bulk bar (chọn nhiều file) render chuỗi tiếng Anh cứng `"1 files selected"`** — không đi qua i18n (test `MainWindowTests.MultiSelect_Shows_BulkBar` kỳ vọng `"Đã chọn 2 file"`). Đã xác nhận CÓ SẴN từ trước (A/B worktree HEAD sạch). Cần đưa qua `L10n` (thêm key cho số ít/số nhiều).
-- [ ] **2 UITest fail có sẵn, đã xác minh (không phải regression)** — `MainWindowTests.App_Launches_Empty_Shows_EmptyState` (assert null ở `MainWindowTests.cs:67`) và `MainWindowTests.MultiSelect_Shows_BulkBar` (fail ở `:148` hoặc `:137/:283` tuỳ lần — clipboard paste không ổn định). Ghi chú này BỔ SUNG cho mục `PrintSelected_DoesNot_Duplicate_Rows` ở trên (cùng gốc clipboard) — gộp lại khi làm.
+- [ ] **Test UI `PrintSelected_DoesNot_Duplicate_Rows` còn phụ thuộc clipboard** — paste Clipboard FileDropList không ổn định trong test-host; nên seed qua API nội bộ (test hook) thay vì Ctrl+V.
+- [ ] **API version cho MCP server** — `Printonator.Mcp.csproj` giờ là 0.2.12 nhưng không đọc từ UI; cân nhắc `Directory.Build.props` làm nguồn version duy nhất.
 
 ## Vấn đề môi trường / của user
 
@@ -22,18 +45,14 @@ Việc còn lại của Printonator — ưu tiên cho các lần làm sau. Cập
 ## Cải tiến cân nhắc
 
 - [ ] **Cap 100 dòng bảng bìa** — lô >100 file chỉ liệt kê 100 dòng đầu + "… và N file nữa". Nếu user phàn nàn thì tăng hằng số hoặc bỏ cap.
-- [ ] **CI chạy đủ test** — `ci.yml` hiện chỉ chạy Core (đã thêm Spool/Mcp vào `test_full.ps1` nhưng CI chưa). Thêm `Spool.Tests` + `Mcp.Tests` + gate i18n vào `ci.yml`.
 - [ ] **`release.yml` truyền `-p:Version=$VER`** — hiện version lấy từ csproj, tag lệch csproj thì bìa in sai version. Một dòng fix.
 - [ ] **Giới hạn đã biết của fix duplex DEVMODE** — nếu app bị kill cứng giữa `SetPrinter` và restore (hoặc driver treo quá 60s rồi process chết), `dmDuplex` của máy in kẹt ở giá trị đã sửa; chưa có bước đối soát lúc khởi động. Upgrade path: lưu giá trị gốc xuống đĩa + khôi phục khi app start.
 
-## Từ rà soát 2026-10-06 (option chết + i18n)
+## Từ rà soát 2026-10-29 (còn tồn)
 
-- [ ] **`PaperSource` (khay giấy) là option chết** — UI nạp khay thật từ máy in, lưu vào Preset + MCP `print_files` quảng cáo tham số `paperSource`, nhưng KHÔNG engine nào đọc (0 hit trong `Printonator.Spool`). Quyết: wire vào GDI (`pd.DefaultPageSettings.PaperSource`) + bỏ/deprecate tham số MCP, HOẶC ẩn UI. Phải quyết cả 2 phía UI và MCP.
-- [ ] **`ScaleMode`/`ScalePercent` (zoom/fit/fill/shrink) không tác dụng với PDF** — chỉ `CdpPrintParams` đọc, nhưng PDF luôn đi `GdiPrintEngine` (đăng ký trước, CanHandle=PDF) — engine này KHÔNG đọc ScaleMode → zoom/fit không tác dụng với PDF trên máy in vật lý. Ảnh/TXT thì có tác dụng (đi browser). Cần wire vào GDI (giữ nguyên công thức mặc định để không regression).
-- [ ] **`Booklet` là option chết** — không engine nào đọc; chọn nó chỉ set `PagesPerSheet=2`; hint quảng bá "gấp sách". Hoặc hiện thực imposition thật, hoặc ẩn.
-- [ ] **`WatermarkPosition` chưa có picker** — engine hỗ trợ 5 vị trí nhưng UI ép cứng `"center"`.
-- [ ] **Watermark/Merge path nuốt option** — bật watermark hoặc merge thì `PageRange`/`Parity`/`Copies`/`PagesPerSheet`/`Quality` bị bỏ qua.
+- [ ] **Watermark/Merge path còn nuốt `Copies`/`PagesPerSheet`/`Quality`** — `WatermarkPrintEngine` giờ tôn trọng page range/parity, nhưng N-up và quality vẫn bị browser render bỏ qua; `MergePrintEngine` in theo Copies của file đầu.
 - [ ] **Office PowerPoint không áp `PaperSize`/`Orientation`.**
 - [ ] **LibreOffice + shell fallback bỏ qua hầu hết option, không cảnh báo trong UI.**
-- [ ] **Chuỗi tiếng Anh cứng chưa qua i18n** — tooltip `MainWindow.xaml:355,370` (key `Settings.PrefsButton`/`PropsButton` ĐÃ có sẵn); `MainWindow.xaml.cs:416` `Name = "🔄 Scan printers…"`; toast/banner tiếng Việt cứng trong `PrintBatchOrchestrator.cs:128,136,145,198`; state pill hiện `Queued/Converting/...` EN. Riêng cột Settings đã có mục riêng ở "Fix nhỏ".
-- [ ] **Dọn key mồ côi khi ẩn option** — `Option.Booklet`, `Settings.OptionPaperSource`, `Settings.HintPaperSource`, `Option.TrayAsPrinter`, `Option.TrayUnknown` (+ `Settings.HintAutoOrientationLock` đã ghi trước đó).
+- [ ] **Chuỗi tiếng Anh cứng chưa qua i18n** — tooltip `MainWindow.xaml:355,370` (key `Settings.PrefsButton`/`PropsButton` ĐÃ có sẵn); `MainWindow.xaml.cs:416` `Name = "🔄 Scan printers…"`; toast/banner tiếng Việt cứng trong `PrintBatchOrchestrator.cs:128,136,145,198`; state pill hiện `Queued/Converting/...` EN.
+- [ ] **MCP HTTP token chỉ bảo vệ HTTP transport** — stdio (AI client spawn trực tiếp) không cần token vì cùng user; nếu cần phân quyền đa user thì phải chuyển sang HMAC per-request.
+- [ ] **`LockedBy` của sheet Excel (protected view)** — file mở read-only trong Excel vẫn có thể fail `Workbooks.Open` mà không có thông báo rõ cho user.

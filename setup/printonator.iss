@@ -80,6 +80,11 @@ Source: "app\Printonator.Spool.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "app\Printonator.Spool.pdb"; DestDir: "{app}"; Flags: ignoreversion
 Source: "app\Printonator.UI.runtimeconfig.json"; DestDir: "{app}"; Flags: ignoreversion
 Source: "app\Printonator.UI.deps.json"; DestDir: "{app}"; Flags: ignoreversion
+; MCP server standalone — app AI (Claude, Hermes, Copilot) spawn trực tiếp qua stdio/HTTP
+Source: "app\Printonator.Mcp.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "app\Printonator.Mcp.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "app\Printonator.Mcp.runtimeconfig.json"; DestDir: "{app}"; Flags: ignoreversion
+Source: "app\Printonator.Mcp.deps.json"; DestDir: "{app}"; Flags: ignoreversion
 ; Các dependency Windows/WinRT — Windows.Data.Pdf (PDF slicing) cần bộ SDK runtime này
 Source: "app\Microsoft.Windows.SDK.NET.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "app\WinRT.Runtime.dll"; DestDir: "{app}"; Flags: ignoreversion

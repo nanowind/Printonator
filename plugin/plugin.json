@@ -1,6 +1,6 @@
 {
   "name": "printonator-mcp",
-  "version": "0.1.8",
+  "version": "0.2.12",
   "description": "Printonator MCP — AI in file giùm (liệt kê máy in, tự chọn máy, in hàng loạt word/excel/ppt, từ chối job, tra cứu mã lỗi). Kèm skill printonator-mcp.",
   "author": "Printonator",
   "repository": "https://github.com/scraw/Printonator",

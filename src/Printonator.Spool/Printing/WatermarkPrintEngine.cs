@@ -83,7 +83,12 @@ public sealed class WatermarkPrintEngine : IPrintEngine
 
         if (fmt == "PDF")
         {
-            var pages = job.PageCount > 0 ? Enumerable.Range(1, job.PageCount).ToArray() : [1];
+            // TÔN TRỌNG page range + parity (trước đây rasterize TOÀN BỘ trang → in cả file dù
+            // user đã chọn 1-3). ResolveSelectedPages đã xử lý range/parity/page count.
+            int[]? pages = null;
+            try { pages = CdpPrintParams.ResolveSelectedPages(job); } catch { }
+            pages ??= job.PageCount > 0 ? Enumerable.Range(1, job.PageCount).ToArray() : [1];
+
             var rendered = await WindowsPdfRasterizer.RenderPagesAsync(job.FilePath, pages, ct);
             if (!rendered.IsSuccess || rendered.Value is not { Count: > 0 } imgs)
                 return ""; // không rasterize được → caller rớt mềm về _inner

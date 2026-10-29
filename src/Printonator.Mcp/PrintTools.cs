@@ -216,7 +216,7 @@ public static class PrintTools
         {
             var printers = new PrinterService().ListPrinters();
             if (!printers.IsSuccess) return Fail(printers.Error!);
-            var picked = PickBestPrinter(printers.Value, paper, requireDuplex, requireColor);
+            var picked = PickBestPrinter(printers.Value ?? [], paper, requireDuplex, requireColor);
             if (picked is null)
                 return Fail(new PrintError
                 {
@@ -227,7 +227,7 @@ public static class PrintTools
                 });
 
             // Top 5 ứng viên xếp hạng — để AI tự cân nhắc nếu không đồng ý máy đầu
-            var candidates = printers.Value
+            var candidates = (printers.Value ?? [])
                 .Where(p => AppServices.GuardConfig.IsPrinterAllowed(p.Name))
                 .OrderByDescending(p => p.IsAvailable)
                 .ThenBy(p => p.IsVirtual)
@@ -268,6 +268,9 @@ public static class PrintTools
         IReadOnlyList<PrinterInfo> printers, string? paper, bool requireDuplex, bool requireColor)
     {
         if (printers is null || printers.Count == 0) return null;
+        // LƯU Ý: KHÔNG fail-closed ở đây. PickBestPrinter chỉ ĐỀ XUẤT máy (pick_printer) hoặc được
+        // gọi từ nhánh đã có allowlist khác rỗng — biên an toàn thật nằm ở PrintGuard.Validate +
+        // McpGuardConfig.IsStandaloneAutoPrintAllowed() trong BuildAndQueue.
         return printers
             .Where(p => AppServices.GuardConfig.IsPrinterAllowed(p.Name))
             .Where(p => string.IsNullOrWhiteSpace(paper) || ContainsPaper(p, paper))
@@ -458,7 +461,7 @@ public static class PrintTools
             // thì để guard chặn đúng PRINTER_NO_PERMISSION ở trên — không che lỗi cấu hình fail-closed).
             if (string.IsNullOrWhiteSpace(printer) && AppServices.GuardConfig.AllowedPrinters.Length > 0)
             {
-                var picked = PickBestPrinter(printerList(), null, false, false);
+                var picked = PickBestPrinter(printerList() ?? [], null, false, false);
                 if (picked is not null)
                     printer = picked.Name;
             }

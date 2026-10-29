@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
-    <Package Name="Printonator" Manufacturer="Printonator Project" Version="0.1.0"
+    <Package Name="Printonator" Manufacturer="Printonator Project" Version="0.2.12"
              UpgradeCode="B2C3D4E5-2345-6789-ABCD-EF0123456789"
              Scope="perMachine"
              Language="1033">
