@@ -103,6 +103,20 @@ public static class PaperCatalog
                        .Distinct(StringComparer.OrdinalIgnoreCase)
                        .ToList();
 
+    /// <summary>
+    /// Số cột/hàng của lưới N-up sao cho ĐỦ CHỖ cho mọi trang của tờ (cols × rows ≥ perSheet).
+    /// MỘT nguồn cho cả engine in (GdiPrintEngine) lẫn preview (PrintPreviewModel) — trước đây hai
+    /// bên tự tính, engine đúng còn preview dùng switch theo ngưỡng nên 10/12/15 bị cắt còn 9 ô.
+    /// Cho đúng các lưới quen thuộc: 2→2×1, 4→2×2, 6→3×2, 9→3×3, 16→4×4.
+    /// ponytail: Math.Sqrt trên double sai với perSheet > 2^26 — UI/MCP đều clamp ≤16 nên không tới.
+    /// </summary>
+    public static (int Cols, int Rows) NUpGrid(int perSheet)
+    {
+        if (perSheet <= 1) return (1, 1);
+        var cols = (int)Math.Ceiling(Math.Sqrt(perSheet));
+        return (cols, (int)Math.Ceiling(perSheet / (double)cols));
+    }
+
     /// <summary>Xếp danh sách tên khổ theo thứ tự chuẩn, để nguyên tên (không kèm mm).</summary>
     private static IReadOnlyList<string> OrderForDisplay(IEnumerable<string> names)
     {

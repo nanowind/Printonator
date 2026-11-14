@@ -572,9 +572,9 @@ public sealed class GdiPrintEngine : IPrintEngine
             var pumped = 0;
             var anyPageFailed = false;
 
-            // Grid N-up: 2→[2×1], 4→[2×2], 6→[3×2], 9→[3×3], 16→[4×4]
-            var nUpCols = nUp > 1 ? (int)Math.Ceiling(Math.Sqrt(nUp)) : 1;
-            var nUpRows = nUp > 1 ? (int)Math.Ceiling(nUp / (double)nUpCols) : 1;
+            // Grid N-up: 2→[2×1], 4→[2×2], 6→[3×2], 9→[3×3], 16→[4×4] — công thức dùng CHUNG với
+            // preview (PaperCatalog.NUpGrid) để hai bên không lệch nhau như trước.
+            var (nUpCols, nUpRows) = PaperCatalog.NUpGrid(nUp);
 
             // Ép xám ngay lúc vẽ (null = giữ nguyên màu) — `gray` tạo 1 lần cho cả file in này ở đầu method.
             pd.PrintPage += (_, e) =>

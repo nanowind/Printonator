@@ -68,6 +68,35 @@ public class PreviewModelTests
         Assert.Empty(m.Sheets);
     }
 
+    /// <summary>Lưới phải ĐỦ CHỖ cho mọi trang của tờ. Bug cũ: switch theo ngưỡng nên 10/12/15 đều
+    /// ra 3×3 = 9 ô, trang thứ 10 trở đi bị cắt khi vẽ. MCP nhận pagesPerSheet tới 16.</summary>
+    [Theory]
+    [InlineData(1, 1, 1)]
+    [InlineData(2, 2, 1)]
+    [InlineData(4, 2, 2)]
+    [InlineData(6, 3, 2)]
+    [InlineData(9, 3, 3)]
+    [InlineData(16, 4, 4)]
+    public void GridFor_khoi_quen_thuoc(int perSheet, int cols, int rows)
+    {
+        var (c, r) = PaperCatalog.NUpGrid(perSheet);
+        Assert.Equal(cols, c);
+        Assert.Equal(rows, r);
+    }
+
+    /// <summary>Bất biến quan trọng hơn mọi con số cụ thể: KHÔNG BAO GIỜ thiếu ô. Duyệt HẾT 1..16
+    /// thay vì liệt kê tay vài giá trị — bản liệt kê tay bỏ sót 7/11/13/14 nên vẫn có thể lọt lỗi.</summary>
+    [Fact]
+    public void GridFor_luon_du_o_cho_moi_trang()
+    {
+        for (var perSheet = 1; perSheet <= 16; perSheet++)
+        {
+            var (cols, rows) = PaperCatalog.NUpGrid(perSheet);
+            Assert.True(cols * rows >= perSheet,
+                $"{perSheet} trang/tờ nhưng lưới chỉ có {cols}×{rows} = {cols * rows} ô");
+        }
+    }
+
     [Fact]
     public void Chua_biet_so_trang_mac_dinh_1_trang_moi_to_ve_mot_o()
     {

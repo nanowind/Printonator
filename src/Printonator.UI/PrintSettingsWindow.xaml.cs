@@ -488,7 +488,7 @@ public partial class PrintSettingsWindow : Window
         }
 
         // --- Chia tờ thành lưới theo số trang mỗi tờ (định dạng không hỗ trợ N-up → lưới 1×1) ---
-        var (cols, rows) = GridFor(m.PagesPerSheetHonoured ? m.PagesPerSheet : 1);
+        var (cols, rows) = PaperCatalog.NUpGrid(m.PagesPerSheetHonoured ? m.PagesPerSheet : 1);
         BuildThumbs(m, cols, rows);
 
         // Animation 3: số trang/tờ đổi → lưới mới hiện lên (opacity 0→1 + scale 1.18→1), 140ms.
@@ -532,17 +532,6 @@ public partial class PrintSettingsWindow : Window
 
         _lastPreview = m;
     }
-
-    /// <summary>Số cột/hàng cho lưới trang: 1→1×1, 2→2×1, 4→2×2, 6→3×2, 9→3×3, 16→4×4.</summary>
-    private static (int Cols, int Rows) GridFor(int perSheet) => perSheet switch
-    {
-        >= 16 => (4, 4),
-        >= 9 => (3, 3),
-        >= 6 => (3, 2),
-        >= 4 => (2, 2),
-        >= 2 => (2, 1),
-        _ => (1, 1),
-    };
 
     /// <summary>Dựng lại toàn bộ trang thu nhỏ trên tờ. Chỉ 1 tờ được vẽ (tờ đang xem) — cần minh hoạ
     /// "tờ này chứa trang nào", không phải liệt kê cả tệp.</summary>
