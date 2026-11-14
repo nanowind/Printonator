@@ -15,5 +15,7 @@ Chọn in đen trắng giờ ra đúng giấy đen trắng, và các tuỳ chọ
 
 ### Mới
 - Nút "Lấy theo máy in": tự điền màu, 2 mặt, chiều giấy và khổ giấy theo cái máy in đang để sẵn. Nút này chỉ điền vào bảng cài đặt, không lưu gì và không đổi các mục khác.
+- Xem trước tờ giấy sẽ in ra: đổi khổ giấy, số trang mỗi tờ, in một mặt hay hai mặt, in màu hay đen trắng — hình tờ giấy đổi theo ngay, thấy trước mình sắp in ra cái gì.
+- Nút "Nhập" cấu hình in bị cắt mất ở cửa sổ hẹp, giờ hiện lại đầy đủ.
 
 SHA256: {HASH}
