@@ -31,7 +31,13 @@ tools/test_printui.log
 tools/test*.log*
 
 # AI workflow / local-only docs & state (never commit)
-.agents-workflow/
+# Dùng "/*" (không phải "/"): git không descend vào thư mục bị ignore nên negation bên dưới
+# sẽ vô hiệu. Với "/*", từng file bị ignore và ngoại lệ mới có tác dụng.
+.agents-workflow/*
+# Ngoại lệ: CHANGELOG là lịch sử phiên làm việc, AGENTS.md ghi nó "committed to git" —
+# phải track, nếu không thì ghi chú đó sai và lịch sử chỉ nằm trên một máy.
+!.agents-workflow/CHANGELOG.md
+!.agents-workflow/CHANGELOG-*.md
 six-phase-workflow/
 .qoder/
 .claude/
