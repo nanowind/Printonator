@@ -36,17 +36,7 @@ public static class PrintTools
             return new Dictionary<string, object?>
             {
                 ["ok"] = true,
-                ["printers"] = r.Value!.Select(p => new Dictionary<string, object?>
-                {
-                    ["name"] = p.Name,
-                    ["available"] = p.IsAvailable,
-                    ["status"] = p.StatusDetail,
-                    ["paper"] = p.SupportedPaperSizes,
-                    ["duplex"] = p.SupportsDuplex,
-                    ["color"] = p.SupportsColor,
-                    ["trays"] = p.TrayInfo,
-                    ["virtual"] = p.IsVirtual,
-                }),
+                ["printers"] = r.Value!.Select(PrinterDto),
             };
         }
         catch (Exception ex)
@@ -65,7 +55,7 @@ public static class PrintTools
         [Description("Tên máy in (để trống hoặc 'mặc định' = máy in mặc định Windows)")] string? printer = null,
         [Description("Số bản in (1-100)")] int copies = 1,
         [Description("In 2 mặt: true = 2 mặt (gáy dài), false = 1 mặt. Không truyền = theo máy in (không ép 1/2 mặt).")] bool? duplex = null,
-        [Description("Khổ giấy: A4/A3/A5/A6/A2/A1/A0/B4/B5/B6/Letter/Legal/Ledger/Tabloid/Executive/Statement/DL/C5/C6/Com10, hoặc AsDocument (theo khổ trong tài liệu). Bỏ trống = theo máy in. Tên khác sẽ bị từ chối (INVALID_PAPER_SIZE) — danh sách paper của list_printers có thể chứa tên riêng của driver mà print_files không đặt được.")] string? paper = null,
+        [Description("Khổ giấy. Mọi tên trong trường 'paper' của list_printers đều dùng được ở đây; ngoài ra nhận AsDocument (theo khổ trong tài liệu). Bỏ trống = theo khổ máy in đang đặt.")] string? paper = null,
         [Description("Trang cần in: All, 2,5, 3-4, S2:1-3")] string? pageRange = null,
         [Description("In màu (giữ cho tương thích: true = Color, false = Grayscale). Không truyền = theo máy in.")] bool? color = null,
         [Description("Chế độ màu: AsPrinter/AsDocument/Color/Grayscale. Bỏ trống = theo máy in (AsPrinter), tài liệu màu vẫn in màu; truyền Grayscale mới in đen trắng.")] string? colorMode = null,
@@ -82,17 +72,7 @@ public static class PrintTools
         if (!string.IsNullOrWhiteSpace(paperName)
             && !paperName.Equals(PaperCatalog.AsDocument, StringComparison.OrdinalIgnoreCase)
             && PaperCatalog.Dimensions(paperName) is null)
-        {
-            return Fail(new PrintError
-            {
-                Code = ErrorCodes.InvalidPaperSize,
-                Category = PrintErrorCategory.Config,
-                Message = $"Khổ giấy \"{paperName}\" không có trong danh mục.",
-                Hint = $"Dùng một trong: {string.Join(", ", PaperCatalog.AllNames)}, "
-                       + $"hoặc \"{PaperCatalog.AsDocument}\" (theo khổ trong tài liệu); "
-                       + "để trống = theo khổ máy in đang đặt.",
-            });
-        }
+            return Fail(InvalidPaper(paperName));
         // Chuẩn hoá "asdocument" → hằng số: CdpPrintParams/BrowserPrintEngine so sánh ordinal
         // (phân biệt hoa thường) nên chuỗi thô viết thường sẽ không nhận ra, và khổ rơi về mặc định browser.
         if (paperName is not null && paperName.Equals(PaperCatalog.AsDocument, StringComparison.OrdinalIgnoreCase))
@@ -248,11 +228,17 @@ public static class PrintTools
         [Description("Bắt buộc in 2 mặt")] bool requireDuplex = false,
         [Description("Bắt buộc in màu")] bool requireColor = false)
     {
+        // Cùng luật với print_files: tên khổ lạ bị từ chối NGAY, nếu không pick_printer trả về một
+        // máy in "đáp ứng" rồi print_files chặn chính tên đó — hai tool tự mâu thuẫn.
+        var paperName = paper?.Trim();
+        if (!string.IsNullOrWhiteSpace(paperName) && PaperCatalog.Dimensions(paperName) is null)
+            return Fail(InvalidPaper(paperName));
+
         try
         {
             var printers = new PrinterService().ListPrinters();
             if (!printers.IsSuccess) return Fail(printers.Error!);
-            var picked = PickBestPrinter(printers.Value ?? [], paper, requireDuplex, requireColor);
+            var picked = PickBestPrinter(printers.Value ?? [], paperName, requireDuplex, requireColor);
             if (picked is null)
                 return Fail(new PrintError
                 {
@@ -269,16 +255,7 @@ public static class PrintTools
                 .ThenBy(p => p.IsVirtual)
                 .ThenByDescending(p => p.IsDefault)
                 .Take(5)
-                .Select(p => new Dictionary<string, object?>
-                {
-                    ["name"] = p.Name,
-                    ["available"] = p.IsAvailable,
-                    ["virtual"] = p.IsVirtual,
-                    ["paper"] = p.SupportedPaperSizes,
-                    ["duplex"] = p.SupportsDuplex,
-                    ["color"] = p.SupportsColor,
-                    ["trays"] = p.TrayInfo,
-                });
+                .Select(PrinterDto);
             return new Dictionary<string, object?>
             {
                 ["ok"] = true,
@@ -639,8 +616,33 @@ public static class PrintTools
         },
     };
 
-    private static PrintError Err(Exception ex, string message) => new()
+    /// <summary>Một máy in → payload MCP. `paper` đi qua SupportedFromPrinter để CHỈ quảng cáo khổ
+    /// print_files đặt được — quảng cáo tên riêng của driver là hứa điều app không làm được.
+    /// internal để test khoá đúng dòng này (regression: revert về p.SupportedPaperSizes sẽ đỏ).</summary>
+    internal static Dictionary<string, object?> PrinterDto(PrinterInfo p) => new()
     {
+        ["name"] = p.Name,
+        ["available"] = p.IsAvailable,
+        ["virtual"] = p.IsVirtual,
+        ["status"] = p.StatusDetail,
+        ["paper"] = PaperCatalog.SupportedFromPrinter(p.SupportedPaperSizes),
+        ["duplex"] = p.SupportsDuplex,
+        ["color"] = p.SupportsColor,
+        ["trays"] = p.TrayInfo,
+    };
+
+    /// <summary>Lỗi khổ giấy dùng chung cho print_files và pick_printer — một luật, một thông điệp.</summary>
+    private static PrintError InvalidPaper(string paperName) => new()
+    {
+        Code = ErrorCodes.InvalidPaperSize,
+        Category = PrintErrorCategory.Config,
+        Message = $"Khổ giấy \"{paperName}\" không có trong danh mục.",
+        Hint = $"Dùng một trong: {string.Join(", ", PaperCatalog.AllNames)}, "
+               + $"hoặc \"{PaperCatalog.AsDocument}\" (theo khổ trong tài liệu); "
+               + "để trống = theo khổ máy in đang đặt.",
+    };
+
+    private static PrintError Err(Exception ex, string message) => new()    {
         Code = ErrorCodes.SpoolerFailed,
         Category = PrintErrorCategory.App,
         Message = message,

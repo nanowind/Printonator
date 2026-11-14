@@ -48,6 +48,37 @@ public class PrintConfigTests
     public void Statement_co_trong_danh_muc()
         => Assert.Equal((140, 216), PaperCatalog.Dimensions("Statement"));
 
+    /// <summary>list_printers chỉ được quảng cáo khổ app ĐẶT ĐƯỢC. Tên riêng của driver
+    /// (Invoice, SuperA, B5Extra...) mà lọt vào danh sách thì AI truyền lại và bị print_files chặn.</summary>
+    [Fact]
+    public void SupportedFromPrinter_loai_ten_driver_khong_dat_duoc()
+    {
+        var reported = new[] { "A4", "A3", "Invoice", "SuperA", "B5Extra", "Letter", "4x6" };
+
+        var usable = PaperCatalog.SupportedFromPrinter(reported);
+
+        Assert.Contains("A4", usable);
+        Assert.Contains("A3", usable);
+        Assert.Contains("Letter", usable);
+        Assert.DoesNotContain("Invoice", usable);
+        Assert.DoesNotContain("SuperA", usable);
+        Assert.DoesNotContain("B5Extra", usable);
+        Assert.DoesNotContain("4x6", usable);
+        // Mọi tên trả về PHẢI qua được kiểm tra của print_files (cùng điều kiện Dimensions != null).
+        Assert.All(usable, n => Assert.NotNull(PaperCatalog.Dimensions(n)));
+    }
+
+    /// <summary>FromPrinter (cho combo UI) vẫn giữ khổ lạ kèm mm — chỉ MCP mới lọc. Đổi hành vi UI
+    /// sẽ làm máy in mất khổ riêng của nó trong combo.</summary>
+    [Fact]
+    public void FromPrinter_van_giu_kho_la_cho_UI()
+    {
+        var shown = PaperCatalog.FromPrinter(["A4", "Invoice"]);
+
+        Assert.Contains(shown, s => s.StartsWith("A4"));
+        Assert.Contains(shown, s => s.StartsWith("Invoice"));
+    }
+
     [Fact]
     public void SummaryText_Shows_Parity_Quality_And_KhoGoc()
     {

@@ -87,14 +87,31 @@ public static class PaperCatalog
     /// Khổ máy in không nằm trong catalog vẫn giữ nguyên tên (có thứ tự sau).
     /// </summary>
     public static IReadOnlyList<string> FromPrinter(IEnumerable<string> printerSizes)
+        => OrderForDisplay(printerSizes).Select(Describe).ToList();
+
+    /// <summary>
+    /// Máy in báo những khổ nào mà app ĐẶT ĐƯỢC — giao của khả năng driver với danh mục.
+    /// Dùng cho MCP: AI đọc list_printers rồi truyền lại đúng một tên trong danh sách này thì
+    /// print_files chắc chắn nhận. Tên riêng của driver (Invoice, SuperA, B5Extra...) bị LOẠI vì
+    /// không engine nào đặt được khổ đó — chúng âm thầm rơi về A4 (hoặc chỉ đúng ở đường N-up),
+    /// nên quảng cáo chúng cho AI là hứa điều app không làm được.
+    /// </summary>
+    public static IReadOnlyList<string> SupportedFromPrinter(IEnumerable<string>? printerSizes)
+        => (printerSizes ?? []).Where(s => Dimensions(s) is not null)
+                       .Select(Normalize)
+                       .Where(s => s.Length > 0)
+                       .Distinct(StringComparer.OrdinalIgnoreCase)
+                       .ToList();
+
+    /// <summary>Xếp danh sách tên khổ theo thứ tự chuẩn, để nguyên tên (không kèm mm).</summary>
+    private static IReadOnlyList<string> OrderForDisplay(IEnumerable<string> names)
     {
-        var pruned = printerSizes.Select(Normalize).Where(s => !string.IsNullOrEmpty(s)).Distinct().ToList();
+        var pruned = names.Select(Normalize).Where(s => !string.IsNullOrEmpty(s))
+                          .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         // So khớp KHÔNG phân biệt hoa thường cho đồng bộ với Known/Dimensions: driver báo "a4" phải
         // xếp đúng vị trí A4, không bị đẩy xuống cuối danh sách như khổ lạ.
-        var set = new HashSet<string>(pruned, StringComparer.OrdinalIgnoreCase);
-        var ordered = StandardOrder.Where(set.Contains).Select(Describe);
-        var rest = pruned.Where(p => !StandardOrder.Contains(p, StringComparer.OrdinalIgnoreCase))
-                         .Select(Describe);
+        var ordered = StandardOrder.Where(n => pruned.Contains(n, StringComparer.OrdinalIgnoreCase));
+        var rest = pruned.Where(p => !StandardOrder.Contains(p, StringComparer.OrdinalIgnoreCase));
         return ordered.Concat(rest).ToList();
     }
 

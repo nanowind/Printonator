@@ -27,8 +27,40 @@ public class McpToolsTests
             IsDefault = isDefault,
         };
 
-    // ============ PickBestPrinter (logic thuần — không cần spooler) ============
+    /// <summary>
+    /// list_printers KHÔNG được quảng cáo khổ mà print_files sẽ từ chối: AI đọc danh sách rồi
+    /// truyền lại đúng tên đó, nhận INVALID_PAPER_SIZE là hai tool tự mâu thuẫn. Đây là test khoá
+    /// đúng dòng emission (revert `PrinterDto` về p.SupportedPaperSizes là test này đỏ).
+    /// </summary>
+    [Fact]
+    public void PrinterDto_chi_quang_cao_kho_dat_duoc()
+    {
+        var printer = MakePrinter("Label-1", paper: ["A4", "A3", "Invoice", "4x6", "B5Extra", "SuperA"]);
 
+        var dto = PrintTools.PrinterDto(printer);
+        var paper = (IReadOnlyList<string>)dto["paper"]!;
+
+        Assert.Contains("A4", paper);
+        Assert.Contains("A3", paper);
+        Assert.DoesNotContain("Invoice", paper);
+        Assert.DoesNotContain("4x6", paper);
+        Assert.DoesNotContain("B5Extra", paper);
+        Assert.DoesNotContain("SuperA", paper);
+        // Bất biến: mọi tên quảng cáo phải qua được kiểm tra của print_files.
+        Assert.All(paper, n => Assert.NotNull(PaperCatalog.Dimensions(n)));
+    }
+
+    /// <summary>Máy in chỉ báo khổ riêng (label printer) → danh sách RỖNG, không bịa "A4".
+    /// Bịa A4 là hứa in được trên máy chỉ có 4x6.</summary>
+    [Fact]
+    public void PrinterDto_may_in_chi_co_kho_rieng_tra_danh_sach_rong()
+    {
+        var dto = PrintTools.PrinterDto(MakePrinter("Label-2", paper: ["4x6", "Invoice"]));
+
+        Assert.Empty((IReadOnlyList<string>)dto["paper"]!);
+    }
+
+    // ============ PickBestPrinter (logic thuần — không cần spooler) ============
     [Fact]
     public void PickBestPrinter_Prefers_AvailablePhysical()
     {
