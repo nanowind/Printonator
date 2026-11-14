@@ -78,10 +78,15 @@ public class McpToolsTests
 
         var result = (Dictionary<string, object?>)PrintTools.GetErrorReference();
         var rows = (IEnumerable<object>)result["codes"]!;
-        var listed = rows.Cast<Dictionary<string, object?>>().Select(r => (string)r["code"]!).ToHashSet();
+        var rowList = rows.Cast<Dictionary<string, object?>>().Select(r => (string)r["code"]!).ToList();
+        var listed = rowList.ToHashSet();
 
         foreach (var code in codes)
             Assert.True(listed.Contains(code), $"ErrorReference thiếu mã {code}");
+
+        // Mã KHÔNG được trùng: SuggestedAction tra bằng FirstOrDefault → dòng trùng làm gợi ý thành tùy tiện.
+        var dupes = rowList.GroupBy(c => c).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
+        Assert.True(dupes.Count == 0, $"ErrorReference trùng mã: {string.Join(", ", dupes)}");
     }
 
     [Fact]

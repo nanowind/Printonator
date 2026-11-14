@@ -106,6 +106,8 @@ public static class BrowserPrintPipeline
         var cfg = new PrintConfig { PrinterName = job.Config.PrinterName };
         job.Config.CopyInto(cfg);   // GHI ĐÈ Copies — set sau, đừng set trước
         cfg.Copies = Math.Max(job.Config.Copies, 1);
+        // PDF đã cắt sẵn theo lẻ/chẵn rồi — shell không được lọc lại (và không lọc được).
+        cfg.Parity = PageParityFilter.All;
         return cfg;
     }
 }

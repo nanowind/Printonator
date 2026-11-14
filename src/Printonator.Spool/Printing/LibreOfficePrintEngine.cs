@@ -34,6 +34,17 @@ public sealed class LibreOfficePrintEngine : IPrintEngine
 
     public async Task<Result<bool>> PrintAsync(PrintJob job, CancellationToken ct)
     {
+        // soffice CLI không có tham số trang → KHÔNG lọc được lẻ/chẵn. In cả file mà vẫn báo Done là bug
+        // im lặng (user chọn "chỉ trang lẻ" vẫn ra đủ) → từ chối TRƯỚC khi kiểm máy in/file cho deterministic.
+        if (job.Config.Parity != PageParityFilter.All)
+            return Result<bool>.Fail(new PrintError
+            {
+                Code = ErrorCodes.UnsupportedOption,
+                Category = PrintErrorCategory.Config,
+                Message = $"LibreOffice không in riêng trang lẻ/chẵn được (chỉ in cả file) — nên không in {job.FileName}.",
+                Hint = "Cài MS Office để in file Office đúng cấu hình, bỏ bộ lọc lẻ/chẵn, hoặc nhập page range cụ thể (vd \"1-3,5\").",
+            });
+
         var soffice = GetSoffice();
         if (soffice is null)
             return Result<bool>.Fail(new PrintError

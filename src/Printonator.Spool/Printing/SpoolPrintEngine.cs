@@ -20,6 +20,19 @@ public sealed class SpoolPrintEngine : IPrintEngine
 
     public Task<Result<bool>> PrintAsync(PrintJob job, CancellationToken ct)
     {
+        // Shell printto không có tham số trang → lọc lẻ/chẵn là BẤT KHẢ. PHẢI chặn ở đây TRƯỚC khi
+        // resolve máy in/kiểm file (để mã lỗi deterministic), nếu không job in cả file vẫn báo Done.
+        // Lưu ý: các đường render (browser/watermark/gộp) đã CẮT SẴN PDF và set Parity=All trên config
+        // tạm — nếu không, chúng sẽ chết ở đây.
+        if (job.Config.Parity != PageParityFilter.All)
+            return Task.FromResult(Result<bool>.Fail(new PrintError
+            {
+                Code = ErrorCodes.UnsupportedOption,
+                Category = PrintErrorCategory.Config,
+                Message = $"Không in riêng trang lẻ/chẵn được bằng lệnh in của Windows (chỉ in cả file) — nên không in {job.FileName}.",
+                Hint = "Cài MS Office để in file Office đúng cấu hình, bỏ bộ lọc lẻ/chẵn, hoặc nhập page range cụ thể (vd \"1-3,5\").",
+            }));
+
         List<Process> spawned = new();   // scope ngoài try — catch cần biết đã gửi bao nhiêu bản
         var copies = Math.Max(job.Config.Copies, 1);   // cùng lý do: catch dùng để báo "k/N bản"
         try

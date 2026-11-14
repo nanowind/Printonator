@@ -653,6 +653,8 @@ public static class PrintTools
             "Xem job_status để biết số trang của file; gọi print_files với range đúng (All, 2,5, 3-4, S2:1-3)."),
         (ErrorCodes.SectionNotFound, "File không có section được chỉ định.",
             "Hỏi người dùng số section đúng hoặc dùng page range All."),
+        (ErrorCodes.UnsupportedOption, "Engine xử lý file này không áp được option đã yêu cầu (vd chỉ in trang lẻ/chẵn), nên job bị từ chối thay vì in sai.",
+            "Bỏ option lọc lẻ/chẵn (parity=All) hoặc đổi sang page range cụ thể (vd \"1,3,5\") — range tường minh in được trên engine không lọc được."),
         (ErrorCodes.NoFilesSelected, "Không có file nào được truyền.",
             "Gọi print_files với tham số paths không rỗng."),
         (ErrorCodes.MaxBatchExceeded, "Vượt giới hạn trang / file / bản in.",

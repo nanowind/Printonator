@@ -30,6 +30,20 @@ public sealed class MergePrintEngine : IPrintEngine
         if (string.IsNullOrWhiteSpace(printer))
             return FailCoverEmpty("Chưa chọn máy in để gộp.", "Chọn máy in ở thanh công cụ rồi in lại.");
 
+        // Lọc lẻ/chẵn cần biết số trang của TỪNG file. Chưa đếm được trang → KHÔNG in hết rồi báo Done
+        // (đúng lỗi cũ: chọn Odd mà in cả file). Chặn sớm, báo rõ file nào.
+        foreach (var job in jobs)
+        {
+            if (job.Config.Parity != PageParityFilter.All && job.PageCount <= 0)
+                return Result<bool>.Fail(new PrintError
+                {
+                    Code = ErrorCodes.UnsupportedOption,
+                    Category = PrintErrorCategory.Config,
+                    Message = $"Không gộp được \"{job.FileName}\": chưa biết file có bao nhiêu trang nên không lọc được trang lẻ/chẵn.",
+                    Hint = "Nhập page range cụ thể cho file này (vd \"1-3,5\"), hoặc chuyển file sang PDF để app đếm được số trang.",
+                });
+        }
+
         using var temp = TempDir.Create("printonator-merge");
         var tempDir = temp.FullPath;
         {
@@ -65,7 +79,7 @@ public sealed class MergePrintEngine : IPrintEngine
 
             if (fmt == "PDF")
             {
-                var rendered = await WindowsPdfRasterizer.RenderPagesAsync(job.FilePath, AllPagesOf(job), ct);
+                var rendered = await WindowsPdfRasterizer.RenderPagesAsync(job.FilePath, PagesOf(job), ct);
                 if (rendered.IsSuccess && rendered.Value is { Count: > 0 } imgs)
                 {
                     for (var i = 0; i < imgs.Count; i++)
@@ -114,8 +128,17 @@ public sealed class MergePrintEngine : IPrintEngine
         return "";
     }
 
-    private static IReadOnlyList<int> AllPagesOf(PrintJob job)
-        => job.PageCount > 0 ? Enumerable.Range(1, job.PageCount).ToArray() : [1];
+    /// <summary>
+    /// Trang cần rasterize cho 1 file trong lô gộp — TÔN TRỌNG page range + lẻ/chẵn, giống
+    /// <see cref="WatermarkPrintEngine"/> (ResolveSelectedPages xử lý range/parity/page count).
+    /// Không có range và không lọc lẻ/chẵn → in cả file (đường cũ, không đổi).
+    /// </summary>
+    private static IReadOnlyList<int> PagesOf(PrintJob job)
+    {
+        int[]? pages = null;
+        try { pages = CdpPrintParams.ResolveSelectedPages(job); } catch { }
+        return pages ?? (job.PageCount > 0 ? Enumerable.Range(1, job.PageCount).ToArray() : [1]);
+    }
 
     private static Result<bool> FailCoverEmpty(string msg, string hint)
         => Result<bool>.Fail(new PrintError

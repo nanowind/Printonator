@@ -47,6 +47,7 @@ public static class ErrorCodes
     // Config
     public const string InvalidPageRange = "INVALID_PAGE_RANGE";
     public const string SectionNotFound = "SECTION_NOT_FOUND";
+    public const string UnsupportedOption = "UNSUPPORTED_OPTION";   // engine không áp được option (vd lẻ/chẵn) — báo, không in sai im lặng
     public const string NoFilesSelected = "NO_FILES_SELECTED";
     public const string MaxBatchExceeded = "MAX_BATCH_EXCEEDED";
     public const string ApprovalRequired = "APPROVAL_REQUIRED";

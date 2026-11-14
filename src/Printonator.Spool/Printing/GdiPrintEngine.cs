@@ -275,9 +275,56 @@ public sealed class GdiPrintEngine : IPrintEngine
                 Hint = "File PDF có thể bị hỏng hoặc bị mật khẩu. Thử mở trong Edge/Adobe xem được không.",
             });
 
+        // Đen trắng: ép xám NGAY Ở ĐÂY — PdfImageWriter chỉ encode PNG→JPEG, không biết ColorMode.
+        // Thứ tự trang / số trang / WidthDip-HeightDip giữ nguyên, chỉ bytes PNG đổi.
+        // AsPrinter / AsDocument / Color → list đi thẳng (byte-identical).
+        // Đổi TẠI CHỖ khi được (rasterizer trả List): bytes màu cũ được GC thu hồi dần → peak RAM
+        // không nhân đôi (cả batch ảnh đã nằm trong RAM từ bước render).
+        IReadOnlyList<RenderedPdfPage> pageList = list;
+        if (job.Config.ColorMode == PrintColorMode.Grayscale)
+        {
+            string? grayErr = null;
+            var grayPage = 0;
+            if (list is List<RenderedPdfPage> mutable)
+            {
+                for (var i = 0; i < mutable.Count; i++)
+                {
+                    if (ToGrayscalePng(mutable[i].Png, out var err) is { } g)
+                        mutable[i] = mutable[i] with { Png = g };
+                    else { grayErr = err; grayPage = i + 1; break; }
+                }
+            }
+            else
+            {
+                var gray = new List<RenderedPdfPage>(list.Count);
+                for (var i = 0; i < list.Count; i++)
+                {
+                    if (ToGrayscalePng(list[i].Png, out var err) is { } g)
+                        gray.Add(list[i] with { Png = g });
+                    else { grayErr = err; grayPage = i + 1; break; }
+                }
+                pageList = gray;
+            }
+
+            // Chuyển xám hỏng KHÔNG được rơi về bytes màu: user chọn "Đen trắng" mà nhận PDF màu
+            // là in sai im lặng → DỪNG xuất bản, báo lỗi đầy đủ (code + message + hint) cho job/UI/MCP.
+            if (grayErr is not null)
+            {
+                GdiLog($"GdiPrintEngine: chuyển xám trang {grayPage} '{job.FileName}' thất bại → dừng xuất PDF: {grayErr}");
+                return Result<bool>.Fail(new PrintError
+                {
+                    Code = ErrorCodes.EngineFailed,
+                    Category = PrintErrorCategory.App,
+                    Message = $"Không xuất được PDF cho \"{job.FileName}\": chuyển trang {grayPage} sang đen trắng thất bại nên đã dừng, để không tạo ra file còn màu.",
+                    Hint = "In thẳng ra máy in giấy thay vì máy in ảo PDF, hoặc bỏ chọn \"Đen trắng\" rồi xuất lại.",
+                    Detail = $"Trang {grayPage}: {grayErr}",
+                });
+            }
+        }
+
         try
         {
-            PdfImageWriter.Write(outPdf, list);
+            PdfImageWriter.Write(outPdf, pageList);
         }
         catch (Exception ex)
         {
@@ -676,6 +723,41 @@ public sealed class GdiPrintEngine : IPrintEngine
     {
         try { using var ms = new MemoryStream(png); return new Bitmap(ms); }
         catch { return null; }
+    }
+
+    /// <summary>PNG → PNG XÁM (dùng lại <see cref="GrayscaleAttributes"/> — cùng ma trận với đường in GDI).
+    /// Lỗi bất kỳ → null + <paramref name="error"/> (lý do): caller DỪNG việc xuất PDF và báo lỗi cho job.
+    /// Không bao giờ trả lại ảnh màu — user chọn "Đen trắng" mà nhận file màu là in sai im lặng.
+    /// ponytail: đổi cả trang thành bitmap → chữ mất vector, PDF xuất ra nặng hơn.
+    /// Nâng cấp khi: có user kêu PDF xám xuất ra mờ — lúc đó mới cần đường vector/không raster.</summary>
+    internal static byte[]? ToGrayscalePng(byte[] png, out string? error)
+    {
+        error = null;
+        try
+        {
+            using var src = LoadImage(png);
+            if (src is null)
+            {
+                error = "không đọc được ảnh trang";
+                return null;
+            }
+            using var dst = new Bitmap(src.Width, src.Height, PixelFormat.Format32bppArgb);
+            using (var g = Graphics.FromImage(dst))
+            {
+                g.CompositingMode = System.Drawing.Drawing2D.CompositingMode.SourceCopy;
+                g.DrawImage(src, new Rectangle(0, 0, src.Width, src.Height),
+                    0, 0, src.Width, src.Height, GraphicsUnit.Pixel, GrayscaleAttributes);
+            }
+            using var ms = new MemoryStream();
+            dst.Save(ms, ImageFormat.Png);
+            return ms.ToArray();
+        }
+        catch (Exception ex)
+        {
+            GdiLog($"GdiPrintEngine: chuyển xám 1 trang PDF thất bại: {ex.Message}");
+            error = ex.Message;
+            return null;
+        }
     }
 
     /// <summary>DPI render cho GDI in PDF — cao hơn CdpPrintParams.DpiFor (vốn tối ưu browser ~150).

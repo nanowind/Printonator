@@ -46,6 +46,22 @@ public sealed class BrowserPrintEngine : IPrintEngine
         if (!File.Exists(job.FilePath))
             return Result<bool>.Fail(PrintErrorFactory.FileNotFound(job.FilePath));
 
+        // Chưa probe được số trang (TXT/CSV...) → không biết trang nào là lẻ/chẵn → không lọc được.
+        // Render ra PDF rồi in tiếp là MẤT luôn bộ lọc (tmpCfg.Parity = All cho shell), nên từ chối
+        // TRƯỚC khi render thay vì in cả file rồi báo Done.
+        if (job.Config.Parity != PageParityFilter.All && job.PageCount <= 0)
+        {
+            var oddEven = job.Config.Parity == PageParityFilter.Even ? "chẵn" : "lẻ";
+            BrowserLog($"{job.FileName}: chưa biết số trang → không lọc được trang {oddEven}; báo lỗi.");
+            return Result<bool>.Fail(new PrintError
+            {
+                Code = ErrorCodes.UnsupportedOption,
+                Category = PrintErrorCategory.Config,
+                Message = $"Chưa biết file \"{job.FileName}\" có bao nhiêu trang trước khi in, nên không lọc riêng trang {oddEven} được.",
+                Hint = "Nhập page range cụ thể (vd \"1,3,5\") thay cho bộ lọc lẻ/chẵn, hoặc chuyển file sang PDF rồi in lại.",
+            });
+        }
+
         // Máy in ẢO (PDF/XPS...) → luôn render rồi LƯU PDF cạnh file gốc, KHÔNG đẩy spooler
         // (shell printto tới PDF printer mở hộp "Save As" vô hình → "báo xong không ra file").
         var pdfOut = PrinterService.PdfOutputPath(job);
@@ -55,7 +71,11 @@ public sealed class BrowserPrintEngine : IPrintEngine
         // Chỉ render khi user đặt option mà shell không làm được: cắt trang, scale, ngang, khổ lạ.
         // (Máy ảo → không fast-path: phải render để ra file PDF.)
         if (pdfOut is null && !NeedsBrowserRender(job))
+        {
+            // Không có option nào cần render → shell in thẳng là ĐÚNG, không mất gì.
+            BrowserLog($"{job.FileName}: fast-path — in thẳng qua shell (không có option cần render).");
             return await _fallback.PrintAsync(job, ct);
+        }
 
         using var temp = TempDir.Create("printonator-browser");
         var tempDir = temp.FullPath; // keep existing variable name to minimize changes
@@ -138,8 +158,31 @@ public sealed class BrowserPrintEngine : IPrintEngine
 
             if (!ok || string.IsNullOrEmpty(base64))
             {
-                // Rớt MỀM về in shell (file gốc, KHÔNG có options) — in được vẫn hơn lỗi.
-                // Vd một số bản Edge 151+ không chạy headless/CDP trên máy user.
+                // Render lỗi: quyết định theo loại cấu hình, KHÔNG theo việc "đã tới nhánh này".
+                // "Khổ theo tài liệu" là MẶC ĐỊNH của app cho PDF/Office → nhánh render là đường thường,
+                // không phải ngoại lệ. Cấu hình chỉ có option shell làm được (toàn bộ, dọc, khổ tài liệu/A4,
+                // scale theo file, chất lượng/theo máy) → rớt về shell vẫn in đúng nội dung, chỉ mất phần
+                // "dùng đúng khổ gốc từng trang". Còn cấu hình có option shell KHÔNG làm được (cắt trang,
+                // scale, chất lượng, 1/2 mặt, chiều ngang, khổ lạ) → in bằng shell là in sai → chặn job.
+                if (RequestsRenderOnlyOptions(job))
+                {
+                    BrowserLog($"{job.FileName}: render lỗi ({err ?? "không rõ"}) → KHÔNG rớt về shell vì sẽ bỏ option user chọn; báo lỗi.");
+                    return Result<bool>.Fail(new PrintError
+                    {
+                        Code = ErrorCodes.EngineFailed,
+                        Category = PrintErrorCategory.App,
+                        Message = $"Không dựng được bản in cho \"{job.FileName}\" bằng trình duyệt (Edge/Chrome).",
+                        Hint = "Cài hoặc cập nhật Microsoft Edge / Google Chrome, hoặc bỏ các tuỳ chọn cần dựng bản in " +
+                               "(cắt trang, khổ giấy, chiều giấy, tỉ lệ, chất lượng, 1/2 mặt) rồi in lại.",
+                        Detail = err,
+                    });
+                }
+
+                // ponytail: fallback shell chỉ đúng cho cấu hình mà shell tôn trọng được — khổ theo tài liệu
+                // vẫn có thể ra khổ driver (A4) thay vì khổ gốc từng trang. Nâng cấp khi cần khổ gốc tuyệt đối
+                // mà không có browser: thêm raster fallback (WindowsPdfRasterizer → GDI) tôn trọng option.
+                BrowserLog($"{job.FileName}: render lỗi ({err ?? "không rõ"}) → in bằng shell ở cấu hình mặc định của driver "
+                           + "(có thể lệch khổ gốc từng trang).");
                 return await _fallback.PrintAsync(job, ct);
             }
 
@@ -178,6 +221,8 @@ public sealed class BrowserPrintEngine : IPrintEngine
             var tmpCfg = new PrintConfig { PrinterName = job.Config.PrinterName };
             job.Config.CopyInto(tmpCfg);   // giữ duplex/color/paper của job gốc
             tmpCfg.Copies = 1;             // SAU CopyInto — nó GHI ĐÈ Copies; vòng lặp dưới tự nhân bản (N×N nếu để nguyên)
+            // PDF đã cắt sẵn theo lẻ/chẵn rồi — shell không được lọc lại (và không lọc được).
+            tmpCfg.Parity = PageParityFilter.All;
             var tmp = new PrintJob
             {
                 FilePath = outPdf,
@@ -259,8 +304,59 @@ public sealed class BrowserPrintEngine : IPrintEngine
         return false;
     }
 
+    /// <summary>Cấu hình có option mà shell printto KHÔNG làm được → rớt về shell sẽ in sai.
+    /// Tách khỏi NeedsBrowserRender: hàm đó còn trả true cho "khổ theo tài liệu" (mặc định của app),
+    /// mà shell in đúng khổ driver cũng chỉ là giảm chất lượng — không đáng chặn job.</summary>
+    private static bool RequestsRenderOnlyOptions(PrintJob job)
+    {
+        if (job?.Config is null) return false;
+        var cfg = job.Config;
+
+        // Lọc lẻ/chẵn: shell printto không lọc được (chỉ cắt được qua danh sách trang đã resolve)
+        if (cfg.Parity != PageParityFilter.All) return true;
+
+        // Page range cụ thể → phải cắt trang, shell printto in cả file
+        if (CdpPrintParams.ResolveSelectedPages(job) is { Length: > 0 }) return true;
+
+        // Scale khác mặc định
+        if (cfg.ScaleMode is not (PrintScaleMode.AsDocument or PrintScaleMode.Original))
+            return true;
+
+        // Chất lượng khác driver → cần rasterize đúng DPI
+        if (cfg.Quality != PrintQuality.AsPrinter)
+            return true;
+
+        // 2 mặt: driver in theo cài đặt riêng — shell không ép được 1/2 mặt
+        if (cfg.DuplexMode != PrintDuplexMode.AsPrinter)
+            return true;
+
+        // Ép chiều ngang (dọc = theo file, không cần render)
+        if (cfg.Orientation == PrintOrientation.Landscape)
+            return true;
+
+        // Khổ giấy cụ thể khác A4 (A4 = mặc định app → in thẳng)
+        var paper = (cfg.PaperSize ?? "").Trim();
+        if (paper.Length > 0 && !paper.Equals("A4", StringComparison.OrdinalIgnoreCase)
+            && !paper.Equals(PaperCatalog.AsDocument, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return false;
+    }
+
     private (string Name, string Path)? GetBrowser()
     {
         try { return _browserResolver(); } catch { return null; }
+    }
+
+    /// <summary>Ghi log debug vào %TEMP%\printonator-office.log — engine browser đi đường nào, rớt vì sao.</summary>
+    private static void BrowserLog(string msg)
+    {
+        try
+        {
+            System.IO.File.AppendAllText(
+                System.IO.Path.Combine(System.IO.Path.GetTempPath(), "printonator-office.log"),
+                $"{DateTimeOffset.Now:O} browser {msg}\n");
+        }
+        catch { }
     }
 }

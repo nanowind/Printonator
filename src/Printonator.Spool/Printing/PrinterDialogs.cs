@@ -167,6 +167,7 @@ public static class PrinterDialogs
     private const int DmPaperSizeOffset = 78;      // dmPaperSize (Int16)
     private const int DmPaperLengthOffset = 80;    // dmPaperLength (Int16), đơn vị 1/10 mm  ← TRƯỚC width
     private const int DmPaperWidthOffset = 82;     // dmPaperWidth  (Int16), đơn vị 1/10 mm
+    private const int DmPrintQualityOffset = 90;   // dmPrintQuality (Int16): DMRES_* âm, DƯƠNG = DPI
     private const int DmColorOffset = 92;          // dmColor (Int16): 1 = đen trắng, 2 = màu
     private const int DmDuplexOffset = 94;         // dmDuplex (Int16)
     private const int MinDevModeSize = 96;         // DEVMODE phải chứa tới dmDuplex (trường xa nhất ta đụng)
@@ -180,6 +181,7 @@ public static class PrinterDialogs
     private const int DM_PAPERSIZE = 0x00000002;   // dmFields
     private const int DM_PAPERWIDTH = 0x00000004;  // dmFields
     private const int DM_PAPERLENGTH = 0x00000008; // dmFields
+    private const int DM_PRINTQUALITY = 0x00000400; // dmFields
     private const int DM_COLOR = 0x00000800;       // dmFields
     private const int DM_DUPLEX = 0x00001000;      // dmFields
 
@@ -187,6 +189,10 @@ public static class PrinterDialogs
     private const short DmOrientLandscape = 2;
     private const short DmColorMonochrome = 1;     // DMCOLOR_MONOCHROME
     private const short DmColorColor = 2;          // DMCOLOR_COLOR
+    private const short DmResHigh = -4;            // DMRES_HIGH
+    private const short DmResMedium = -3;          // DMRES_MEDIUM
+    private const short DmResLow = -2;             // DMRES_LOW
+    private const short DmResDraft = -1;           // DMRES_DRAFT
 
     /// <summary>Trả DEVMODE về cấu hình ban đầu — Dispose để restore.
     /// MỘT lease giữ MỘT handle + MỘT buffer PRINTER_INFO_2 và restore CẢ vùng 72..95 (dmFields..dmDuplex)
@@ -272,9 +278,10 @@ public static class PrinterDialogs
                         && !cfg.PaperSize.Equals(PaperCatalog.AsDocument, StringComparison.OrdinalIgnoreCase)
                         && PaperCatalog.Dimensions(cfg.PaperSize) is not null;
         var wantOrient = cfg.Orientation is PrintOrientation.Portrait or PrintOrientation.Landscape;
+        var wantQuality = TryDmPrintQuality(cfg.Quality, out var targetQuality);
 
         // Không có gì để đặt → không đụng máy in (tên rác vẫn phải Ok(null)).
-        if (!wantDuplex && !wantColor && !wantPaper && !wantOrient)
+        if (!wantDuplex && !wantColor && !wantPaper && !wantOrient && !wantQuality)
             return Result<DevModeLease?>.Ok(null);
 
         if (string.IsNullOrWhiteSpace(printerName))
@@ -361,6 +368,20 @@ public static class PrinterDialogs
             {
                 WriteColor(devMode, targetColor);
                 wroteColor = true;
+            }
+
+            // CỔNG CHẶN (khác color): theo MS DeviceCapabilities(DC_FIELDS), dmFields là lời khai của driver
+            // về các thành viên DEVMODE nó hỗ trợ; driver không khai DM_PRINTQUALITY thì ghi vào là vô nghĩa
+            // (và .NET cũng không ghi). Bỏ qua + ghi log, KHÔNG làm hỏng job — chất lượng in là tối ưu.
+            // ponytail: dmPrintQuality chỉ thô 4 nấc và nhiều driver giữ thang chất lượng thật ở chỗ khác
+            // (driver data riêng / ICM), nên trên vài máy đây là no-op — dòng log là chẩn đoán.
+            // Đường nâng cấp: đọc DeviceCapabilities(DC_ENUMRESOLUTIONS), chọn DPI thật rồi mới ghi.
+            if (wantQuality)
+            {
+                if ((Marshal.ReadInt32(devMode, DmFieldsOffset) & DM_PRINTQUALITY) != 0)
+                    WritePrintQuality(devMode, targetQuality);
+                else
+                    DevModeLog($"print quality: printer=\"{printerName}\" driver không khai DM_PRINTQUALITY — bỏ qua (giữ chất lượng của driver)");
             }
 
             if (!SetPrinter(hPrinter, 2, buffer, 0))
@@ -500,6 +521,29 @@ public static class PrinterDialogs
     {
         Marshal.WriteInt16(devMode, DmColorOffset, value);
         Marshal.WriteInt32(devMode, DmFieldsOffset, Marshal.ReadInt32(devMode, DmFieldsOffset) | DM_COLOR);
+    }
+
+    /// <summary>Ánh xạ PrintQuality → giá trị dmPrintQuality (DMRES_*, LUÔN âm: số dương = DPI, mà DPI
+    /// driver không có sẽ làm driver từ chối CẢ DEVMODE). AsPrinter/rao lung → false.</summary>
+    internal static bool TryDmPrintQuality(PrintQuality q, out short value)
+    {
+        value = q switch
+        {
+            PrintQuality.High => DmResHigh,       // DMRES_HIGH
+            PrintQuality.Medium => DmResMedium,   // DMRES_MEDIUM
+            PrintQuality.Low => DmResLow,         // DMRES_LOW
+            PrintQuality.Draft => DmResDraft,     // DMRES_DRAFT
+            _ => 0,
+        };
+        return value != 0;
+    }
+
+    /// <summary>Ghi dmPrintQuality @90 + bật cờ DM_PRINTQUALITY trong dmFields @72 — mirror của WriteColor.
+    /// Gọi SAU khi đã kiểm tra driver khai DM_PRINTQUALITY (xem ApplyDevMode).</summary>
+    internal static void WritePrintQuality(IntPtr devMode, short value)
+    {
+        Marshal.WriteInt16(devMode, DmPrintQualityOffset, value);
+        Marshal.WriteInt32(devMode, DmFieldsOffset, Marshal.ReadInt32(devMode, DmFieldsOffset) | DM_PRINTQUALITY);
     }
 
     // ===================== Helpers =====================

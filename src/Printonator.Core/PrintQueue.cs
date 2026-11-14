@@ -381,10 +381,14 @@ public sealed class PrintQueue : IDisposable
             // EngineTimeout/OfficeAppBusy = kết cục MƠ HỒ: engine bỏ dở giữa lúc in (thread in còn chạy /
             // Office còn mid-PrintOut) — trang CÓ THỂ đã vào spooler. Đẩy job sang engine khác là in lại
             // lần hai → tốn giấy thật. Dừng chuỗi fallback, báo lỗi để người dùng tự kiểm tra.
+            //
+            // EngineFailed = engine đã TỰ QUYẾT định không áp được cấu hình của job (vd render trang thất bại
+            // khi user chọn page range/lẻ-chẵn) — engine kế (shell) sẽ in file GỐC không cấu hình rồi báo Done,
+            // đúng cái "in sai mà im lặng" cần tránh. Dừng chuỗi fallback.
             var code = r.Error?.Code;
             if (code is ErrorCodes.FileNotFound or ErrorCodes.PrinterNotFound or ErrorCodes.UnsupportedFormat
                 or ErrorCodes.InvalidPageRange or ErrorCodes.SectionNotFound or ErrorCodes.FileCorrupted
-                or ErrorCodes.EngineTimeout or ErrorCodes.OfficeAppBusy)
+                or ErrorCodes.EngineTimeout or ErrorCodes.OfficeAppBusy or ErrorCodes.EngineFailed)
                 break;
         }
         return lastFail ?? Result<bool>.Fail(PrintErrorFactory.SpoolerFailed("Không có engine in nào hoạt động."));

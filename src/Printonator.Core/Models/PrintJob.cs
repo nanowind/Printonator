@@ -81,7 +81,8 @@ public enum PrintCollation
     ByPages,      // gom theo trang (trang 1,1,1 rồi trang 2,2,2...)
 }
 
-/// <summary>Chỉ in một nửa các trang (PC: Print odd or even pages) — engine render áp được, shell in bình thường.</summary>
+/// <summary>Chỉ in một nửa các trang (PC: Print odd or even pages) — engine render/Office áp được;
+/// engine KHÔNG áp được (LibreOffice, shell printto) phải BÁO LỖI, không in cả file trong im lặng.</summary>
 public enum PageParityFilter
 {
     All,   // in tất cả trang
@@ -171,7 +172,8 @@ public sealed class PrintConfig
     /// <summary>Kiểu gom bản khi nhiều copies.</summary>
     public PrintCollation Collation { get; set; } = PrintCollation.AsPrinter;
 
-    /// <summary>Chỉ in trang lẻ/chẵn (PC: Print odd or even pages) — engine render lọc được, shell để nguyên.</summary>
+    /// <summary>Chỉ in trang lẻ/chẵn (PC: Print odd or even pages) — engine render/Office lọc được
+    /// (xem PrintJob.ResolvePrintPages); engine không lọc được thì báo UNSUPPORTED_OPTION.</summary>
     public PageParityFilter Parity { get; set; } = PageParityFilter.All;
 
     /// <summary>Độ phân giải in — AsPrinter = driver quyết (mặc định); còn lại đổi chất lượng rasterize.</summary>
@@ -448,6 +450,42 @@ public sealed class PrintJob
 
         // Plain pages: 2,5 | 3-4 | 1-2,7
         return ParseRange(raw, 1, Math.Max(PageCount, 1), $"File có {PageCount} trang.");
+    }
+
+    /// <summary>Lọc danh sách trang theo bộ lọc lẻ/chẵn. Thuần túy, không I/O: trả mảng đã sắp xếp, không trùng.</summary>
+    public static int[] ApplyParity(PageParityFilter parity, IEnumerable<int> pages)
+    {
+        var all = pages.Distinct().OrderBy(p => p);
+        var kept = parity switch
+        {
+            PageParityFilter.Odd => all.Where(n => n % 2 == 1),
+            PageParityFilter.Even => all.Where(n => n % 2 == 0),
+            _ => all,
+        };
+        return kept.ToArray();
+    }
+
+    /// <summary>
+    /// Trang THẬT SỰ gửi xuống in = page range + bộ lọc lẻ/chẵn.
+    /// KHÁC ResolvePhysicalPages (giữ nguyên, KHÔNG lọc parity): EstimatedPages/quota/PageCount cần số trang
+    /// thật. Lọc xong MÀ RỖNG thì trả LỖI — trước đây rơi về "in cả file" (bug im lặng: chọn trang lẻ vẫn in đủ).
+    /// </summary>
+    public Result<int[]> ResolvePrintPages()
+    {
+        var r = ResolvePhysicalPages();
+        if (!r.IsSuccess) return r;
+
+        var pages = ApplyParity(Config.Parity, r.Value!);
+        if (pages.Length > 0) return Result<int[]>.Ok(pages);
+
+        var filterText = Config.Parity == PageParityFilter.Even ? "trang chẵn" : "trang lẻ";
+        return Result<int[]>.Fail(new PrintError
+        {
+            Code = ErrorCodes.InvalidPageRange,
+            Category = PrintErrorCategory.Config,
+            Message = $"Không còn trang nào để in: phạm vi \"{Config.PageRange}\" lọc {filterText} xong không còn trang phù hợp.",
+            Hint = $"Bỏ bộ lọc lẻ/chẵn, hoặc chọn phạm vi trang khác (file có {PageCount} trang).",
+        });
     }
 
     /// <summary>Parse page range "All | 2,5 | 3-4 | 1-2,7" KHÔNG cần PageCount — cho engine in theo
