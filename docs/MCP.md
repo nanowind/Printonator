@@ -53,7 +53,7 @@ claude mcp add printonator -t stdio -- <đường_dẫn>\Printonator.Mcp.exe --s
 |---|---|
 | `list_printers` | Máy in + trạng thái (available/offline), khổ giấy, duplex/màu, khay giấy, máy ảo |
 | `pick_printer` | Tự chọn máy in tốt nhất: máy vật lý available trước máy ảo; lọc theo khổ/duplex/màu. AI không biết in máy nào → dùng tool này |
-| `print_files` | In hàng loạt file (paths, printer?, copies, duplex, paper, pageRange, colorMode, paperSource, scaleMode, pagesPerSheet, parity, quality) → job_ids + ước lượng trang. **Bỏ trống `printer` = tự chọn máy vật lý sẵn sàng** (khi có allowlist) |
+| `print_files` | In hàng loạt file (paths, printer?, copies, duplex, paper, pageRange, color, colorMode, paperSource, scaleMode, pagesPerSheet, parity, quality) → job_ids + ước lượng trang. **Bỏ trống `printer` = tự chọn máy vật lý sẵn sàng** (khi có allowlist) |
 | `print_with_preset` | In theo preset đã lưu (presetName, paths, printer?) |
 | `get_presets` / `save_preset` | Xem / lưu bộ cấu hình in tái sử dụng |
 | `reject_job` | Từ chối job đang chờ duyệt (state=awaitingapproval). **Không có `approve_job`** — AI tự duyệt job của mình thì cổng duyệt vô nghĩa; duyệt nằm ở app |
@@ -61,6 +61,28 @@ claude mcp add printonator -t stdio -- <đường_dẫn>\Printonator.Mcp.exe --s
 | `cancel_job` | Hủy job đang chờ (Queued) |
 | `get_guard_config` | Xem cấu hình an toàn đang áp dụng (AI có tự in được không) |
 | `get_error_reference` | Tra cứu bảng mã lỗi → nghĩa + AI nên làm gì (xem §4) |
+
+### 2a. Tham số in 2 mặt / màu in
+
+Áp dụng cho `print_files` và `save_preset` (preset lưu đúng giá trị truyền vào).
+
+| Tham số | Kiểu | Bỏ trống = | `true` | `false` |
+|---|---|---|---|---|
+| `duplex` | bool? | **theo máy in (không ép)** | 2 mặt, lật cạnh dài | 1 mặt |
+| `color` | bool? | **theo máy in (không ép)** | in màu | in đen trắng |
+
+- `colorMode` (chuỗi: `AsPrinter` / `AsDocument` / `Color` / `Grayscale`) **thắng `color`** khi có truyền. Chuỗi lạ → coi như `AsPrinter`.
+- Bỏ trống `duplex` hoặc `color` thì Printonator **không đụng tới máy in** cho thuộc tính đó — máy in tự quyết như khi in từ Word/Chrome. (Trước đây bỏ trống bị ép thành 1 mặt / đen trắng.)
+
+**In đen trắng chắc tới đâu:** mức độ phụ thuộc định dạng file.
+
+| Định dạng | Đen trắng có chắc không |
+|---|---|
+| PDF (in thẳng, cấu hình mặc định) | **Chắc chắn** — Printonator tự đổi sang đen trắng trước khi gửi máy in, driver nào cũng vậy |
+| Word / Excel / PowerPoint | Nhờ trình điều khiển máy in làm theo; đa số máy in văn phòng làm được, máy lạ thì không đảm bảo |
+| Ảnh / TXT / CSV / file có dấu mờ / lô gộp | **Chắc chắn** — trang in được đổi sang đen trắng trước khi in |
+| PDF cần dựng lại (khổ giấy khác, thu phóng, xoay, chất lượng khác mặc định) | Nhờ trình điều khiển máy in làm theo |
+| In sang máy ảo (Microsoft Print to PDF / XPS) | **Không đổi** — file xuất ra vẫn giữ màu gốc |
 
 > Engine in (thứ tự đăng ký, engine đầu tiên `CanHandle` thắng — KHÔNG bundle lib):
 > 1. `OfficeComPrintEngine` — Word/Excel/PowerPoint COM nếu có trên máy (giữ page setup/section).
