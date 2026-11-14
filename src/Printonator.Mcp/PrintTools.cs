@@ -64,7 +64,7 @@ public static class PrintTools
         [Description("Đường dẫn các file cần in")] string[] paths,
         [Description("Tên máy in (để trống hoặc 'mặc định' = máy in mặc định Windows)")] string? printer = null,
         [Description("Số bản in (1-100)")] int copies = 1,
-        [Description("In 2 mặt")] bool duplex = false,
+        [Description("In 2 mặt: true = 2 mặt (gáy dài), false = 1 mặt. Không truyền = theo máy in (không ép 1/2 mặt).")] bool? duplex = null,
         [Description("Khổ giấy: A4/A3/A5/Letter... (bỏ trống = theo máy/tài liệu)")] string? paper = null,
         [Description("Trang cần in: All, 2,5, 3-4, S2:1-3")] string? pageRange = null,
         [Description("In màu (giữ cho tương thích: true = Color, false = Grayscale). Không truyền = theo máy in.")] bool? color = null,
@@ -78,7 +78,9 @@ public static class PrintTools
         return await BuildAndQueue(paths, printer, cfg =>
         {
             cfg.Copies = copies;
-            cfg.Duplex = duplex;
+            // Bỏ trống duplex = AsPrinter (theo máy in) — KHÔNG ép 1 mặt; gán shim bool chỉ khi caller TRUYỀN.
+            // (Giống color: gán false sẽ thành Simplex và mở DEVMODE máy in cho job user không hề cấu hình.)
+            if (duplex is not null) cfg.Duplex = duplex.Value;
             // colorMode (mới) ưu tiên hơn bool color (cũ, giữ tương thích).
             // Bỏ trống cả hai = AsPrinter (theo máy in), khớp mặc định UI; chỉ khi caller TRUYỀN
             // bool color mới giữ map cũ: true = Color, false = Grayscale.
@@ -113,8 +115,8 @@ public static class PrintTools
     [McpServerTool, Description("Lưu một preset cấu hình in để dùng lại (print_with_preset).")]
     public static object SavePreset(
         [Description("Tên preset (ví dụ 'Hợp đồng 2 mặt')")] string name,
-        int copies = 1,
-        bool duplex = false,
+        [Description("Số bản in (1-100)")] int copies = 1,
+        [Description("In 2 mặt: true = 2 mặt (gáy dài), false = 1 mặt. Không truyền = theo máy in (preset không ép 1/2 mặt).")] bool? duplex = null,
         string? paper = null,
         [Description("Máy in mặc định của preset")] string? printer = null,
         [Description("In màu (giữ cho tương thích: true = Color, false = Grayscale). Không truyền = theo máy in.")] bool? color = null)
@@ -125,10 +127,13 @@ public static class PrintTools
             {
                 Name = name.Trim(),
                 Copies = Math.Clamp(copies, 1, 100),
-                Duplex = duplex,
+                Duplex = duplex ?? false,
                 // Set ĐỦ enum để PresetDto (get_presets) không tự vả mặt: duplex:true + duplexMode:"AsPrinter".
-                // Ngữ nghĩa giống bool cũ: true = LongEdge (2 mặt), false = Simplex (1 mặt).
-                DuplexMode = duplex ? PrintDuplexMode.LongEdge : PrintDuplexMode.Simplex,
+                // Ngữ nghĩa giống bool cũ: true = LongEdge (2 mặt), false = Simplex (1 mặt); BỎ TRỐNG = AsPrinter
+                // (theo máy in) — KHÔNG ghi Simplex vào preset cho cấu hình caller không hề đặt.
+                DuplexMode = duplex is null
+                    ? PrintDuplexMode.AsPrinter
+                    : duplex.Value ? PrintDuplexMode.LongEdge : PrintDuplexMode.Simplex,
                 PaperSize = string.IsNullOrWhiteSpace(paper) ? "A4" : paper,
                 PrinterName = printer,
                 // Không truyền color = AsPrinter (theo máy in), KHÔNG mặc định Grayscale vào preset;

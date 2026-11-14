@@ -109,6 +109,25 @@ public sealed class BrowserPrintEngine : IPrintEngine
                 (ok, base64, err) = await DevToolsPrintClient.PrintPdfAsync(
                     b.Path, url, CdpPrintParams.Build(job.Config, null), Path.Combine(tempDir, "profile"), ct);
             }
+            else if (job.Config.ColorMode == PrintColorMode.Grayscale)
+            {
+                // Grayscale: đưa file vào HTML bọc để chèn được CSS lọc xám (ảnh/TXT không có HTML
+                // nên trước đây in màu trên driver bỏ qua dmColor).
+                // ponytail: HTML bọc là 1 trang chứa toàn bộ ảnh/chữ — TXT nhiều trang trước đây phân
+                // trang tự nhiên nay phân trang trong viewport. Nâng cấp khi user báo pagination lạ:
+                // phát từng khối page-break-after như MergePrintEngine.
+                var body = await MergePrintEngine.BuildFileHtmlAsync(job, ct);
+                var htmlPath = Path.Combine(tempDir, "grayscale.html");
+                await File.WriteAllTextAsync(htmlPath,
+                    "<!DOCTYPE html><html><head><meta charset=\"utf-8\">" +
+                    BrowserPrintPipeline.GrayscaleFilterCss(job.Config) +
+                    "<style>@page{margin:0}html,body{margin:0;padding:0}</style></head><body>" +
+                    body + "</body></html>", ct);
+                // pageRanges = null: HTML bọc là 1 trang — range tính cho file gốc không áp lên nó.
+                (ok, base64, err) = await DevToolsPrintClient.PrintPdfAsync(
+                    b.Path, new Uri(htmlPath).AbsoluteUri, CdpPrintParams.Build(job.Config, null),
+                    Path.Combine(tempDir, "profile"), ct);
+            }
             else
             {
                 // Non-PDF: pageRanges CDP hoạt động (đã verify) — cắt trang khi có range

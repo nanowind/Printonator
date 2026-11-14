@@ -296,6 +296,11 @@ public static class PrinterDialogs
 
         var buffer = IntPtr.Zero;
         var leaseGiven = false;   // trả lease = trao quyền sở hữu handle/buffer cho caller
+        // SetPrinter đã ghi xong → máy in đang mang DEVMODE đã sửa cho MỌI app; snapshot/devMode phải
+        // sống ngoài try để catch còn hoàn lại được (khai báo ở đây vì catch không thấy biến trong try).
+        var wrote = false;
+        var devMode = IntPtr.Zero;
+        byte[]? snapshot = null;
         try
         {
             // Đo size trước (GetPrinter level 2 luôn trả false ở lần gọi rỗng — chỉ đọc cbNeeded).
@@ -310,7 +315,7 @@ public static class PrinterDialogs
                     "Mở 'Printing Preferences' một lần hoặc cài lại driver máy in.");
 
             // PRINTER_INFO_2 xếp tuần tự trong buffer; pDevMode trỏ vào DEVMODE CÙNG buffer này.
-            var devMode = Marshal.ReadIntPtr(buffer, PDevModeFieldIndex * IntPtr.Size);
+            devMode = Marshal.ReadIntPtr(buffer, PDevModeFieldIndex * IntPtr.Size);
             if (devMode == IntPtr.Zero)
                 return FailDevMode($"Máy in \"{printerName}\" không trả về bảng cài đặt (DEVMODE).",
                     "Mở 'Printing Preferences' để driver tạo cài đặt, rồi thử lại.");
@@ -320,7 +325,7 @@ public static class PrinterDialogs
                     "Cập nhật driver máy in — bản cũ không hỗ trợ các cài đặt này.");
 
             // Chụp vùng 72..95 NGAY (trước mọi lần ghi) để restore chính xác cả 4 nhóm cài đặt.
-            var snapshot = new byte[DevModeWindowLength];
+            snapshot = new byte[DevModeWindowLength];
             Marshal.Copy(devMode + DevModeWindowOffset, snapshot, 0, DevModeWindowLength);
 
             var wroteColor = false;
@@ -362,6 +367,8 @@ public static class PrinterDialogs
                 return FailDevModeWin32($"Không ghi được cấu hình in vào máy in \"{printerName}\".",
                     "Đặt tay trong 'Printing Preferences' rồi in lại.");
 
+            wrote = true;
+
             // CHẨN ĐOÁN, không phải cổng chặn: DEVMODE lưu của máy in KHÔNG phải cái Word/Excel/PPT/
             // LibreOffice/shell thật sự in — mỗi app tự dựng DEVMODE tài liệu từ driver. Driver có thể
             // hợp lệ giữ nguyên giá trị lưu mà vẫn tôn trọng giá trị của job (hoặc spooler chuẩn hoá lúc đọc),
@@ -382,6 +389,24 @@ public static class PrinterDialogs
         }
         catch (Exception ex)
         {
+            // SetPrinter đã thành công mà có gì ném sau đó (cấp phát lease / Volatile.Write) thì máy in
+            // vẫn đang mang DEVMODE đã sửa cho MỌI app, và lease chưa tồn tại nên RestoreActive() cũng
+            // không cứu được → tự hoàn lại ở đây, y hệt DevModeLease.Dispose (cùng 2 dòng, cố ý không
+            // tách hàm để lease giữ nguyên). Lỗi hoàn lại chỉ ghi log, không che lỗi gốc.
+            if (wrote && snapshot is not null)
+            {
+                try
+                {
+                    Marshal.Copy(snapshot, 0, devMode + DevModeWindowOffset, DevModeWindowLength);
+                    if (!SetPrinter(hPrinter, 2, buffer, 0))
+                        DevModeLog($"restore devmode (apply failed): SetPrinter fail err={Marshal.GetLastWin32Error()}");
+                }
+                catch (Exception restoreEx)
+                {
+                    DevModeLog($"restore devmode (apply failed): {restoreEx.Message}");
+                }
+            }
+
             return FailDevMode($"Lỗi đặt cấu hình in cho máy in \"{printerName}\".",
                 "Đặt tay trong 'Printing Preferences' rồi in lại.", ex.Message);
         }

@@ -75,26 +75,43 @@ public sealed class MergePrintEngine : IPrintEngine
                     }
                 }
             }
-            else if (fmt is "PNG" or "JPG" or "JPEG" or "BMP" or "GIF" or "TIF" or "TIFF" or "WEBP" or "ICO")
+            else
             {
-                var bytes = await File.ReadAllBytesAsync(job.FilePath, ct);
-                var data = Convert.ToBase64String(bytes);
-                sb.Append("<div style=\"page-break-after:always\">")
-                  .Append("<img style=\"width:100%;height:100%\" src=\"data:image/png;base64,")
-                  .Append(data).Append("\"></div>");
-            }
-            else if (fmt is "TXT" or "CSV")
-            {
-                var text = await File.ReadAllTextAsync(job.FilePath, ct);
-                sb.Append("<div style=\"page-break-after:always\">")
-                  .Append("<pre style=\"white-space:pre-wrap;padding:20px;\">")
-                  .Append(System.Net.WebUtility.HtmlEncode(text))
-                  .Append("</pre></div>");
+                sb.Append(await BuildFileHtmlAsync(job, ct));
             }
         }
 
         sb.Append("</body></html>");
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// HTML thân cho 1 file KHÔNG phải PDF: ảnh → &lt;img&gt; data-URI, TXT/CSV → &lt;pre&gt; escaped.
+    /// Dùng chung cho gộp lô và đường grayscale của BrowserPrintEngine (một bản duy nhất, không nhân bản).
+    /// File không tồn tại / định dạng chưa hỗ trợ → "" (bỏ qua, không ném).
+    /// </summary>
+    internal static async Task<string> BuildFileHtmlAsync(PrintJob job, CancellationToken ct)
+    {
+        if (!File.Exists(job.FilePath)) return "";
+
+        var fmt = (job.Format ?? "").ToUpperInvariant();
+
+        if (fmt is "PNG" or "JPG" or "JPEG" or "JFIF" or "BMP" or "GIF" or "TIF" or "TIFF" or "WEBP" or "ICO")
+        {
+            var bytes = await File.ReadAllBytesAsync(job.FilePath, ct);
+            var data = Convert.ToBase64String(bytes);
+            return "<div style=\"page-break-after:always\">" +
+                   "<img style=\"width:100%;height:100%\" src=\"data:image/png;base64," + data + "\"></div>";
+        }
+
+        if (fmt is "TXT" or "CSV")
+        {
+            var text = await File.ReadAllTextAsync(job.FilePath, ct);
+            return "<div style=\"page-break-after:always\"><pre style=\"white-space:pre-wrap;padding:20px;\">" +
+                   System.Net.WebUtility.HtmlEncode(text) + "</pre></div>";
+        }
+
+        return "";
     }
 
     private static IReadOnlyList<int> AllPagesOf(PrintJob job)
