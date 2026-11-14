@@ -500,10 +500,11 @@ public sealed class OfficeComPrintEngine : IPrintEngine
                         || sheet.Name.Equals(sheetFilter, StringComparison.OrdinalIgnoreCase));
                 if (keep)
                 {
-                    keptSheets.Add(sheet);
-                    // Log "khổ không có mã" chỉ cho sheet ĐẦU: 30 sheet cùng khổ sẽ ghi 30 dòng giống hệt.
+                    // Log lỗi khổ chỉ cho sheet ĐẦU (keptSheets còn rỗng): 30 sheet cùng khổ sẽ ghi
+                    // 30 dòng giống hệt. Kiểm TRƯỚC khi Add để đọc ra ý định, không phải off-by-one.
                     ApplyExcelSetup(sheet, job.Config.PaperSize, job.Config.Orientation,
-                                    logMissingCode: keptSheets.Count == 1);
+                                    logMissingCode: keptSheets.Count == 0);
+                    keptSheets.Add(sheet);
                     ApplyExcelPageExtras(sheet, job.Config);
                 }
                 else
@@ -652,7 +653,7 @@ public sealed class OfficeComPrintEngine : IPrintEngine
         };
     }
 
-    private static void ApplyExcelSetup(
+    internal static void ApplyExcelSetup(
         dynamic sheet, string paperSize, PrintOrientation orientation, bool logMissingCode = true)
     {
         // Log khi user chọn khổ cụ thể mà Excel không có mã cho nó: Try bắt hết lỗi nên nếu không log
@@ -667,16 +668,30 @@ public sealed class OfficeComPrintEngine : IPrintEngine
             OfficeLog($"Excel không có mã khổ cho \"{name}\" — để driver quyết khổ " +
                       "(DEVMODE đã đặt nếu máy in thật).");
 
-        Try(() =>
+        // Khổ và chiều giấy đặt trong Try RIÊNG: máy in không nhận khổ (hoặc driver từ chối mã khổ)
+        // không được kéo theo chiều giấy user đã chọn — gộp một Try thì lỗi khổ làm mất luôn chiều.
+        if (ExcelPaperCode.TryGetValue(name, out var xlCode))
+            TrySetExcelPaper(sheet, xlCode, name, logMissingCode);
+
+        // AsDocument/AsPrinter: không ép chiều — giữ chiều trong file hoặc driver quyết
+        if (orientation == PrintOrientation.Portrait)
+            Try(() => sheet.PageSetup.Orientation = 1); // xlPortrait
+        else if (orientation == PrintOrientation.Landscape)
+            Try(() => sheet.PageSetup.Orientation = 2); // xlLandscape
+    }
+
+    /// <summary>Đặt mã khổ cho Excel, có log khi driver TỪ CHỐI. Dùng catch thật thay cho Try vì
+    /// khổ bị từ chối là trường hợp duy nhất còn lại không để lại dấu vết nào: job báo Done, giấy ra
+    /// khổ khác, log trống. Chỉ log sheet đầu (logMissingCode) để workbook nhiều sheet không xả N dòng.</summary>
+    private static void TrySetExcelPaper(dynamic sheet, int xlCode, string name, bool log)
+    {
+        try { sheet.PageSetup.PaperSize = xlCode; }
+        catch (Exception ex)
         {
-            if (ExcelPaperCode.TryGetValue(name, out var xlCode))
-                sheet.PageSetup.PaperSize = xlCode;
-            // AsDocument/AsPrinter: không ép chiều — giữ chiều trong file hoặc driver quyết
-            if (orientation == PrintOrientation.Portrait)
-                sheet.PageSetup.Orientation = 1; // xlPortrait
-            else if (orientation == PrintOrientation.Landscape)
-                sheet.PageSetup.Orientation = 2; // xlLandscape
-        });
+            if (log)
+                OfficeLog($"Excel không đặt được khổ \"{name}\" (mã {xlCode}) — " +
+                          $"driver từ chối, in theo khổ driver: {ex.Message}");
+        }
     }
 
     /// <summary>Excel: Fit tất cả cột vào 1 trang ngang + tự chọn chiều giấy theo nội dung (option user chọn).</summary>
