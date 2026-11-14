@@ -76,12 +76,17 @@ public sealed record PrintPreviewModel
             FlipEdgeHorizontal = flipped && ((cfg.DuplexMode == PrintDuplexMode.LongEdge) == landscape),
         };
 
+        // Số trang THẬT SỰ in trên 1 tờ: N-up chỉ có thật với PDF → định dạng khác vẽ 1 trang/tờ.
+        var chunk = model.PagesPerSheetHonoured ? perSheet : 1;
+
         // 7) Chưa biết số trang thì KHÔNG gọi resolver: PageCount 0 → nó trả [1] (bịa) và có thể fail oan với Even.
+        //    Vẫn vẽ ĐỦ ô của 1 tờ (2-up = 2 ô, 4-up = 4 ô): biết chắc tờ chứa bao nhiêu trang, chỉ chưa biết
+        //    số trang của cả tệp. Trước đây trả 1 ô nên tờ 4-up trông như "1 trang nhỏ trong tờ trống".
         if (job is null || job.PageCount <= 0)
             return model with
             {
                 IsUnknownPageCount = true,
-                Sheets = [new PreviewSheet(1, [new PreviewThumb(null, true)])],
+                Sheets = [new PreviewSheet(1, Thumbs(chunk))],
             };
 
         // 8) Range + parity do PrintJob quyết — preview không tự parse lại (fail-closed như lúc in thật).
@@ -95,8 +100,6 @@ public sealed record PrintPreviewModel
         var physical = job.ResolvePhysicalPages(cfg);
         var paritySkipped = physical.IsSuccess ? Math.Max(physical.Value!.Length - kept.Length, 0) : 0;
 
-        // N-up chỉ có thật với PDF → định dạng khác vẽ 1 trang/tờ (xem PagesPerSheetHonoured).
-        var chunk = model.PagesPerSheetHonoured ? perSheet : 1;
         return model with
         {
             SkippedCount = paritySkipped,
@@ -105,4 +108,8 @@ public sealed record PrintPreviewModel
                 .ToList(),
         };
     }
+
+    /// <summary>Ô trang cho tờ khi CHƯA biết số trang tệp: đủ số ô của tờ, số trang = null ("?").</summary>
+    private static List<PreviewThumb> Thumbs(int count)
+        => Enumerable.Range(0, Math.Max(count, 1)).Select(_ => new PreviewThumb(null, true)).ToList();
 }

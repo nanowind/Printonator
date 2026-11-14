@@ -3,6 +3,8 @@ bin/
 obj/
 *.user
 *.suo
+# csproj tạm của WPF (build bị ngắt để lại trong thư mục project, không phải bin/obj)
+*_wpftmp.*
 .vs/
 *.userprefs
 

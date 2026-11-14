@@ -69,7 +69,7 @@ public class PreviewModelTests
     }
 
     [Fact]
-    public void So_trang_chua_biet_hien_mot_to_dau_hoi()
+    public void Chua_biet_so_trang_mac_dinh_1_trang_moi_to_ve_mot_o()
     {
         var cfg = new PrintConfig { PageRange = "All" };
         var m = PrintPreviewModel.Build(MakeJob(cfg, 0), cfg);
@@ -80,6 +80,23 @@ public class PreviewModelTests
         Assert.Single(m.Sheets[0].Thumbs);
         Assert.Null(m.Sheets[0].Thumbs[0].PageNumber);
         Assert.Equal(0, m.SkippedCount);
+    }
+
+    /// <summary>Chưa biết số trang tệp nhưng BIẾT tờ chứa mấy trang → vẫn phải vẽ đủ ô,
+    /// nếu không tờ 4-up trông như "1 trang nhỏ nằm trong tờ trống".</summary>
+    [Theory]
+    [InlineData(2)]
+    [InlineData(4)]
+    [InlineData(9)]
+    public void Chua_biet_so_trang_van_ve_du_o_cua_to(int perSheet)
+    {
+        var cfg = new PrintConfig { PageRange = "All", PagesPerSheet = perSheet };
+        var m = PrintPreviewModel.Build(MakeJob(cfg, 0), cfg);
+
+        Assert.True(m.IsUnknownPageCount);
+        Assert.Equal(perSheet, m.PagesPerSheet);
+        Assert.Equal(perSheet, m.Sheets[0].Thumbs.Count);
+        Assert.All(m.Sheets[0].Thumbs, t => Assert.Null(t.PageNumber));
     }
 
     [Fact]
