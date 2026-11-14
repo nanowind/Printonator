@@ -642,7 +642,8 @@ public static class PrintTools
                + "để trống = theo khổ máy in đang đặt.",
     };
 
-    private static PrintError Err(Exception ex, string message) => new()    {
+    private static PrintError Err(Exception ex, string message) => new()
+    {
         Code = ErrorCodes.SpoolerFailed,
         Category = PrintErrorCategory.App,
         Message = message,

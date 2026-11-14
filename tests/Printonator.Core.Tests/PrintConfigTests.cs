@@ -51,7 +51,9 @@ public class PrintConfigTests
     /// <summary>Tên khổ phải so KHÔNG phân biệt hoa thường: MCP nhận chuỗi tự do từ AI ("a4", "A4"),
     /// so phân biệt thì "a4" trả null → engine bỏ qua khổ, in theo driver mà không báo.</summary>
     [Theory]
-    [InlineData("A4")] [InlineData("a4")] [InlineData("A4 ")]
+    [InlineData("A4")]
+    [InlineData("a4")]
+    [InlineData("A4 ")]
     public void Dimensions_khong_phan_biet_hoa_thuong(string name)
         => Assert.Equal((210, 297), PaperCatalog.Dimensions(name));
 

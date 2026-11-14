@@ -49,8 +49,13 @@ public class OfficePaperCodeTests
     /// <summary>Hai bảng phải KHÁC nhau ở những khổ dùng chung — nếu ai đó "gộp cho gọn" một bảng
     /// thì một trong hai app sẽ in nhầm khổ. Đây là chốt chống hồi quy.</summary>
     [Theory]
-    [InlineData("A3")] [InlineData("A4")] [InlineData("A5")] [InlineData("B5")]
-    [InlineData("Letter")] [InlineData("Legal")] [InlineData("Executive")]
+    [InlineData("A3")]
+    [InlineData("A4")]
+    [InlineData("A5")]
+    [InlineData("B5")]
+    [InlineData("Letter")]
+    [InlineData("Legal")]
+    [InlineData("Executive")]
     public void Word_va_Excel_dung_ma_khac_nhau(string name)
         => Assert.NotEqual(OfficeComPrintEngine.WordPaperCode[name], OfficeComPrintEngine.ExcelPaperCode[name]);
 
@@ -58,7 +63,10 @@ public class OfficePaperCodeTests
     /// mã bịa sẽ ném "Value out of range" (Word) hoặc "Unable to set the PaperSize" (Excel).
     /// Word đi đường PageWidth/PageHeight, Excel bỏ qua (có log) và giữ khổ driver.</summary>
     [Theory]
-    [InlineData("A0")] [InlineData("A1")] [InlineData("A2")] [InlineData("A6")]
+    [InlineData("A0")]
+    [InlineData("A1")]
+    [InlineData("A2")]
+    [InlineData("A6")]
     public void Kho_khong_co_ma_Office_khong_nam_trong_bang(string name)
     {
         Assert.False(OfficeComPrintEngine.WordPaperCode.ContainsKey(name));
@@ -89,7 +97,10 @@ public class OfficePaperCodeTests
 
     /// <summary>Khổ có mã Word → dùng mã, không đụng PageWidth/PageHeight.</summary>
     [Theory]
-    [InlineData("A4", 7)] [InlineData("A3", 6)] [InlineData("B5", 11)] [InlineData("Legal", 4)]
+    [InlineData("A4", 7)]
+    [InlineData("A3", 6)]
+    [InlineData("B5", 11)]
+    [InlineData("Legal", 4)]
     public void Kho_co_ma_Word_thi_dung_ma(string name, int code)
     {
         var plan = OfficeComPrintEngine.PlanWordPaper(name);
@@ -115,7 +126,9 @@ public class OfficePaperCodeTests
     /// width trước rồi height ném thì tài liệu còn khổ lai 420 × A4 — in sai mà job báo Done.
     /// Vì thế phải HUỶ CẢ HAI, không ghi một chiều nào.</summary>
     [Theory]
-    [InlineData("A2")] [InlineData("A1")] [InlineData("A0")]
+    [InlineData("A2")]
+    [InlineData("A1")]
+    [InlineData("A0")]
     public void Kho_vuot_tran_Word_thi_khong_dat_gi(string name)
     {
         var plan = OfficeComPrintEngine.PlanWordPaper(name);

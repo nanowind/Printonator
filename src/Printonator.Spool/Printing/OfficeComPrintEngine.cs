@@ -1128,38 +1128,38 @@ public sealed class OfficeComPrintEngine : IPrintEngine
     /// </summary>
     internal static readonly IReadOnlyDictionary<string, int> WordPaperCode =
         new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
-    {
-        ["A3"] = 6,
-        ["A4"] = 7,
-        ["A5"] = 9,
-        ["B4"] = 10,
-        ["B5"] = 11,
-        ["Letter"] = 2,
-        ["Legal"] = 4,
-        ["Ledger"] = 19,
-        ["Executive"] = 5,
-        ["Tabloid"] = 23,
-        ["Statement"] = 22,
-    };
+        {
+            ["A3"] = 6,
+            ["A4"] = 7,
+            ["A5"] = 9,
+            ["B4"] = 10,
+            ["B5"] = 11,
+            ["Letter"] = 2,
+            ["Legal"] = 4,
+            ["Ledger"] = 19,
+            ["Executive"] = 5,
+            ["Tabloid"] = 23,
+            ["Statement"] = 22,
+        };
 
     /// <summary>xlPaper* (Excel) theo tên khổ chuẩn — trùng số với DMPAPER_* (đã đọc từ
     /// Microsoft.Office.Interop.Excel.XlPaperSize GAC 15.0.0.0: xlPaperB5=13, xlPaperA4=9...).
     /// Excel không có A0/A1/A2 → không đưa vào bảng (66/67/68 đều ném "Unable to set the PaperSize").</summary>
     internal static readonly IReadOnlyDictionary<string, int> ExcelPaperCode =
         new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
-    {
-        ["A3"] = 8,
-        ["A4"] = 9,
-        ["A5"] = 11,
-        ["B4"] = 12,
-        ["B5"] = 13,
-        ["Letter"] = 1,
-        ["Legal"] = 5,
-        ["Ledger"] = 4,
-        ["Executive"] = 7,
-        ["Tabloid"] = 3,
-        ["Statement"] = 6,
-    };
+        {
+            ["A3"] = 8,
+            ["A4"] = 9,
+            ["A5"] = 11,
+            ["B4"] = 12,
+            ["B5"] = 13,
+            ["Letter"] = 1,
+            ["Legal"] = 5,
+            ["Ledger"] = 4,
+            ["Executive"] = 7,
+            ["Tabloid"] = 3,
+            ["Statement"] = 6,
+        };
 
     private static void Try(Action a)
     {
