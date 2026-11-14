@@ -1,22 +1,19 @@
 ## Printonator v{VER}
 
-Chọn in đen trắng giờ ra đúng giấy đen trắng, và các tuỳ chọn trong bảng cài đặt in thật sự có tác dụng với mọi loại file.
+Có bản xem trước tờ giấy trước khi in, và các tuỳ chọn trong bảng cài đặt in giờ thật sự có tác dụng với mọi loại file.
+
+### Mới
+- Xem trước tờ giấy sẽ in ra: đổi khổ giấy, số trang mỗi tờ, một mặt hay hai mặt, màu hay đen trắng — hình tờ giấy đổi theo ngay.
+- Nút "Lấy theo máy in": tự điền màu, 2 mặt, chiều giấy và khổ giấy theo cái máy in đang để sẵn. Chỉ điền vào bảng cài đặt, không lưu gì.
 
 ### Đã sửa
-- Chọn "Đen trắng" trong cài đặt in giờ ép được máy in, không còn ra bản in màu; xuất ra file PDF cũng ra PDF đen trắng.
-- Ảnh, file TXT và lô gộp cũng in đen trắng đúng như đã chọn.
-- In lẻ/chẵn và chọn chất lượng in giờ có tác dụng với cả Word, Excel, PowerPoint; nếu lọc xong không còn trang nào, hoặc không chuẩn bị được trang, app báo rõ thay vì in hết cả file.
+- Chọn "Đen trắng" giờ ép được máy in, không còn ra bản in màu; PDF, ảnh và file TXT cũng ra đen trắng đúng như đã chọn.
+- In lẻ/chẵn và chọn chất lượng in giờ có tác dụng với cả Word, Excel, PowerPoint; nếu lọc xong không còn trang nào, app báo rõ thay vì in hết cả file.
 - Ai in qua trợ lý AI mà không nêu rõ in 1 hay 2 mặt thì giờ in theo cài đặt máy in, không bị ép in 1 mặt nữa.
-- Chế độ "Theo máy in" giờ thật sự không đụng tới cài đặt máy in.
-- Bấm "Lấy theo máy in" giờ điền được cả khổ giấy với những máy in chỉ lưu khổ dạng tên chứ không lưu kích thước; trước đây nút bấm xong không thấy gì đổi.
+- Bấm "Lấy theo máy in" giờ điền được khổ giấy với những máy in chỉ lưu tên khổ chứ không lưu kích thước; trước đây bấm xong không thấy gì đổi.
+- Nút "Nhập" cấu hình in bị cắt mất ở cửa sổ hẹp, giờ hiện lại đầy đủ.
 
 ### Cải tiến
 - Bảng cài đặt in gọn hơn: máy in không có màu hoặc không in được 2 mặt thì dòng đó được ẩn đi; máy in đang offline hay không đọc được cài đặt thì vẫn hiện đủ lựa chọn để không đoán sai.
-- Chế độ đen trắng nay chắc chắn với file PDF, ảnh và TXT; với Word, Excel, PowerPoint còn tuỳ máy in có nhận hay không.
-
-### Mới
-- Nút "Lấy theo máy in": tự điền màu, 2 mặt, chiều giấy và khổ giấy theo cái máy in đang để sẵn. Nút này chỉ điền vào bảng cài đặt, không lưu gì và không đổi các mục khác.
-- Xem trước tờ giấy sẽ in ra: đổi khổ giấy, số trang mỗi tờ, in một mặt hay hai mặt, in màu hay đen trắng — hình tờ giấy đổi theo ngay, thấy trước mình sắp in ra cái gì.
-- Nút "Nhập" cấu hình in bị cắt mất ở cửa sổ hẹp, giờ hiện lại đầy đủ.
 
 SHA256: {HASH}
