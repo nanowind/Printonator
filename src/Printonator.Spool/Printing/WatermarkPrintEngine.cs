@@ -77,8 +77,10 @@ public sealed class WatermarkPrintEngine : IPrintEngine
                       text + "</div>";
 
         var sb = new System.Text.StringBuilder();
-        sb.Append("<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head>" +
-                  "<body style=\"margin:0;position:relative;\">");
+        // B&W: lọc xám bằng CSS (driver có thể bỏ qua dmColor). Mode khác → "" (markup không đổi).
+        sb.Append("<!DOCTYPE html><html><head><meta charset=\"utf-8\">")
+          .Append(BrowserPrintPipeline.GrayscaleFilterCss(job.Config))
+          .Append("</head><body style=\"margin:0;position:relative;\">");
         sb.Append(overlay);
 
         if (fmt == "PDF")

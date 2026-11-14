@@ -11,6 +11,7 @@ namespace Printonator.Spool.Printing;
 /// Đăng ký SAU OfficeComPrintEngine: chỉ chạy khi format office MÀ máy KHÔNG có MS Office cho format đó
 /// (registry PickEngine = engine đầu tiên CanHandle=true). Không có LibreOffice → fallback SpoolPrintEngine.
 /// Giới hạn CLI: không ép page range/copies/N-up — in theo driver + tài liệu (giống "print" của LO).
+/// Màu / 2 mặt / khổ giấy thì ép được qua DEVMODE của máy in (CLI không có tham số cho chúng).
 /// Không nuốt lỗi: hết timeout / lệnh fail → PrintError đầy đủ.
 /// </summary>
 public sealed class LibreOfficePrintEngine : IPrintEngine
@@ -53,6 +54,18 @@ public sealed class LibreOfficePrintEngine : IPrintEngine
             });
 
         var printer = DefaultPrinter.Resolve(job.Config.PrinterName);
+
+        // Màu / 2 mặt / khổ giấy: soffice CLI không có tham số cho mấy option này — phải ép qua
+        // DEVMODE của máy in TRƯỚC khi khởi động (soffice đọc cấu hình driver lúc start).
+        var devModePrinter = printer ?? DefaultPrinter.GetWindowsDefaultPrinterName();
+        Result<PrinterDialogs.DevModeLease?>? leaseRes = null;   // không biết máy in → không đụng DEVMODE
+        if (!string.IsNullOrWhiteSpace(devModePrinter))
+            leaseRes = PrinterDialogs.ApplyDevMode(devModePrinter, job.Config);
+        if (leaseRes is { IsSuccess: false } && job.Config.ColorMode is PrintColorMode.Grayscale or PrintColorMode.Color)
+            return Result<bool>.Fail(leaseRes.Error!);   // không in sai màu trong im lặng
+        if (leaseRes is { IsSuccess: false })
+            Log($"ApplyDevMode fail printer='{devModePrinter}': {leaseRes.Error}");
+        using var devModeLease = leaseRes?.Value;
 
         // -p            → in ra máy in MẶC ĐỊNH của Windows (tài liệu chính thức LibreOffice)
         // --pt "Tên máy" → in ra máy chỉ định, đóng file sau khi in
@@ -136,5 +149,17 @@ public sealed class LibreOfficePrintEngine : IPrintEngine
     {
         try { return _sofficeResolver(); }
         catch { return null; }
+    }
+
+    /// <summary>Ghi log debug vào %TEMP%\printonator-office.log (không bao giờ ném).</summary>
+    private static void Log(string msg)
+    {
+        try
+        {
+            System.IO.File.AppendAllText(
+                System.IO.Path.Combine(System.IO.Path.GetTempPath(), "printonator-office.log"),
+                $"{DateTimeOffset.Now:O} {msg}\n");
+        }
+        catch { }
     }
 }

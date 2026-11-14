@@ -56,3 +56,10 @@ Việc còn lại của Printonator — ưu tiên cho các lần làm sau. Cập
 - [ ] **Chuỗi tiếng Anh cứng chưa qua i18n** — tooltip `MainWindow.xaml:355,370` (key `Settings.PrefsButton`/`PropsButton` ĐÃ có sẵn); `MainWindow.xaml.cs:416` `Name = "🔄 Scan printers…"`; toast/banner tiếng Việt cứng trong `PrintBatchOrchestrator.cs:128,136,145,198`; state pill hiện `Queued/Converting/...` EN.
 - [ ] **MCP HTTP token chỉ bảo vệ HTTP transport** — stdio (AI client spawn trực tiếp) không cần token vì cùng user; nếu cần phân quyền đa user thì phải chuyển sang HMAC per-request.
 - [ ] **`LockedBy` của sheet Excel (protected view)** — file mở read-only trong Excel vẫn có thể fail `Workbooks.Open` mà không có thông báo rõ cho user.
+
+## Từ fix "grayscale không override được máy in" (2026-11-14)
+
+- [ ] **PDF in toàn bộ qua browser render không có đường ép xám** — `BrowserPrintEngine` nhánh full-PDF/non-PDF (`:105-117`) render thẳng file nguồn, không có HTML để chèn `filter: grayscale(1)` như các nhánh slice/watermark/merge. Trên driver bỏ qua `dmColor`, PDF in toàn bộ kèm option (scale/khổ/chiều/quality) vẫn ra màu. Upgrade path: bọc file nguồn trong HTML wrapper có CSS, hoặc chuyển sang `WindowsPdfRasterizer` + CSS.
+- [ ] **`dmColor` chưa được xác minh trên máy in thật** — readback chỉ so DEVMODE lưu trong spooler, không chứng minh job đã in xám (Word/Excel/PPT/printto tự dựng DEVMODE riêng từ driver). Cần 1 tờ in thử có thanh đỏ 100% để chốt. Cùng lớp với mục duplex DEVMODE ở trên.
+- [ ] **`SetPrinter` level 2 khi user không phải admin chưa kiểm** — duplex đã chạy production nhưng chưa có bằng chứng trên tài khoản standard user. Nếu fail, `PRINTER_INFO_9` (per-user) là đường thay thế.
+- [ ] **CSS `filter: grayscale(1)` trong Chromium print pipeline chưa verify** — nếu Chromium bỏ filter khi in, các đường render (ảnh/TXT/watermark/merge/slice) quay lại phụ thuộc driver. Kiểm bằng 1 lệnh in thử; nếu fail thì chuyển sang chuyển đổi pixel thật.

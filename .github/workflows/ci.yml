@@ -60,4 +60,6 @@ jobs:
         run: dotnet test tests/Printonator.Core.Tests -c Debug --no-build
 
       - name: E2E (FlaUI, desktop) — 5 tests
+        env:
+          PRINTONATOR_UI_TESTS: '1'
         run: dotnet test tests/Printonator.UITests -c Debug --no-build

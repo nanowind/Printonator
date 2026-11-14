@@ -58,20 +58,27 @@ public class PaperDevModeTests
     }
 
     [Fact]
-    public void ApplyPaperOrientation_khong_co_gi_de_dat_tra_ve_null_khong_mo_may_in()
+    public void ApplyDevMode_khong_co_gi_de_dat_tra_ve_null_khong_mo_may_in()
     {
         // AsDocument + AsPrinter = không đụng gì → Ok(null), không mở máy in (tên rác vẫn phải Ok).
-        var r = PrinterDialogs.ApplyPaperOrientation(
-            "___no_such_printer___", PaperCatalog.AsDocument, PrintOrientation.AsPrinter);
+        var r = PrinterDialogs.ApplyDevMode("___no_such_printer___", new PrintConfig
+        {
+            PaperSize = PaperCatalog.AsDocument,
+            Orientation = PrintOrientation.AsPrinter,
+        });
 
         Assert.True(r.IsSuccess);
         Assert.Null(r.Value);
     }
 
     [Fact]
-    public void ApplyPaperOrientation_ten_may_in_rong_bao_loi_ro()
+    public void ApplyDevMode_ten_may_in_rong_bao_loi_ro()
     {
-        var r = PrinterDialogs.ApplyPaperOrientation("", "A4", PrintOrientation.Portrait);
+        var r = PrinterDialogs.ApplyDevMode("", new PrintConfig
+        {
+            PaperSize = "A4",
+            Orientation = PrintOrientation.Portrait,
+        });
 
         Assert.False(r.IsSuccess);
         Assert.Equal(ErrorCodes.SpoolerFailed, r.Error!.Code);

@@ -200,10 +200,17 @@ public static class WindowsPdfRasterizer
         }
     }
 
-    /// <summary>Dựng HTML ảnh có page-break (in đúng số trang đã chọn) từ các trang đã render.</summary>
-    public static string BuildHtml(IReadOnlyList<RenderedPdfPage> pages)
+    /// <summary>
+    /// Dựng HTML ảnh có page-break (in đúng số trang đã chọn) từ các trang đã render.
+    /// <paramref name="grayscale"/> = true → chèn CSS lọc xám (giống BrowserPrintPipeline.GrayscaleFilterCss)
+    /// để đường slice PDF cũng tôn trọng lựa chọn Grayscale khi driver bỏ qua dmColor. false → y hệt trước.
+    /// </summary>
+    public static string BuildHtml(IReadOnlyList<RenderedPdfPage> pages, bool grayscale = false)
     {
-        var sb = new System.Text.StringBuilder("<html><body style='margin:0;padding:0'>");
+        var sb = new System.Text.StringBuilder(grayscale
+            ? "<html><head><style>@media print{html{filter:grayscale(1);-webkit-print-color-adjust:exact;" +
+              "print-color-adjust:exact}}</style></head><body style='margin:0;padding:0'>"
+            : "<html><body style='margin:0;padding:0'>");
         for (var i = 0; i < pages.Count; i++)
         {
             var data = Convert.ToBase64String(pages[i].Png);

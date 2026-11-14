@@ -23,6 +23,31 @@ public sealed class GdiPrintEngine : IPrintEngine
 {
     private static readonly string[] SupportedFormats = ["PDF"];
 
+    /// <summary>Đổi ảnh sang XÁM ngay lúc VẼ (DrawImage + ImageAttributes) — không cấp bitmap mới
+    /// mỗi trang (WindowsPdfRasterizer giữ tới PrintGuard.MaxPagesPerBatch ảnh trong RAM).
+    /// Trọng số luminance Rec.601 0.299/0.587/0.114 cho cả 3 kênh ra → R=G=B; alpha giữ nguyên.
+    /// Đây là CHẮC CHẮN xám, không phụ thuộc driver có tôn trọng dmColor hay không.</summary>
+    internal static ImageAttributes GrayscaleAttributes { get; } = CreateGrayscaleAttributes();
+
+    private static ImageAttributes CreateGrayscaleAttributes()
+    {
+        var luma = new[] { 0.299f, 0.587f, 0.114f };
+        // GDI+ nhan pixel la VECTOR HANG: [R G B A 1] x M -> R' = R*M[0][0] + G*M[1][0] + B*M[2][0].
+        // Vi vay trong so luminance phai nam o COT (moi cot hang so), khong phai moi hang.
+        // Xep sai (moi hang = luma) -> R' = .299R, G' = .587R, B' = .114R -> anh van co mau, khong xam.
+        var matrix = new ColorMatrix(new float[][]
+        {
+            new[] { luma[0], luma[0], luma[0], 0f, 0f }, // R' = .299R + .587G + .114B
+            new[] { luma[1], luma[1], luma[1], 0f, 0f }, // G' = cung luminance
+            new[] { luma[2], luma[2], luma[2], 0f, 0f }, // B' = cung luminance
+            new[] { 0f, 0f, 0f, 1f, 0f },                // alpha giu nguyen
+            new[] { 0f, 0f, 0f, 0f, 1f },
+        });
+        var attrs = new ImageAttributes();
+        attrs.SetColorMatrix(matrix, ColorMatrixFlag.Default, ColorAdjustType.Bitmap);
+        return attrs;
+    }
+
     /// <summary>Deadline cho PrintDocument.Print() (blocking, không nhận token) — driver máy in
     /// treo (spooler treo) không được kẹt job "Converting mãi". Hết giờ → trả EngineTimeout, drain thoát.
     /// Driver máy in vật lý chậm với file lớn (3-5s/trang cho ảnh 300dpi) — đặt 600s đủ cho ~100 trang.</summary>
@@ -439,6 +464,8 @@ public sealed class GdiPrintEngine : IPrintEngine
             }
 
             // ===== Màu (ép đen trắng / ép màu) — driver quyết khi AsPrinter/AsDocument =====
+            // Đảm bảo XÁM thật = ép màu ở DRAW TIME (gray bên dưới). Cờ driver dưới đây chỉ là
+            // HỖ TRỢ: .NET chỉ chuyển nó thành dmColor khi driver khai DM_COLOR, nhiều driver bỏ qua.
             if (job.Config.ColorMode == PrintColorMode.Grayscale)
                 pd.PrinterSettings.DefaultPageSettings.Color = false;
             else if (job.Config.ColorMode == PrintColorMode.Color)
@@ -458,6 +485,10 @@ public sealed class GdiPrintEngine : IPrintEngine
             var nUpCols = nUp > 1 ? (int)Math.Ceiling(Math.Sqrt(nUp)) : 1;
             var nUpRows = nUp > 1 ? (int)Math.Ceiling(nUp / (double)nUpCols) : 1;
 
+            // Ép xám ngay lúc vẽ (null = giữ nguyên màu). ponytail: chỉ phủ đường GDI/raster này
+            // (PDF và PDF→PDF export); Office/LibreOffice/shell đã ép qua DEVMODE lease riêng.
+            // Driver vẫn sai màu → không cần làm gì thêm ở đây, pixel đã chắc chắn xám rồi.
+            var gray = job.Config.ColorMode == PrintColorMode.Grayscale ? GrayscaleAttributes : null;
             pd.PrintPage += (_, e) =>
             {
                 ct.ThrowIfCancellationRequested();
@@ -528,8 +559,19 @@ public sealed class GdiPrintEngine : IPrintEngine
                                 var scale = Math.Min(cell.Width * 0.92 / bmp.Width, cell.Height * 0.92 / bmp.Height);
                                 var dw = (float)(bmp.Width * scale);
                                 var dh = (float)(bmp.Height * scale);
-                                e.Graphics.DrawImage(bmp,
-                                    cell.X + (cell.Width - dw) / 2, cell.Y + (cell.Height - dh) / 2, dw, dh);
+                                var dx = cell.X + (cell.Width - dw) / 2;
+                                var dy = cell.Y + (cell.Height - dh) / 2;
+                                if (gray is null)
+                                {
+                                    e.Graphics.DrawImage(bmp, dx, dy, dw, dh);
+                                }
+                                else
+                                {
+                                    // Cùng toạ độ float như nhánh trên (RectF để không làm tròn số lẻ).
+                                    e.Graphics.DrawImage(bmp,
+                                        new[] { new PointF(dx, dy), new PointF(dx + dw, dy), new PointF(dx, dy + dh) },
+                                        new RectangleF(0f, 0f, bmp.Width, bmp.Height), GraphicsUnit.Pixel, gray);
+                                }
                             }
                             else
                             {
@@ -539,8 +581,18 @@ public sealed class GdiPrintEngine : IPrintEngine
                                             * ZoomFactor(job.Config);
                                 var dw = (float)(bmp.Width * scale);
                                 var dh = (float)(bmp.Height * scale);
-                                e.Graphics.DrawImage(bmp,
-                                    safe + (areaW - dw) / 2, safe + (areaH - dh) / 2, dw, dh);
+                                var dx = safe + (areaW - dw) / 2;
+                                var dy = safe + (areaH - dh) / 2;
+                                if (gray is null)
+                                {
+                                    e.Graphics.DrawImage(bmp, dx, dy, dw, dh);
+                                }
+                                else
+                                {
+                                    e.Graphics.DrawImage(bmp,
+                                        new[] { new PointF(dx, dy), new PointF(dx + dw, dy), new PointF(dx, dy + dh) },
+                                        new RectangleF(0f, 0f, bmp.Width, bmp.Height), GraphicsUnit.Pixel, gray);
+                                }
                             }
                         }
                         catch { anyPageFailed = true; }

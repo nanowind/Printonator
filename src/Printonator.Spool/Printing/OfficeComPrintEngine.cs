@@ -115,17 +115,17 @@ public sealed class OfficeComPrintEngine : IPrintEngine
             // đối không đụng Office người dùng đang mở (PID không nằm trong danh sách này).
             KillSpawnedOffice(spawnedOfficePids);
             // Kill office process làm PrintOut ném exception trên STA thread → finally của
-            // PrintWithWord/Excel/PowerPoint chạy → duplexRestore.Dispose khôi phục dmDuplex,
+            // PrintWithWord/Excel/PowerPoint chạy → devModeLease.Dispose khôi phục DEVMODE,
             // doc.Close + app.Quit + FinalReleaseComObject dọn COM. Join ngắn chờ thread thoát;
             // nếu vẫn kẹt (thread background) thì app đóng sẽ dọn nó.
             try { worker.Join(TimeSpan.FromSeconds(3)); } catch { }
-            // STA bị bỏ rơi → using var duplexRestore trong PrintWithWord/Excel/PowerPoint KHÔNG bao giờ
-            // chạy Dispose, dmDuplex của máy in kẹt ở giá trị đã ghi (máy in hỏng cho MỌI app sau đó).
+            // STA bị bỏ rơi → using var devModeLease trong PrintWithWord/Excel/PowerPoint KHÔNG bao giờ
+            // chạy Dispose, DEVMODE của máy in kẹt ở giá trị đã ghi (duplex/màu/khổ/chiều — máy in hỏng
+            // cho MỌI app sau đó). RestoreActive là hook khôi phục duy nhất.
             // ponytail: chỉ restore được lease CÒN SỐNG trong tiến trình này — nếu app bị kill cứng giữa
-            // chừng thì dmDuplex vẫn kẹt (không có bước đối soát lúc khởi động); nâng cấp: lưu giá trị
+            // chừng thì DEVMODE vẫn kẹt (không có bước đối soát lúc khởi động); nâng cấp: lưu giá trị
             // gốc xuống đĩa + đối soát/khôi phục khi app start.
             PrinterDialogs.RestoreActive();
-            PrinterDialogs.RestoreActiveDevMode();   // khổ giấy/chiều cũng phải trả lại
             return Result<bool>.Fail(new PrintError
             {
                 Code = ErrorCodes.EngineTimeout,
@@ -141,7 +141,6 @@ public sealed class OfficeComPrintEngine : IPrintEngine
             // Timeout THẬT (TimeoutException ở trên) vẫn trả Fail(EngineTimeout) như cũ.
             KillSpawnedOffice(spawnedOfficePids);
             PrinterDialogs.RestoreActive();   // cùng lý do nhánh timeout: Dispose trên STA bị bỏ rơi
-            PrinterDialogs.RestoreActiveDevMode();
             try { worker.Join(TimeSpan.FromSeconds(3)); } catch { }
             throw;
         }
@@ -237,20 +236,20 @@ public sealed class OfficeComPrintEngine : IPrintEngine
             // SAU khi mở doc (cần doc để cắt PDF fallback). KHÔNG in lén sang máy default (thường là PDF).
             var (printToFile, outputPath) = PdfOutputArgs(job);
 
-            // Hướng lật cạnh (Simplex/LongEdge/ShortEdge) đặt qua DEVMODE driver — Word COM KHÔNG có tham số
-            // hướng. Phải đặt TRƯỚC khi Office gán ActivePrinter (bên dưới): Office dựng ngữ cảnh in theo
-            // driver ngay lúc đó. Lease khôi phục DEVMODE cũ khi thoát scope try — tức SAU khi PrintOut xong.
-            // Máy in ảo (printToFile) export PDF, KHÔNG được đụng DEVMODE.
+            // MỘT lease DEVMODE cho cả 4 option driver (hướng lật cạnh, màu, khổ giấy, chiều giấy) — Word
+            // COM không có tham số cho chúng. Phải đặt TRƯỚC khi Office gán ActivePrinter (bên dưới):
+            // Office dựng ngữ cảnh in theo driver ngay lúc đó. Lease khôi phục DEVMODE cũ khi thoát scope
+            // try — tức SAU khi PrintOut xong. Máy in ảo (printToFile) export PDF, KHÔNG được đụng DEVMODE.
             var devModePrinter = printToFile ? null : ResolvePrinterNameForDevMode(printer);
-            var duplexRes = devModePrinter is null ? null : PrinterDialogs.ApplyDuplex(devModePrinter, job.Config.DuplexMode);
-            if (duplexRes is { IsSuccess: false })
+            var leaseRes = devModePrinter is null ? null : PrinterDialogs.ApplyDevMode(devModePrinter, job.Config);
+            if (leaseRes is { IsSuccess: false })
             {
                 // Nhánh Fail DUY NHẤT trước SetPrinter mà trước đây không để lại dấu vết — job rớt xuống
                 // shell trong ~1s, log trống, không phân biệt được với lỗi khác (bug 2026-10-21).
-                OfficeLog($"ApplyDuplex lỗi → bỏ Word COM, rớt shell: {job.FileName} — {duplexRes.Error!.Code} {duplexRes.Error.Message}");
-                return Result<bool>.Fail(duplexRes.Error!);
+                OfficeLog($"ApplyDevMode lỗi → bỏ Word COM, rớt shell: {job.FileName} — {leaseRes.Error!.Code} {leaseRes.Error.Message}");
+                return Result<bool>.Fail(leaseRes.Error!);
             }
-            using var duplexRestore = duplexRes?.Value; // DuplexRestore? IDisposable — dispose khi thoát scope try (SAU PrintOut)
+            using var devModeLease = leaseRes?.Value;   // dispose SAU PrintOut (thoát scope try)
 
             // KHÔNG mở Visible:false — Word.PrintOut cần "document window active" (0x800A11FD)
             doc = app.Documents.Open(job.FilePath, ReadOnly: true, AddToRecentFiles: false);
@@ -350,17 +349,17 @@ public sealed class OfficeComPrintEngine : IPrintEngine
         // property bị Excel TỪ CHỐI trên máy WSD/mạng; đã xác minh: đổi default thì PrintOut range chạy được.)
         var (printToFile, outputPath) = PdfOutputArgs(job);
 
-        // Hướng lật cạnh qua DEVMODE (giống Word) — Excel COM không có cờ duplex. Đặt TRƯỚC khi đổi
-        // default + mở Excel (Excel đọc cấu hình driver lúc khởi tạo). Máy ảo → export, không đụng DEVMODE.
-        // Resolve null → bỏ qua (log), không fail: nghĩa là user in theo máy mặc định.
+        // MỘT lease DEVMODE (duplex/màu/khổ/chiều — giống Word): Excel COM không có cờ cho các option đó.
+        // Đặt TRƯỚC khi đổi default + mở Excel (Excel đọc cấu hình driver lúc khởi tạo). Máy ảo → export,
+        // không đụng DEVMODE. Resolve null → bỏ qua (log), không fail: user in theo máy mặc định.
         var devModePrinter = printToFile ? null : ResolvePrinterNameForDevMode(printer);
-        var duplexRes = devModePrinter is null ? null : PrinterDialogs.ApplyDuplex(devModePrinter, job.Config.DuplexMode);
-        if (duplexRes is { IsSuccess: false })
+        var leaseRes = devModePrinter is null ? null : PrinterDialogs.ApplyDevMode(devModePrinter, job.Config);
+        if (leaseRes is { IsSuccess: false })
         {
-            OfficeLog($"ApplyDuplex lỗi → bỏ Excel COM, rớt shell: {job.FileName} — {duplexRes.Error!.Code} {duplexRes.Error.Message}");
-            return Result<bool>.Fail(duplexRes.Error!);
+            OfficeLog($"ApplyDevMode lỗi → bỏ Excel COM, rớt shell: {job.FileName} — {leaseRes.Error!.Code} {leaseRes.Error.Message}");
+            return Result<bool>.Fail(leaseRes.Error!);
         }
-        using var duplexRestore = duplexRes?.Value; // dispose khi method thoát — SAU khi PrintOut xong
+        using var devModeLease = leaseRes?.Value; // dispose khi method thoát — SAU khi PrintOut xong
 
         string? prevDefault = null;
         if (!printToFile && !string.IsNullOrWhiteSpace(printer))
@@ -620,9 +619,9 @@ public sealed class OfficeComPrintEngine : IPrintEngine
     }
 
     /// <summary>
-    /// Tên máy in THẬT để đặt DEVMODE (ApplyDuplex cần tên cụ thể — không nhận null kiểu "máy mặc định").
+    /// Tên máy in THẬT để đặt DEVMODE (ApplyDevMode cần tên cụ thể — không nhận null kiểu "máy mặc định").
     /// <paramref name="printer"/> đã qua DefaultPrinter.Resolve (null = user chọn "mặc định") → lấy tên máy
-    /// mặc định Windows; vẫn rỗng → trả null (caller bỏ qua ApplyDuplex, in theo cấu hình driver sẵn có).
+    /// mặc định Windows; vẫn rỗng → trả null (caller bỏ qua ApplyDevMode, in theo cấu hình driver sẵn có).
     /// </summary>
     private static string? ResolvePrinterNameForDevMode(string? printer)
     {
@@ -630,7 +629,7 @@ public sealed class OfficeComPrintEngine : IPrintEngine
         var def = DefaultPrinter.GetWindowsDefaultPrinterName();
         if (string.IsNullOrWhiteSpace(def))
         {
-            OfficeLog("ApplyDuplex: không xác định được tên máy in (mặc định Windows rỗng) — bỏ qua DEVMODE.");
+            OfficeLog("ApplyDevMode: không xác định được tên máy in (mặc định Windows rỗng) — bỏ qua DEVMODE.");
             return null;
         }
         return def;
@@ -648,32 +647,41 @@ public sealed class OfficeComPrintEngine : IPrintEngine
         {
             var (printToFile, outputPath) = PdfOutputArgs(job);
 
-            // Hướng lật cạnh qua DEVMODE (giống Word/Excel) — đặt TRƯỚC khi Office gán ActivePrinter.
+            // MỘT lease DEVMODE cho cả 4 option driver (duplex/màu/khổ giấy/chiều giấy) — PowerPoint COM
+            // KHÔNG có PageSetup như Word/Excel, và 2 lease song song thì cái sau đè cái trước khi Dispose
+            // (dmColor nằm ngoài cửa sổ snapshot khổ giấy → bị khôi phục ngược). Đặt TRƯỚC khi Office gán
+            // ActivePrinter. KHÔNG đụng SlideWidth/Height (kích thước thiết kế slide — đổi sẽ méo nội dung).
+            // Máy ảo (export PDF) → bỏ qua, giữ khổ gốc file.
             var devModePrinter = printToFile ? null : ResolvePrinterNameForDevMode(printer);
-            var duplexRes = devModePrinter is null ? null : PrinterDialogs.ApplyDuplex(devModePrinter, job.Config.DuplexMode);
-            if (duplexRes is { IsSuccess: false })
+            var leaseRes = devModePrinter is null ? null : PrinterDialogs.ApplyDevMode(devModePrinter, job.Config);
+            if (leaseRes is { IsSuccess: false })
             {
-                OfficeLog($"ApplyDuplex lỗi → bỏ PowerPoint COM, rớt shell: {job.FileName} — {duplexRes.Error!.Code} {duplexRes.Error.Message}");
-                return Result<bool>.Fail(duplexRes.Error!);
+                OfficeLog($"ApplyDevMode lỗi → bỏ PowerPoint COM, rớt shell: {job.FileName} — {leaseRes.Error!.Code} {leaseRes.Error.Message}");
+                return Result<bool>.Fail(leaseRes.Error!);
             }
-            using var duplexRestore = duplexRes?.Value; // dispose khi thoát scope try (SAU PrintOut)
-
-            // KHỔ GIẤY + CHIỀU GIẤY: PowerPoint KHÔNG có PageSetup như Word/Excel — phải đặt qua
-            // DEVMODE driver (cùng cơ chế duplex). KHÔNG đụng SlideWidth/Height: đó là kích thước
-            // thiết kế slide, đổi sẽ làm méo nội dung. Máy ảo (export PDF) → bỏ qua, giữ khổ gốc file.
-            var paperDevModePrinter = printToFile ? null : ResolvePrinterNameForDevMode(printer);
-            var paperRes = paperDevModePrinter is null
-                ? null
-                : PrinterDialogs.ApplyPaperOrientation(paperDevModePrinter, job.Config.PaperSize, job.Config.Orientation);
-            if (paperRes is { IsSuccess: false })
-            {
-                // Không fail cứng: khổ giấy là tuỳ chọn, in được quan trọng hơn — nhưng phải để dấu vết.
-                OfficeLog($"ApplyPaperOrientation lỗi (in tiếp theo khổ driver): {job.FileName} — {paperRes.Error!.Code} {paperRes.Error.Message}");
-            }
-            using var paperRestore = paperRes?.Value;   // dispose SAU PrintOut
+            using var devModeLease = leaseRes?.Value;   // dispose SAU PrintOut (thoát scope try)
 
             // Open(FileName, ReadOnly, Untitled, WithWindow)
             pres = app.Presentations.Open(job.FilePath, ReadOnly: -1 /* msoTrue */, Untitled: 0 /* msoFalse */, WithWindow: 0 /* msoFalse */);
+
+            // Màu: DEVMODE là lever chung, nhưng PowerPoint có API riêng (per-presentation, không ghi vào file)
+            // → đặt cả hai để chắc chắn, kể cả driver bỏ qua dmColor.
+            try
+            {
+                if (job.Config.ColorMode == PrintColorMode.Grayscale)
+                    pres.PrintOptions.PrintColorType = 2;    // ppPrintBlackAndWhite
+                else if (job.Config.ColorMode == PrintColorMode.Color)
+                    pres.PrintOptions.PrintColorType = 1;    // ppPrintColor
+                // AsPrinter / AsDocument: để nguyên cài đặt của presentation (đúng nghĩa "theo tài liệu")
+                // Giá trị: ppPrintColor=1, ppPrintBlackAndWhite=2, ppPrintPureBlackAndWhite=3
+            }
+            catch (Exception ex)
+            {
+                // KHÔNG fatal: DEVMODE đã là lever chính trên đường này — nhưng phải còn dấu vết để
+                // truy được ca "driver bỏ qua dmColor → ra bản in màu mà không rõ vì sao".
+                OfficeLog($"PowerPoint PrintColorType lỗi (in theo DEVMODE/driver): {job.FileName} mode={job.Config.ColorMode} — {ex.Message}");
+            }
+
             var copies = Math.Max(job.Config.Copies, 1);
 
             // Page range: PPT in theo TỪ-TỚI; range KHÔNG liên tiếp → nhóm trang liên tiếp để in đúng.

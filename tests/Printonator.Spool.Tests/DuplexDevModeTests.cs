@@ -5,7 +5,7 @@ using Printonator.Spool.Printing;
 namespace Printonator.Spool.Tests;
 
 /// <summary>
-/// Test logic DEVMODE của PrinterDialogs.ApplyDuplex — thuần byte-offset, không cần máy in thật.
+/// Test logic DEVMODE của PrinterDialogs.ApplyDevMode (phần duplex) — thuần byte-offset, không cần máy in thật.
 /// Quan trọng nhất: WriteDuplex chỉ được đụng dmDuplex@94 + cờ dmFields@72, KHÔNG được ghi nhầm
 /// chỗ khác (struct sai offset sẽ ghi vào dmCopies@86 = hỏng số bản in).
 /// </summary>
@@ -73,19 +73,21 @@ public class DuplexDevModeTests
     }
 
     [Fact]
-    public void ApplyDuplex_AsPrinter_khong_can_may_in_tra_ve_null()
+    public void ApplyDevMode_duplex_AsPrinter_khong_can_may_in_tra_ve_null()
     {
-        // Tên rác vẫn phải Ok(null): AsPrinter không được mở máy in.
-        var r = PrinterDialogs.ApplyDuplex("___no_such_printer___", PrintDuplexMode.AsPrinter);
+        // Tên rác vẫn phải Ok(null): duplex AsPrinter không được mở máy in.
+        var r = PrinterDialogs.ApplyDevMode("___no_such_printer___",
+            new PrintConfig { DuplexMode = PrintDuplexMode.AsPrinter });
         Assert.True(r.IsSuccess);
         Assert.Null(r.Value);
         Assert.Null(r.Error);
     }
 
     [Fact]
-    public void ApplyDuplex_may_in_khong_ton_tai_tra_ve_loi_day_du()
+    public void ApplyDevMode_duplex_may_in_khong_ton_tai_tra_ve_loi_day_du()
     {
-        var r = PrinterDialogs.ApplyDuplex("___no_such_printer___", PrintDuplexMode.LongEdge);
+        var r = PrinterDialogs.ApplyDevMode("___no_such_printer___",
+            new PrintConfig { DuplexMode = PrintDuplexMode.LongEdge });
         Assert.False(r.IsSuccess);
         Assert.NotNull(r.Error);
         Assert.False(string.IsNullOrEmpty(r.Error!.Code));

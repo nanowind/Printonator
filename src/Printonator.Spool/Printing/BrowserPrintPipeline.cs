@@ -87,6 +87,20 @@ public static class BrowserPrintPipeline
         return await new SpoolPrintEngine().PrintAsync(spoolJob, ct);
     }
 
+    /// <summary>
+    /// CSS lọc xám để chèn vào HTML của các engine render (watermark, gộp). CHỈ khi user chọn Grayscale —
+    /// CDP Page.printToPDF không có tham số grayscale và nhiều driver bỏ qua dmColor, nên tự chuyển màu
+    /// ở tầng CSS. Mode khác (AsPrinter/AsDocument/Color) trả "" → markup y hệt trước đây.
+    /// </summary>
+    // ponytail: filter:grayscale(1) là chuyển màu tầng CSS, Chromium áp lúc render → bảo đảm không phụ thuộc
+    // dmColor của driver cho các đường render; đường GDI xử lý PDF riêng bằng ImageAttributes ColorMatrix.
+    // Nâng cấp khi: Chromium ngừng tôn trọng filter trong print → chuyển sang chuyển pixel phía server.
+    internal static string GrayscaleFilterCss(PrintConfig? cfg)
+        => cfg?.ColorMode == PrintColorMode.Grayscale
+            ? "<style>@media print{html{filter:grayscale(1);-webkit-print-color-adjust:exact;" +
+              "print-color-adjust:exact}}</style>"
+            : "";
+
     private static PrintConfig BuildSpoolConfig(PrintJob job)
     {
         var cfg = new PrintConfig { PrinterName = job.Config.PrinterName };

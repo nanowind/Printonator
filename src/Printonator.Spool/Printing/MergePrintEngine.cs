@@ -51,7 +51,10 @@ public sealed class MergePrintEngine : IPrintEngine
     internal static async Task<string> BuildMergeHtmlAsync(IReadOnlyList<PrintJob> jobs, CancellationToken ct)
     {
         var sb = new System.Text.StringBuilder();
-        sb.Append("<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body style=\"margin:0\">");
+        // B&W: lọc xám bằng CSS (driver có thể bỏ qua dmColor). Mode khác → "" (markup không đổi).
+        sb.Append("<!DOCTYPE html><html><head><meta charset=\"utf-8\">")
+          .Append(BrowserPrintPipeline.GrayscaleFilterCss(jobs.Count > 0 ? jobs[0].Config : null))
+          .Append("</head><body style=\"margin:0\">");
 
         foreach (var job in jobs)
         {

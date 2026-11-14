@@ -57,13 +57,7 @@ public sealed class SpoolPrintEngine : IPrintEngine
             // (bug thật 2026-10-21: Word COM fail → rớt shell → in 1 bản).
             // `copies` khai báo ở đầu method (catch cũng cần).
 
-            try
-            {
-                System.IO.File.AppendAllText(
-                    System.IO.Path.Combine(System.IO.Path.GetTempPath(), "printonator-office.log"),
-                    $"{DateTimeOffset.Now:O} SpoolPrintEngine printto printer='{printerName}' copies={copies} file={job.FileName}\n");
-            }
-            catch { }
+            Log($"SpoolPrintEngine printto printer='{printerName}' copies={copies} file={job.FileName}");
 
             // Command injection guard: tên máy in chỉ được chứa chữ, số, khoảng trắng, gạch nối, gạch dưới, dấu chấm.
             // Tên máy in thật không chứa ký tự đặc biệt shell → chặn AI/đường dẫn mác malicious ép shell chạy lệnh ngoài.
@@ -75,6 +69,24 @@ public sealed class SpoolPrintEngine : IPrintEngine
                     Message = $"Tên máy in không hợp lệ: \"{printerName}\".",
                     Hint = "Chọn máy in khác (tên máy in chỉ chứa chữ, số, khoảng trắng, gạch nối, gạch dưới).",
                 }));
+
+            // Màu / 2 mặt / khổ giấy: shell printto KHÔNG có tham số — chỉ còn lever DEVMODE của driver.
+            // SpoolPrintEngine là engine CUỐI của mọi đường render → đây là chỗ duy nhất ép được cho ảnh/TXT/
+            // PDF-render. Lease sống suốt vòng in N bản rồi Dispose để trả DEVMODE cũ.
+            var devModeRes = PrinterDialogs.ApplyDevMode(printerName, job.Config);
+            if (!devModeRes.IsSuccess)
+            {
+                // Màu là option user đã yêu cầu RÕ → không được in sai màu trong im lặng, báo lên queue.
+                if (job.Config.ColorMode is PrintColorMode.Grayscale or PrintColorMode.Color)
+                    return Task.FromResult(Result<bool>.Fail(devModeRes.Error!));
+
+                // 2 mặt / khổ giấy: shell là chốt chặn cuối — driver từ chối thì vẫn in, chỉ ghi log.
+                Log($"ApplyDevMode fail printer='{printerName}': {devModeRes.Error}");
+            }
+            using var devModeLease = devModeRes.Value;
+            // ponytail: DEVMODE mặc định của máy in bị đổi suốt vòng in N bản (job lớn = lâu), máy in
+            // dùng chung sẽ thấy override đó trong lúc job khác chạy. Nâng cấp: named semaphore bọc đúng
+            // khoảng mutate → restore.
 
             var psi = new ProcessStartInfo
             {
@@ -206,6 +218,18 @@ public sealed class SpoolPrintEngine : IPrintEngine
                     Detail = ex.ToString(),
                 }));
         }
+    }
+
+    /// <summary>Ghi log debug vào %TEMP%\printonator-office.log (không bao giờ ném).</summary>
+    private static void Log(string msg)
+    {
+        try
+        {
+            System.IO.File.AppendAllText(
+                System.IO.Path.Combine(System.IO.Path.GetTempPath(), "printonator-office.log"),
+                $"{DateTimeOffset.Now:O} {msg}\n");
+        }
+        catch { }
     }
 
     /// <summary>Lấy tên máy in mặc định Windows (fallback khi chưa chọn). Trả null nếu không đọc được —

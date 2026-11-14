@@ -42,6 +42,10 @@ public class MainWindowTests
         // `finally app.Close()`, FlaUI Close() đôi khi trả về trước khi process chết → instance
         // cũ còn treo, test KẾ TIẾP Launch() cùng exe sẽ gắn vào instance đó (mất cô lập: thấy
         // dòng test khác thêm). Kill trước khi launch = mỗi test có app TRỐNG thật sự.
+        //
+        // CẢNH BÁO: đây cũng giết instance Printonator.UI mà NGƯỜI DÙNG đang chạy (mất hàng đợi
+        // đang in dở). Vì vậy các test gọi Launch() đều là [DesktopFact] — chỉ chạy khi
+        // PRINTONATOR_UI_TESTS=1, không tự bật app trong `dotnet test` thường ngày.
         var stale = Process.GetProcessesByName("Printonator.UI");
         foreach (var p in stale) { try { p.Kill(); p.WaitForExit(); } catch { } }
         // Hermetic: ép tiếng Việt qua env (ưu tiên cao nhất trong CultureResolver) — máy dev có
@@ -59,7 +63,7 @@ public class MainWindowTests
         return (app, main);
     }
 
-    [Fact]
+    [DesktopFact]
     public void App_Launches_Empty_Shows_EmptyState()
     {
         // App chạy với hàng đợi TRỐNG (demo jobs đã xóa khỏi MainWindow) —
@@ -79,7 +83,7 @@ public class MainWindowTests
         finally { app.Close(); }
     }
 
-    [Fact]
+    [DesktopFact]
     public void PrintAll_DoesNot_Duplicate_Rows()
     {
         var (app, main) = Launch();
@@ -100,7 +104,7 @@ public class MainWindowTests
         finally { app.Close(); }
     }
 
-    [Fact]
+    [DesktopFact]
     public void PrintSelected_DoesNot_Duplicate_Rows()
     {
         var (app, main) = Launch();
@@ -133,7 +137,7 @@ public class MainWindowTests
         }
     }
 
-    [Fact]
+    [DesktopFact]
     public void MultiSelect_Shows_BulkBar()
     {
         var (app, main) = Launch();
@@ -168,7 +172,7 @@ public class MainWindowTests
         }
     }
 
-    [Fact]
+    [DesktopFact]
     public void Dropdown_Click_Opens_And_Selects()
     {
         var (app, main) = Launch();

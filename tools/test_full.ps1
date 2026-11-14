@@ -3,6 +3,10 @@
 # Cách dùng (non-interactive — chạy được từ CI/agent, KHÔNG prompt):
 #   pwsh tools/test_full.ps1                    # build + test
 #   pwsh tools/test_full.ps1 -SkipBuild         # chỉ test (--no-build)
+#   pwsh tools/test_full.ps1 -SkipBuild -IncludeDesktopUi   # + 5 test FlaUI (mở app thật, chiếm focus/chuột/clipboard)
+#
+# Mặc định 5 test FlaUI (DesktopFact) bị SKIP. Chỉ chạy khi có -IncludeDesktopUi
+# (script đặt PRINTONATOR_UI_TESTS=1 cho tiến trình dotnet test con).
 #
 # Pattern bắt buộc của repo: `dotnet test` TRỰC TIẾP treo ở pha build trên máy này
 # → luôn chạy `dotnet build` trước rồi `dotnet test --no-build`.
@@ -13,6 +17,7 @@
 
 param(
     [switch]$SkipBuild,
+    [switch]$IncludeDesktopUi,   # bật 5 test FlaUI (mở app thật, chiếm focus/chuột)
     # Watchdog: mỗi giai đoạn test (Core / UI theo project) bị giới hạn thời gian; quá
     # ngưỡng → coi là HUNG, tree-kill cả subtree dotnet test (testhost/app UI) để KHÔNG
     # để process mồ côi + không block mãi. Lý do: test UI (FlaUI launch app) từng treo
@@ -29,6 +34,7 @@ $script:cleaned = $false
 
 # ===== Header log: lệnh đầy đủ + thời gian + working dir =====
 $runLine = if ($SkipBuild) { 'dotnet test Printonator.sln --no-build' } else { 'dotnet build Printonator.sln + dotnet test Printonator.sln --no-build' }
+if ($IncludeDesktopUi) { $runLine += '  [desktop UI]' }
 $header = @"
 ==============================================================
 RUN   $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')  (user: $([Environment]::UserName))
@@ -113,6 +119,11 @@ try {
         'tests/Printonator.Mcp.Tests/Printonator.Mcp.Tests.csproj',
         'tests/Printonator.UITests/Printonator.UITests.csproj'
     )
+    # 5 test FlaUI (DesktopFact) chỉ chạy khi có -IncludeDesktopUi. Xóa biến khi không có
+    # switch, để biến còn sót từ shell cha KHÔNG bật test desktop ngoài ý muốn.
+    if ($IncludeDesktopUi) { $env:PRINTONATOR_UI_TESTS = '1' }
+    else { Remove-Item Env:PRINTONATOR_UI_TESTS -ErrorAction SilentlyContinue }
+
     foreach ($proj in $projects) {
         Log "`n-- test project: $proj --"
         $logThis = Join-Path $PSScriptRoot ("test_full_$(Split-Path $proj -Leaf).log")
@@ -190,6 +201,8 @@ try {
 }
 finally {
     Cleanup-Processes
+    # Không để biến rò ra shell gọi script.
+    Remove-Item Env:PRINTONATOR_UI_TESTS -ErrorAction SilentlyContinue
     Log "END $(Get-Date -Format 'HH:mm:ss') — XEM LOG: $logFile  (dòng tổng kết ở trên)"
 }
 

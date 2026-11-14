@@ -67,8 +67,8 @@ public static class PrintTools
         [Description("In 2 mặt")] bool duplex = false,
         [Description("Khổ giấy: A4/A3/A5/Letter... (bỏ trống = theo máy/tài liệu)")] string? paper = null,
         [Description("Trang cần in: All, 2,5, 3-4, S2:1-3")] string? pageRange = null,
-        [Description("In màu")] bool color = false,
-        [Description("Chế độ màu: AsPrinter/AsDocument/Color/Grayscale (bỏ trống = As in printer)")] string? colorMode = null,
+        [Description("In màu (giữ cho tương thích: true = Color, false = Grayscale). Không truyền = theo máy in.")] bool? color = null,
+        [Description("Chế độ màu: AsPrinter/AsDocument/Color/Grayscale. Bỏ trống = theo máy in (AsPrinter), tài liệu màu vẫn in màu; truyền Grayscale mới in đen trắng.")] string? colorMode = null,
         [Description("Khay giấy (Paper source) — ví dụ 'Khay 1', 'Nạp tay (Manual)'; bỏ trống = máy tự chọn")] string? paperSource = null,
         [Description("Scale mode: AsDocument/ShrinkToPrintable/FitToPrintable/Original/Fill/Zoom")] string? scaleMode = null,
         [Description("Số trang trên mỗi tờ (N-up): 1 = không gom, 2/4/6/9/16")] int pagesPerSheet = 1,
@@ -79,10 +79,14 @@ public static class PrintTools
         {
             cfg.Copies = copies;
             cfg.Duplex = duplex;
-            // colorMode (mới) ưu tiên hơn bool color (cũ, giữ tương thích)
-            cfg.ColorMode = colorMode is null
-                ? (color ? PrintColorMode.Color : PrintColorMode.Grayscale)
-                : ParseColorMode(colorMode);
+            // colorMode (mới) ưu tiên hơn bool color (cũ, giữ tương thích).
+            // Bỏ trống cả hai = AsPrinter (theo máy in), khớp mặc định UI; chỉ khi caller TRUYỀN
+            // bool color mới giữ map cũ: true = Color, false = Grayscale.
+            cfg.ColorMode = colorMode is not null
+                ? ParseColorMode(colorMode)
+                : color is null
+                    ? PrintColorMode.AsPrinter
+                    : color.Value ? PrintColorMode.Color : PrintColorMode.Grayscale;
             if (!string.IsNullOrWhiteSpace(paper)) cfg.PaperSize = paper;
             if (!string.IsNullOrWhiteSpace(pageRange)) cfg.PageRange = pageRange;
             if (!string.IsNullOrWhiteSpace(paperSource)) cfg.PaperSource = paperSource;
@@ -113,7 +117,7 @@ public static class PrintTools
         bool duplex = false,
         string? paper = null,
         [Description("Máy in mặc định của preset")] string? printer = null,
-        bool color = false)
+        [Description("In màu (giữ cho tương thích: true = Color, false = Grayscale). Không truyền = theo máy in.")] bool? color = null)
     {
         try
         {
@@ -127,7 +131,11 @@ public static class PrintTools
                 DuplexMode = duplex ? PrintDuplexMode.LongEdge : PrintDuplexMode.Simplex,
                 PaperSize = string.IsNullOrWhiteSpace(paper) ? "A4" : paper,
                 PrinterName = printer,
-                ColorMode = color ? PrintColorMode.Color : PrintColorMode.Grayscale,
+                // Không truyền color = AsPrinter (theo máy in), KHÔNG mặc định Grayscale vào preset;
+                // truyền color thì giữ map cũ: true = Color, false = Grayscale.
+                ColorMode = color is null
+                    ? PrintColorMode.AsPrinter
+                    : color.Value ? PrintColorMode.Color : PrintColorMode.Grayscale,
             };
             var ok = PresetStore.Default.Save(preset);
             if (ok)

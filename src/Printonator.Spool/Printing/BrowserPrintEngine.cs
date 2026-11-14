@@ -86,7 +86,8 @@ public sealed class BrowserPrintEngine : IPrintEngine
                         .Select(p => targetLandscape is { } tl ? WindowsPdfRasterizer.FitToPaper(p, tl) : p)
                         .ToList();
                     var htmlPath = Path.Combine(tempDir, "slice.html");
-                    await File.WriteAllTextAsync(htmlPath, WindowsPdfRasterizer.BuildHtml(pages), ct);
+                    await File.WriteAllTextAsync(htmlPath,
+                        WindowsPdfRasterizer.BuildHtml(pages, job.Config.ColorMode == PrintColorMode.Grayscale), ct);
                     var first = pages[0];
                     (ok, base64, err) = await DevToolsPrintClient.PrintPdfAsync(
                         b.Path, new Uri(htmlPath).AbsoluteUri,
