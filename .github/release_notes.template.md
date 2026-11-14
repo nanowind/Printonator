@@ -8,6 +8,7 @@ Chọn in đen trắng giờ ra đúng giấy đen trắng, và các tuỳ chọ
 - In lẻ/chẵn và chọn chất lượng in giờ có tác dụng với cả Word, Excel, PowerPoint; nếu lọc xong không còn trang nào, hoặc không chuẩn bị được trang, app báo rõ thay vì in hết cả file.
 - Ai in qua trợ lý AI mà không nêu rõ in 1 hay 2 mặt thì giờ in theo cài đặt máy in, không bị ép in 1 mặt nữa.
 - Chế độ "Theo máy in" giờ thật sự không đụng tới cài đặt máy in.
+- Bấm "Lấy theo máy in" giờ điền được cả khổ giấy với những máy in chỉ lưu khổ dạng tên chứ không lưu kích thước; trước đây nút bấm xong không thấy gì đổi.
 
 ### Cải tiến
 - Bảng cài đặt in gọn hơn: máy in không có màu hoặc không in được 2 mặt thì dòng đó được ẩn đi; máy in đang offline hay không đọc được cài đặt thì vẫn hiện đủ lựa chọn để không đoán sai.
