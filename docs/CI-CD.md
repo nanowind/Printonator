@@ -8,9 +8,9 @@
 ```
 Push / PR
    └─▶ CI (windows-latest, headless-safe)
-         checkout → dotnet restore → build Release → dotnet format --verify → Core unit tests (55)
+         checkout → dotnet restore → build Release → dotnet format --verify → Core unit tests (136)
    └─▶ E2E (self-hosted Windows có desktop, chạy thủ công workflow_dispatch)
-         restore → build Debug → Core tests (55) → E2E FlaUI (5)
+         restore → build Debug → Core tests (136) → E2E FlaUI (5)
 ```
 
 **Vì sao tách 2 lớp:** UITests (FlaUI.UIA3) phải **mở cửa sổ WPF thật** — runner GitHub hosted chạy headless
@@ -23,7 +23,7 @@ không lên desktop đáng tin → E2E gated bằng `workflow_dispatch` và cầ
 | Restore | `dotnet restore Printonator.sln` | NuGet, phiên bản package (MCP SDK...) |
 | Build | `dotnet build Printonator.sln -c Release` | compile, XAML parse, binding lỗi resource |
 | Format | `dotnet format Printonator.sln --verify-no-changes` | lệch chuẩn whitespace/style (repo chạy `dotnet format`) |
-| Unit test | `dotnet test tests/Printonator.Core.Tests -c Release` | 55 test: page-range, section, queue, approve, guard, preset, engine registry |
+| Unit test | `dotnet test tests/Printonator.Core.Tests -c Release` | 136 test: page-range, section, queue, approve, guard, preset, engine registry |
 
 - PR không qua build/format/unit → **đỏ**, chặn merge (branch protection nên chặn).
 - E2E không block CI (chạy tuỳ lúc) vì điều kiện desktop.
