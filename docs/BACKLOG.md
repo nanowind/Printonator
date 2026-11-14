@@ -29,7 +29,7 @@ Việc còn lại của Printonator — ưu tiên cho các lần làm sau. Cập
 ## Fix nhỏ (nên làm trong lần fix lỗi kế tiếp)
 
 - [ ] **Banner lỗi trang bìa hiện màu vàng** — `ErrorCodes.SpoolerFailed` nằm trong danh sách banner vàng + nút "Thử lại". Với lỗi bìa nên cân nhắc banner đỏ (mất trang bìa là mất hẳn, retry không tự gắn lại). Quyết: giữ vàng (có retry) hay đổi đỏ.
-- [ ] **Xóa key i18n mồ côi `Settings.HintAutoOrientationLock`** — tồn tại sau khi bỏ tick AutoOrientation khỏi Cài đặt in. Không ai dùng; xóa khỏi `Keys.cs` + `Strings.json` (5 ngôn ngữ).
+- [x] ~~**Xóa key i18n mồ côi `Settings.HintAutoOrientationLock`**~~ — ĐÃ DÙNG LẠI: combo chiều giấy bị khoá khi Excel + tự xoay chiều, hint đổi sang key này (`PrintSettingsWindow.xaml.cs`). Không xoá nữa.
 - [ ] **Cột Settings trong MainWindow vẫn tiếng Việt ở UI EN/ZH/RU/JA** — đã có mapper `LocalizeSummary` cho TRANG BÌA (`PrintBatchOrchestrator.cs`), áp lại cho cột Settings bằng converter/rename để UI và bìa nhất quán.
 - [ ] **Test UI `PrintSelected_DoesNot_Duplicate_Rows` còn phụ thuộc clipboard** — paste Clipboard FileDropList không ổn định trong test-host; nên seed qua API nội bộ (test hook) thay vì Ctrl+V.
 - [ ] **API version cho MCP server** — `Printonator.Mcp.csproj` giờ là 0.2.12 nhưng không đọc từ UI; cân nhắc `Directory.Build.props` làm nguồn version duy nhất.

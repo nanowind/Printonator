@@ -209,7 +209,9 @@ public class MainWindowTests
         {
             try
             {
-                var app = new Printonator.UI.App(); // khởi tạo Application.Current
+                // WPF chỉ cho MỘT Application mỗi AppDomain — test khác trong cùng assembly có thể
+                // đã tạo rồi, nên dùng lại thay vì new (new lần 2 ném InvalidOperationException).
+                var app = System.Windows.Application.Current as Printonator.UI.App ?? new Printonator.UI.App();
                 // Test host không resolve relative pack URI của App.xaml → nạp theme thủ công
                 app.Resources.MergedDictionaries.Clear();
                 foreach (var theme in new[] { "Colors.xaml", "Buttons.xaml", "ComboBox.xaml" })
@@ -238,6 +240,68 @@ public class MainWindowTests
         t.Join();
 
         Assert.Null(err);
+    }
+
+    /// <summary>
+    /// Excel + "Tự động chiều giấy" bật → combo chiều giấy bị khoá. Engine
+    /// (OfficeComPrintEngine.ApplyExcelPageExtras) ghi đè Orientation sau ApplyExcelSetup, nên để
+    /// combo mở là hứa điều không làm được.
+    /// Gộp 3 ca vào MỘT Fact: WPF chỉ cho tạo một System.Windows.Application mỗi AppDomain, nên
+    /// [Theory] (mỗi row dựng App riêng) sẽ ném "Cannot create more than one Application instance".
+    /// </summary>
+    [Fact]
+    public void PrintSettingsWindow_khoa_chieu_giay_khi_Excel_bat_tu_xoay()
+    {
+        Exception? err = null;
+        var results = new List<(string Label, bool Auto, bool Enabled)>();
+
+        var t = new Thread(() =>
+        {
+            try
+            {
+                var app = System.Windows.Application.Current as Printonator.UI.App ?? new Printonator.UI.App();
+                app.Resources.MergedDictionaries.Clear();
+                foreach (var theme in new[] { "Colors.xaml", "Buttons.xaml", "ComboBox.xaml" })
+                    app.Resources.MergedDictionaries.Add(new System.Windows.ResourceDictionary
+                    {
+                        Source = new Uri($"pack://application:,,,/Printonator.UI;component/Themes/{theme}", UriKind.Absolute),
+                    });
+
+                foreach (var (label, formats, auto) in new[]
+                {
+                    ("XLSX + auto", new[] { "XLSX" }, true),            // cả lô Excel + auto → khoá
+                    ("XLSX, auto off", new[] { "XLSX" }, false),        // Excel, auto tắt → mở
+                    ("PDF + auto", new[] { "PDF" }, true),              // không phải Excel → không khoá
+                    ("XLSX+PDF + auto", new[] { "XLSX", "PDF" }, true), // LÔ HỖN HỢP → phải MỞ
+                })
+                {
+                    var cfg = new PrintConfig { AutoOrientation = auto };
+                    var jobs = formats.Select(f => new PrintJob
+                    {
+                        FilePath = $"C:\\t.{f.ToLowerInvariant()}",
+                        FileName = $"t.{f.ToLowerInvariant()}",
+                        Format = f,
+                        Config = cfg,
+                    }).ToList();
+                    var w = new PrintSettingsWindow(jobs, cfg, null);
+                    w.Measure(new System.Windows.Size(1100, 900));
+                    var combo = (System.Windows.Controls.ComboBox)w.FindName("OrientationCombo");
+                    results.Add((label, auto, combo.IsEnabled));
+                    w.Close();
+                }
+            }
+            catch (Exception ex) { err = ex; }
+        });
+        t.SetApartmentState(ApartmentState.STA);
+        t.Start();
+        t.Join();
+
+        Assert.Null(err);
+        Assert.Equal(4, results.Count);
+        Assert.False(results[0].Enabled);   // XLSX + auto → khoá
+        Assert.True(results[1].Enabled);    // XLSX, auto tắt
+        Assert.True(results[2].Enabled);    // PDF + auto → không khoá
+        Assert.True(results[3].Enabled);    // XLSX+PDF hỗn hợp: khoá sẽ chặn PDF đặt chiều giấy
     }
 
     // ===== Seed hàng đợi bằng file TẠM THẬT qua paste Ctrl+V (thay cho demo jobs đã bỏ) =====

@@ -307,7 +307,7 @@
                                     <ComboBoxItem Content="{l10n:Loc Option.Portrait}" Tag="Portrait"/>
                                     <ComboBoxItem Content="{l10n:Loc Option.Landscape}" Tag="Landscape"/>
                                 </ComboBox>
-                                <TextBlock Text="{l10n:Loc Settings.HintOrientation}" Style="{StaticResource HintText}"/>
+                                <TextBlock x:Name="OrientationHint" Text="{l10n:Loc Settings.HintOrientation}" Style="{StaticResource HintText}"/>
                             </StackPanel>
                         </Grid>
 

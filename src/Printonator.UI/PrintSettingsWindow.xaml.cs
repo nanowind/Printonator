@@ -68,16 +68,49 @@ public partial class PrintSettingsWindow : Window
 
         PopulatePrinterDrivenLists();
         LoadFromConfig(_source);
+        // Khởi tạo 2 cờ Excel từ config của file: chúng đi xuyên qua dialog (bật bằng chip ở row) và
+        // Apply_Click ghi lại chính 2 biến này — không khởi tạo thì mở dialog rồi Apply sẽ XOÁ cờ của job.
+        _autoOrientFromPreset = _source.AutoOrientation;
+        _fitWideFromPreset = _source.FitToPageWide;
         RefreshRangePreview();
         LoadProfiles();
         RefreshPreview();
+        UpdateOrientationLock();
         _ = LoadExcelSheetsAsync();   // file Excel → probe danh sách sheet cho dropdown
+    }
+
+    /// <summary>
+    /// Excel + "Tự động chiều giấy" đang bật → chiều giấy do NỘI DUNG quyết, lựa chọn Dọc/Ngang của
+    /// user bị engine ghi đè (OfficeComPrintEngine.ApplyExcelPageExtras chạy sau ApplyExcelSetup).
+    /// Trước đây combo vẫn mở và hint vẫn hứa "ép cả batch" — user chọn xong in ra khác, không hiểu vì sao.
+    /// Khoá combo + nói rõ lý do thay vì im lặng ghi đè.
+    /// Cờ auto có MỘT nguồn sự thật là _autoOrientFromPreset, khởi tạo từ _source.AutoOrientation ở
+    /// constructor rồi bị preset/"No profile" ghi đè. KHÔNG đọc thẳng _source ở đây: _source là tham
+    /// chiếu tới config của file nên sẽ khoá dính — chọn preset tắt auto cũng không mở lại được, mà
+    /// Apply lại ghi false, khiến câu "chiều giấy do nội dung quyết định" thành nói dối.
+    /// </summary>
+    private void UpdateOrientationLock()
+    {
+        if (OrientationCombo is null || OrientationHint is null) return;
+        var autoOn = _autoOrientFromPreset;
+        // Phải là CẢ LÔ đều Excel: auto-orientation chỉ ghi đè chiều giấy trong nhánh Excel
+        // (OfficeComPrintEngine.ApplyExcelPageExtras), còn PDF/Word/ảnh vẫn tôn trọng chiều user chọn.
+        // Khoá combo vì lô CÓ MỘT file Excel sẽ làm file PDF trong lô không đặt được chiều giấy nữa.
+        var locked = autoOn && _targets.Count > 0 && _targets.All(j => j.IsExcel);
+        OrientationCombo.IsEnabled = !locked;
+        OrientationHint.Text = L10n.S(locked
+            ? Keys.Settings.HintAutoOrientationLock
+            : Keys.Settings.HintOrientation);
     }
 
     // ============ Sheet cần in (Excel) — probe danh sách sheet, áp cho cả lô file Excel ============
 
+    /// <summary>File Excel trong lô. So khớp trùng ngữ nghĩa <see cref="PrintJob.IsExcel"/> (không phân
+    /// biệt hoa thường; CSV không tính vì CSV có thể rơi xuống engine browser nên 2 option Excel là no-op).</summary>
     private static bool IsExcelFormat(string format)
-        => format is "XLS" or "XLSX" or "XLSM";
+        => format.Equals("XLS", StringComparison.OrdinalIgnoreCase)
+           || format.Equals("XLSX", StringComparison.OrdinalIgnoreCase)
+           || format.Equals("XLSM", StringComparison.OrdinalIgnoreCase);
 
     private async Task LoadExcelSheetsAsync()
     {
@@ -659,6 +692,7 @@ public partial class PrintSettingsWindow : Window
             // "No profile" = về mặc định: 2 cờ Excel cũng phải về false (không có control để user tự tắt).
             _fitWideFromPreset = false;
             _autoOrientFromPreset = false;
+            UpdateOrientationLock();   // về mặc định → mở lại combo chiều giấy
             return;
         }
         var preset = _store.Load().FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
@@ -670,6 +704,7 @@ public partial class PrintSettingsWindow : Window
             // targets[0].Config (không clone) nên ghi ngay sẽ làm nút Hủy cũng đổi cấu hình file.
             _fitWideFromPreset = preset.FitToPageWide;
             _autoOrientFromPreset = preset.AutoOrientation;
+            UpdateOrientationLock();   // preset vừa bật/tắt tự xoay chiều → khoá/mở lại combo chiều giấy
         }
     }
 
@@ -830,7 +865,9 @@ public partial class PrintSettingsWindow : Window
             // Chiều giấy: CHỈ điền khi form đang ép 1 chiều CỤ THỂ. Đang "theo tài liệu"/"theo máy in" thì giữ
             // nguyên — dmOrientation=1 (Portrait) là mặc định của gần như MỌI driver, điền nó vào biến "theo
             // tài liệu" thành Portrait cứng và ApplyWordPaper ép wdOrientPortrait cho cả file ngang.
-            if (SelectedTag(OrientationCombo) is "Portrait" or "Landscape")
+            // Bỏ qua khi combo đang bị khoá (Excel + tự xoay chiều): giá trị điền vào cũng bị engine ghi đè,
+            // và điền vào combo disabled chỉ làm user tưởng nút đã lấy được chiều giấy.
+            if (OrientationCombo.IsEnabled && SelectedTag(OrientationCombo) is "Portrait" or "Landscape")
                 TrySelectTag(OrientationCombo, d.Orientation.ToString());
 
             // Khổ giấy: bấm nút này là để lấy khổ CỦA MÁY IN → driver trả khổ KHÔNG có trong list (list dựng
