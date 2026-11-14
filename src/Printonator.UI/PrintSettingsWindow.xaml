@@ -185,23 +185,23 @@
                                 <ComboBox x:Name="PaperCombo" Width="330" FontSize="12" HorizontalAlignment="Left"/>
                                 <TextBlock Text="{l10n:Loc Settings.HintPaper}" Style="{StaticResource HintText}"/>
 
-                                <TextBlock Text="{l10n:Loc Settings.OptionDuplex}" Style="{StaticResource OptionLabel}"/>
+                                <TextBlock x:Name="DuplexLabel" Text="{l10n:Loc Settings.OptionDuplex}" Style="{StaticResource OptionLabel}"/>
                                 <ComboBox x:Name="DuplexCombo" Width="330" FontSize="12" HorizontalAlignment="Left">
                                     <ComboBoxItem Content="{l10n:Loc Option.AsPrinter}" Tag="AsPrinter"/>
                                     <ComboBoxItem Content="{l10n:Loc Option.Simplex}" Tag="Simplex"/>
                                     <ComboBoxItem Content="{l10n:Loc Option.LongEdge}" Tag="LongEdge"/>
                                     <ComboBoxItem Content="{l10n:Loc Option.ShortEdge}" Tag="ShortEdge"/>
                                 </ComboBox>
-                                <TextBlock Text="{l10n:Loc Settings.HintDuplex}" Style="{StaticResource HintText}"/>
+                                <TextBlock x:Name="DuplexHint" Text="{l10n:Loc Settings.HintDuplex}" Style="{StaticResource HintText}"/>
 
-                                <TextBlock Text="{l10n:Loc Settings.OptionColor}" Style="{StaticResource OptionLabel}"/>
+                                <TextBlock x:Name="ColorLabel" Text="{l10n:Loc Settings.OptionColor}" Style="{StaticResource OptionLabel}"/>
                                 <ComboBox x:Name="ColorModeCombo" Width="330" FontSize="12" HorizontalAlignment="Left">
                                     <ComboBoxItem Content="{l10n:Loc Option.AsPrinter}" Tag="AsPrinter"/>
                                     <ComboBoxItem Content="{l10n:Loc Option.AsDocument}" Tag="AsDocument"/>
                                     <ComboBoxItem Content="{l10n:Loc Option.Color}" Tag="Color"/>
                                     <ComboBoxItem Content="{l10n:Loc Option.Grayscale}" Tag="Grayscale"/>
                                 </ComboBox>
-                                <TextBlock Text="{l10n:Loc Settings.HintColor}" Style="{StaticResource HintText}"/>
+                                <TextBlock x:Name="ColorHint" Text="{l10n:Loc Settings.HintColor}" Style="{StaticResource HintText}"/>
 
                                 <!-- KHÔNG có tick "Fit cột" / "Tự xoay chiều giấy" ở đây: 2 cờ này đã có chip
                                      riêng ở action bar từng row (ExcelFitChip / ExcelOrientChip trong

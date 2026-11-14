@@ -146,9 +146,25 @@ public sealed class PrinterService
             IsDefault = !string.IsNullOrEmpty(defaultName)
                        && q.Name.Equals(defaultName, StringComparison.OrdinalIgnoreCase),
             StatusDetail = status,
-            SupportsDuplex = caps.DuplexingCapability.Contains(Duplexing.TwoSidedLongEdge)
-                          || caps.DuplexingCapability.Contains(Duplexing.TwoSidedShortEdge),
-            SupportsColor = caps.OutputColorCapability.Contains(OutputColor.Color),
+            // Rỗng = driver KHÔNG báo khả năng (không phải "không hỗ trợ") → Unknown, để UI không ẩn nhầm option.
+            // Phần tử Unknown = driver báo 1 option lạ (private/non-standard) → cũng là "CHƯA ĐỌC ĐƯỢC",
+            // KHÔNG phải "không hỗ trợ": driver màu bằng option riêng trả đúng { OutputColor.Unknown } thôi.
+            // ĐỪNG "dọn gọn" nhánh này đi — bỏ nó là UI ẩn nhầm option của máy in thật sự hỗ trợ.
+            DuplexSupport = caps.DuplexingCapability is not { Count: > 0 }
+                ? CapabilitySupport.Unknown
+                : caps.DuplexingCapability.Contains(Duplexing.TwoSidedLongEdge)
+                  || caps.DuplexingCapability.Contains(Duplexing.TwoSidedShortEdge)
+                    ? CapabilitySupport.Supported
+                    : caps.DuplexingCapability.Contains(Duplexing.Unknown)
+                        ? CapabilitySupport.Unknown
+                        : CapabilitySupport.NotSupported,
+            ColorSupport = caps.OutputColorCapability is not { Count: > 0 }
+                ? CapabilitySupport.Unknown
+                : caps.OutputColorCapability.Contains(OutputColor.Color)
+                    ? CapabilitySupport.Supported
+                    : caps.OutputColorCapability.Contains(OutputColor.Unknown)
+                        ? CapabilitySupport.Unknown
+                        : CapabilitySupport.NotSupported,
             SupportedPaperSizes = PaperNames(caps.PageMediaSizeCapability),
             TrayInfo = trays.Length == 0 ? null : string.Join(", ", trays),
             Trays = trays,

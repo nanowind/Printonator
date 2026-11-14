@@ -20,8 +20,8 @@ public class McpToolsTests
         {
             Name = name,
             IsAvailable = available,
-            SupportsDuplex = duplex,
-            SupportsColor = color,
+            DuplexSupport = duplex ? CapabilitySupport.Supported : CapabilitySupport.NotSupported,
+            ColorSupport = color ? CapabilitySupport.Supported : CapabilitySupport.NotSupported,
             SupportedPaperSizes = paper ?? ["A4", "A3"],
             IsVirtual = virtualPrinter,
             IsDefault = isDefault,

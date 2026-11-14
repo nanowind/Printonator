@@ -292,14 +292,23 @@ public sealed class PrintConfig
     }
 }
 
+/// <summary>Máy in có làm được không: chưa đọc được (offline/lỗi driver) / không / có.
+/// Unknown là mặc định — KHÔNG bao giờ coi "chưa biết" là "không hỗ trợ" (sẽ ẩn nhầm option).</summary>
+public enum CapabilitySupport { Unknown, NotSupported, Supported }
+
 /// <summary>Thông tin máy in — UI/MCP luôn hiện đúng trạng thái + khả năng của từng máy.</summary>
 public sealed record PrinterInfo
 {
     public required string Name { get; init; }
     public bool IsAvailable { get; init; }          // online / offline
     public string? StatusDetail { get; init; }      // vd "Offline", "Hết giấy", lỗi đọc
-    public bool SupportsDuplex { get; init; }
-    public bool SupportsColor { get; init; }
+    public CapabilitySupport DuplexSupport { get; init; } = CapabilitySupport.Unknown;
+    public CapabilitySupport ColorSupport { get; init; } = CapabilitySupport.Unknown;
+
+    /// <summary>Máy in CÓ hỗ trợ (đọc được driver và nói có). "Chưa biết" trả false — giữ nguyên
+    /// ngữ nghĩa cũ cho lọc máy in (PickBestPrinter) và cho summary.</summary>
+    public bool SupportsDuplex => DuplexSupport == CapabilitySupport.Supported;
+    public bool SupportsColor => ColorSupport == CapabilitySupport.Supported;
     public string[] SupportedPaperSizes { get; init; } = ["A4"];
     public string? TrayInfo { get; init; }
 
@@ -311,10 +320,17 @@ public sealed record PrinterInfo
     /// <summary>Dòng trạng thái hiển thị trong UI (không dùng trực tiếp StatusDetail — tự fallback).</summary>
     public string StatusText => StatusDetail ?? (IsAvailable ? "Sẵn sàng" : "Không khả dụng");
 
-    /// <summary>Tóm tắt khả năng in cho UI/MCP: Duplex, Màu, Khay.</summary>
+    /// <summary>Tóm tắt khả năng in cho UI/MCP: Duplex, Màu, Khay. Chưa đọc được thì hiện "?" (không phải "không").</summary>
     public string CapabilitiesSummary =>
-        $"Duplex: {(SupportsDuplex ? "có" : "không")} · Màu: {(SupportsColor ? "có" : "không")}" +
+        $"Duplex: {CapabilityText(DuplexSupport)} · Màu: {CapabilityText(ColorSupport)}" +
         (string.IsNullOrEmpty(TrayInfo) ? "" : $" · Khay: {TrayInfo}");
+
+    private static string CapabilityText(CapabilitySupport s) => s switch
+    {
+        CapabilitySupport.Supported => "có",
+        CapabilitySupport.NotSupported => "không",
+        _ => "?",
+    };
 
     /// <summary>Tóm tắt khổ giấy hỗ trợ (tối đa 8 khổ, tránh tràn UI).</summary>
     public string PaperSummary =>

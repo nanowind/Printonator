@@ -140,6 +140,15 @@ public partial class PrintSettingsWindow : Window
         {
             PrinterNameText.Text = _printer.Name;
         }
+
+        // KHÔNG ẩn dòng Color/Duplex ở đây: lúc này combo chưa được nạp giá trị (LoadFromConfig chạy sau),
+        // nên chưa biết đang yêu cầu gì. Việc ẩn nằm ở UpdateCapabilityVisibility (cuối LoadFromConfig).
+    }
+
+    private static void SetRowVisible(bool visible, params FrameworkElement[] parts)
+    {
+        foreach (var p in parts)
+            p.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private static ComboBoxItem Item(string display, object tag) => new() { Content = display, Tag = tag };
@@ -190,6 +199,24 @@ public partial class PrintSettingsWindow : Window
         // được quy về 2 trang/tờ, đúng hành vi cũ khi engine đọc.
         if (cfg.Booklet) SelectTag(PerSheetCombo, "2", "1");
         else SelectTag(PerSheetCombo, Math.Max(cfg.PagesPerSheet, 1).ToString(), "1");
+
+        UpdateCapabilityVisibility();
+    }
+
+    /// <summary>Ẩn dòng Color/Duplex khi máy in CHẮC CHẮN không làm được VÀ giá trị đang chọn là trung tính.
+    /// Nếu user/preset đang yêu cầu màu hoặc 2 mặt thì GIỮ dòng lại — ẩn đi sẽ khiến yêu cầu đó không còn
+    /// nhìn thấy cũng không tắt được (giá trị vẫn được WriteConfigInto ghi lại).</summary>
+    private void UpdateCapabilityVisibility()
+    {
+        var hideColor = !ModeResolver.IsFull
+            && _printer?.ColorSupport == CapabilitySupport.NotSupported
+            && SelectedTag(ColorModeCombo) is "AsPrinter" or "AsDocument" or "Grayscale";
+        var hideDuplex = !ModeResolver.IsFull
+            && _printer?.DuplexSupport == CapabilitySupport.NotSupported
+            && SelectedTag(DuplexCombo) is "AsPrinter" or "Simplex";
+
+        SetRowVisible(!hideColor, ColorLabel, ColorModeCombo, ColorHint);
+        SetRowVisible(!hideDuplex, DuplexLabel, DuplexCombo, DuplexHint);
     }
 
     private static void SelectTag(ComboBox combo, string? tag, string fallbackTag)
