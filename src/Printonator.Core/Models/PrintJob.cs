@@ -235,7 +235,12 @@ public sealed class PrintConfig
     {
         get
         {
-            var paper = PaperSize == PaperCatalog.AsDocument ? "khổ gốc" : PaperSize;
+            // So KHÔNG phân biệt hoa thường: preset JSON sửa tay có thể ghi "asdocument", và mọi chỗ
+            // khác trong app (engine, cover page, MCP) đều so kiểu này — riêng đây ordinal thì dòng
+            // tóm tắt hiện chữ "asdocument" thay vì "khổ gốc".
+            var paper = PaperSize.Equals(PaperCatalog.AsDocument, StringComparison.OrdinalIgnoreCase)
+                ? "khổ gốc"
+                : PaperSize;
             var parts = new List<string> { $"{Math.Max(Copies, 1)}x", paper };
 
             // Chế độ in — hiện rõ cả "theo máy" NHƯNG kèm nhãn để phân biệt với màu theo máy

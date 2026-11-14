@@ -28,6 +28,26 @@ public class PrintConfigTests
         Assert.False(cfg.Color);
     }
 
+    /// <summary>Dòng tóm tắt phải hiện "khổ gốc" cho AsDocument dù preset JSON ghi kiểu gì — mọi chỗ
+    /// khác trong app đã so không phân biệt hoa thường, riêng đây từng so ordinal.</summary>
+    [Theory]
+    [InlineData("AsDocument")]
+    [InlineData("asdocument")]
+    [InlineData("ASDOCUMENT")]
+    public void SummaryText_nhan_ra_AsDocument_khong_phan_biet_hoa_thuong(string paper)
+    {
+        var job = new PrintJob
+        {
+            FilePath = "C:\\t.pdf",
+            FileName = "t.pdf",
+            Format = "PDF",
+            Config = new PrintConfig { PaperSize = paper },
+        };
+
+        Assert.Contains("khổ gốc", job.Config.SummaryText);
+        Assert.DoesNotContain("asdocument", job.Config.SummaryText, StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>Tên khổ phải so KHÔNG phân biệt hoa thường: MCP nhận chuỗi tự do từ AI ("a4", "A4"),
     /// so phân biệt thì "a4" trả null → engine bỏ qua khổ, in theo driver mà không báo.</summary>
     [Theory]
