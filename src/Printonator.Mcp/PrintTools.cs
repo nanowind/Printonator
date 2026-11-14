@@ -65,7 +65,7 @@ public static class PrintTools
         [Description("Tên máy in (để trống hoặc 'mặc định' = máy in mặc định Windows)")] string? printer = null,
         [Description("Số bản in (1-100)")] int copies = 1,
         [Description("In 2 mặt: true = 2 mặt (gáy dài), false = 1 mặt. Không truyền = theo máy in (không ép 1/2 mặt).")] bool? duplex = null,
-        [Description("Khổ giấy: A4/A3/A5/Letter... (bỏ trống = theo máy/tài liệu)")] string? paper = null,
+        [Description("Khổ giấy: A4/A3/A5/A6/A2/A1/A0/B4/B5/B6/Letter/Legal/Ledger/Tabloid/Executive/Statement/DL/C5/C6/Com10, hoặc AsDocument (theo khổ trong tài liệu). Bỏ trống = theo máy in. Tên khác sẽ bị từ chối (INVALID_PAPER_SIZE) — danh sách paper của list_printers có thể chứa tên riêng của driver mà print_files không đặt được.")] string? paper = null,
         [Description("Trang cần in: All, 2,5, 3-4, S2:1-3")] string? pageRange = null,
         [Description("In màu (giữ cho tương thích: true = Color, false = Grayscale). Không truyền = theo máy in.")] bool? color = null,
         [Description("Chế độ màu: AsPrinter/AsDocument/Color/Grayscale. Bỏ trống = theo máy in (AsPrinter), tài liệu màu vẫn in màu; truyền Grayscale mới in đen trắng.")] string? colorMode = null,
@@ -75,6 +75,29 @@ public static class PrintTools
         [Description("Chỉ in trang lẻ/chẵn: All/Odd/Even (bỏ trống = All)")] string? parity = null,
         [Description("Độ phân giải: AsPrinter/High/Medium/Low/Draft (bỏ trống = driver quyết)")] string? quality = null)
     {
+        // Khổ giấy: nhận tên bất kỳ nhưng PHẢI có trong danh mục, kiểm TRƯỚC BuildAndQueue (lambda
+        // cấu hình là Action nên không trả lỗi ra được). Gán thẳng chuỗi lạ vào cfg.PaperSize thì
+        // engine bỏ qua khổ và in theo khổ driver — AI nhận ok:true trong khi giấy ra khác yêu cầu.
+        var paperName = paper?.Trim();
+        if (!string.IsNullOrWhiteSpace(paperName)
+            && !paperName.Equals(PaperCatalog.AsDocument, StringComparison.OrdinalIgnoreCase)
+            && PaperCatalog.Dimensions(paperName) is null)
+        {
+            return Fail(new PrintError
+            {
+                Code = ErrorCodes.InvalidPaperSize,
+                Category = PrintErrorCategory.Config,
+                Message = $"Khổ giấy \"{paperName}\" không có trong danh mục.",
+                Hint = $"Dùng một trong: {string.Join(", ", PaperCatalog.AllNames)}, "
+                       + $"hoặc \"{PaperCatalog.AsDocument}\" (theo khổ trong tài liệu); "
+                       + "để trống = theo khổ máy in đang đặt.",
+            });
+        }
+        // Chuẩn hoá "asdocument" → hằng số: CdpPrintParams/BrowserPrintEngine so sánh ordinal
+        // (phân biệt hoa thường) nên chuỗi thô viết thường sẽ không nhận ra, và khổ rơi về mặc định browser.
+        if (paperName is not null && paperName.Equals(PaperCatalog.AsDocument, StringComparison.OrdinalIgnoreCase))
+            paperName = PaperCatalog.AsDocument;
+
         return await BuildAndQueue(paths, printer, cfg =>
         {
             cfg.Copies = copies;
@@ -89,7 +112,7 @@ public static class PrintTools
                 : color is null
                     ? PrintColorMode.AsPrinter
                     : color.Value ? PrintColorMode.Color : PrintColorMode.Grayscale;
-            if (!string.IsNullOrWhiteSpace(paper)) cfg.PaperSize = paper;
+            if (!string.IsNullOrWhiteSpace(paperName)) cfg.PaperSize = paperName;
             if (!string.IsNullOrWhiteSpace(pageRange)) cfg.PageRange = pageRange;
             if (!string.IsNullOrWhiteSpace(paperSource)) cfg.PaperSource = paperSource;
             cfg.ScaleMode = ParseScaleMode(scaleMode);
@@ -651,6 +674,8 @@ public static class PrintTools
             "Báo người dùng chuyển file sang PDF rồi in lại."),
         (ErrorCodes.InvalidPageRange, "Page range sai cú pháp.",
             "Xem job_status để biết số trang của file; gọi print_files với range đúng (All, 2,5, 3-4, S2:1-3)."),
+        (ErrorCodes.InvalidPaperSize, "Tên khổ giấy không có trong danh mục.",
+            "Gọi print_files lại với một trong các tên khổ hợp lệ (A4, A3, A5, Letter, Legal...) hoặc bỏ trống tham số paper."),
         (ErrorCodes.SectionNotFound, "File không có section được chỉ định.",
             "Hỏi người dùng số section đúng hoặc dùng page range All."),
         (ErrorCodes.UnsupportedOption, "Engine xử lý file này không áp được option đã yêu cầu (vd chỉ in trang lẻ/chẵn), nên job bị từ chối thay vì in sai.",

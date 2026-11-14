@@ -146,4 +146,66 @@ public class McpToolsTests
             try { File.Delete(file); } catch { }
         }
     }
+
+    /// <summary>
+    /// Khổ giấy lạ KHÔNG được lọt xuống engine: PaperCatalog.Dimensions trả null → engine bỏ qua khổ
+    /// và in theo khổ driver, còn AI nhận ok:true và tưởng đã in đúng khổ nó yêu cầu. Phải trả lỗi
+    /// có mã + gợi ý danh sách khổ hợp lệ. Test chạy TRƯỚC cổng duyệt/allowlist nên không cần env.
+    /// </summary>
+    [Theory]
+    [InlineData("A4x")]            // gõ sai
+    [InlineData("khổ gì cũng được")] // AI nói mơ hồ
+    [InlineData("A99")]            // tên không tồn tại
+    public async Task PrintFiles_PaperKhongCoTrongDanhMuc_TraLoiInvalidPaperSize(string paper)
+    {
+        var file = Path.Combine(Path.GetTempPath(), $"printonator-mcptest-{Guid.NewGuid():N}.txt");
+        File.WriteAllText(file, "x");
+        try
+        {
+            var result = (Dictionary<string, object?>)await PrintTools.PrintFiles([file], paper: paper);
+
+            Assert.False((bool)result["ok"]!);
+            var err = (Dictionary<string, object?>)result["error"]!;
+            Assert.Equal(ErrorCodes.InvalidPaperSize, err["code"]);
+            // Hint phải liệt kê khổ hợp lệ để AI tự sửa ở lần gọi sau.
+            Assert.Contains("A4", (string)err["hint"]!);
+            Assert.Contains("A3", (string)err["hint"]!);
+        }
+        finally
+        {
+            try { File.Delete(file); } catch { }
+        }
+    }
+
+    /// <summary>Tên khổ hợp lệ và "AsDocument" phải đi qua — không được chặn oan.
+    /// CHỈ chạy khi guard chắc chắn chặn (RequireApprove=true): nếu môi trường dev cho phép tự in thì
+    /// test sẽ gửi file thật tới máy in. Khi guard chặn, khẳng định ĐÚNG mã lỗi để khoá cả THỨ TỰ
+    /// (kiểm tra khổ phải chạy TRƯỚC cổng duyệt) — nếu ai dời nó ra sau, test này đỏ ngay.</summary>
+    [Theory]
+    [InlineData("A4")]
+    [InlineData("a4")]           // danh mục không phân biệt hoa thường
+    [InlineData("Letter")]
+    [InlineData("AsDocument")]
+    [InlineData("asdocument")]   // phải chuẩn hoá về hằng số, không giữ chuỗi thô
+    public async Task PrintFiles_PaperHopLe_KhongBiChan(string paper)
+    {
+        if (!AppServices.GuardConfig.RequireApprove)
+            return;   // môi trường cho phép tự in → bỏ qua, tránh in thật
+
+        var file = Path.Combine(Path.GetTempPath(), $"printonator-mcptest-{Guid.NewGuid():N}.txt");
+        File.WriteAllText(file, "x");
+        try
+        {
+            var result = (Dictionary<string, object?>)await PrintTools.PrintFiles([file], paper: paper);
+
+            Assert.False((bool)result["ok"]!);
+            var err = (Dictionary<string, object?>)result["error"]!;
+            // Bị chặn bởi CỔNG DUYỆT chứ không phải bởi kiểm tra khổ giấy.
+            Assert.Equal(ErrorCodes.ApprovalRequired, err["code"]);
+        }
+        finally
+        {
+            try { File.Delete(file); } catch { }
+        }
+    }
 }

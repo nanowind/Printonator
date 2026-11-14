@@ -44,16 +44,21 @@ public static class PaperCatalog
         ["Com10"] = (105, 241),
     };
 
-    /// <summary>Thứ tự hiển thị chuẩn (theo mức dùng phổ biến trước).
-    /// "Tabloid" = cùng tờ 279×432 với "Ledger" (chỉ khác chiều), liệt kê để tên gọi nào cũng dùng
-    /// được — bảng mã Office dùng "Tabloid" còn DEVMODE dùng mã Ledger cho cùng tờ giấy đó.</summary>
-    private static readonly string[] StandardOrder =
-    {
-        "A4", "A3", "A5", "A6", "A2", "A1", "A0",
-        "B4", "B5", "B6",
-        "Letter", "Legal", "Ledger", "Tabloid", "Executive", "Statement",
-        "DL", "C5", "C6", "Com10",
-    };
+    /// <summary>Thứ tự hiển thị chuẩn (theo mức dùng phổ biến trước) — cũng là danh sách tên hợp lệ
+    /// để gợi ý cho caller. "Tabloid" = cùng tờ 279×432 với "Ledger" (chỉ khác chiều), liệt kê để tên
+    /// gọi nào cũng dùng được — bảng mã Office dùng "Tabloid" còn DEVMODE dùng mã Ledger.</summary>
+    public static IReadOnlyList<string> StandardOrder { get; } =
+        new[]
+        {
+            "A4", "A3", "A5", "A6", "A2", "A1", "A0",
+            "B4", "B5", "B6",
+            "Letter", "Legal", "Ledger", "Tabloid", "Executive", "Statement",
+            "DL", "C5", "C6", "Com10",
+        };
+
+    /// <summary>MỌI tên khổ tra được (kể cả phong bì chỉ có trong Known như DLEnvelope) —
+    /// dùng cho thông báo lỗi để gợi ý không bị thiếu.</summary>
+    public static IReadOnlyList<string> AllNames => Known.Keys.ToList();
 
     /// <summary>Kích thước mm của khổ (null nếu không biết).</summary>
     public static (int W, int H)? Dimensions(string name)

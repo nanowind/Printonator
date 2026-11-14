@@ -46,6 +46,7 @@ public static class ErrorCodes
     public const string UnsupportedFormat = "UNSUPPORTED_FORMAT";
     // Config
     public const string InvalidPageRange = "INVALID_PAGE_RANGE";
+    public const string InvalidPaperSize = "INVALID_PAPER_SIZE";   // khổ giấy không có trong danh mục — báo, không in theo khổ khác
     public const string SectionNotFound = "SECTION_NOT_FOUND";
     public const string UnsupportedOption = "UNSUPPORTED_OPTION";   // engine không áp được option (vd lẻ/chẵn) — báo, không in sai im lặng
     public const string NoFilesSelected = "NO_FILES_SELECTED";
