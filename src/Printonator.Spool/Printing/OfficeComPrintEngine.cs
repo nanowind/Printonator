@@ -363,18 +363,67 @@ public sealed class OfficeComPrintEngine : IPrintEngine
         return Result<(bool, string)>.Ok((false, string.Join(",", pages)));
     }
 
+    /// <summary>Kết quả quyết định cách đặt khổ cho Word — tách khỏi <see cref="ApplyWordPaper"/> để
+    /// test được phần dễ hỏng (đổi mm→pt, kiểm trần) mà không cần mở Word.</summary>
+    internal sealed record WordPaperPlan(int? Code, double? WidthPt, double? HeightPt)
+    {
+        public bool IsCustom => WidthPt is not null && Code is null;
+        public bool IsSkipped => Code is null && WidthPt is null;
+    }
+
+    /// <summary>Word từ chối mọi kích thước ngoài 7,2–1584 pt (= 558,8 mm). A0 (841 mm), A1 (594 mm)
+    /// và A2 (594 mm) VƯỢT trần này nên KHÔNG đặt được qua PageWidth/PageHeight.</summary>
+    internal const double WordMinPagePoint = 7.2;
+    internal const double WordMaxPagePoint = 1584.0;
+
+    /// <summary>
+    /// Quyết định cách đặt khổ: có mã WdPaperSize → dùng mã; không có mã nhưng Word đặt được bằng
+    /// PageWidth/PageHeight → custom; còn lại → bỏ qua (giữ khổ trong file).
+    /// PHAI kiểm CẢ HAI chiều trước khi ghi: set PageWidth xong mà PageHeight ném (A2) thì tài liệu
+    /// còn lại khổ lai 420 × A4 — in sai mà job vẫn báo Done, tệ hơn không làm gì.
+    /// </summary>
+    internal static WordPaperPlan PlanWordPaper(string paperSize)
+    {
+        var name = paperSize.Trim();
+        if (WordPaperCode.TryGetValue(name, out var code))
+            return new WordPaperPlan(code, null, null);
+        if (PaperCatalog.Dimensions(name) is not { } d)
+            return new WordPaperPlan(null, null, null);   // AsDocument/AsPrinter/tên lạ → giữ nguyên
+
+        var wPt = d.W * 72.0 / 25.4;
+        var hPt = d.H * 72.0 / 25.4;
+        if (wPt < WordMinPagePoint || wPt > WordMaxPagePoint
+            || hPt < WordMinPagePoint || hPt > WordMaxPagePoint)
+        {
+            OfficeLog($"Khổ \"{name}\" ({d.W}×{d.H} mm) vượt giới hạn trang của Word " +
+                      $"({WordMinPagePoint}–{WordMaxPagePoint} pt) — giữ khổ trong file.");
+            return new WordPaperPlan(null, null, null);
+        }
+        return new WordPaperPlan(null, wPt, hPt);
+    }
+
+    /// <summary>Đặt khổ + chiều cho Word. Khổ có thành viên WdPaperSize → đặt mã; khổ Word không có
+    /// mã nhưng đặt được bằng kích thước (A6, phong bì) → PageWidth/PageHeight, Word tự chuyển
+    /// sang wdPaperCustom; khổ quá lớn (A0/A1/A2) → giữ nguyên (xem PlanWordPaper).
+    /// Chiều giấy đặt trong Try RIÊNG: khổ lỗi không được kéo theo chiều giấy của user.</summary>
     private static void ApplyWordPaper(dynamic doc, string paperSize, PrintOrientation orientation)
     {
-        Try(() =>
+        var plan = PlanWordPaper(paperSize);
+        if (plan.Code is { } wdCode)
         {
-            if (WordPaperCode.TryGetValue(paperSize.Trim(), out var wdCode))
-                doc.PageSetup.PaperSize = wdCode;
-            // AsDocument/AsPrinter: không ép chiều — giữ chiều trong file hoặc driver quyết
-            if (orientation == PrintOrientation.Portrait)
-                doc.PageSetup.Orientation = 0; // wdOrientPortrait
-            else if (orientation == PrintOrientation.Landscape)
-                doc.PageSetup.Orientation = 1; // wdOrientLandscape
-        });
+            Try(() => doc.PageSetup.PaperSize = wdCode);
+        }
+        else if (plan.IsCustom)
+        {
+            Try(() => doc.PageSetup.PageWidth = plan.WidthPt!.Value);
+            Try(() => doc.PageSetup.PageHeight = plan.HeightPt!.Value);
+        }
+
+        // AsDocument/AsPrinter: không ép chiều — giữ chiều trong file hoặc driver quyết
+        if (orientation == PrintOrientation.Portrait)
+            Try(() => doc.PageSetup.Orientation = 0); // wdOrientPortrait
+        else if (orientation == PrintOrientation.Landscape)
+            Try(() => doc.PageSetup.Orientation = 1); // wdOrientLandscape
     }
 
     // ============ Excel ============
@@ -1033,38 +1082,52 @@ public sealed class OfficeComPrintEngine : IPrintEngine
         catch { return null; }
     }
 
-    /// <summary>wPaper* (Word) theo tên khổ chuẩn; bỏ qua khổ lạ (giữ default file).</summary>
-    private static readonly Dictionary<string, int> WordPaperCode = new(StringComparer.OrdinalIgnoreCase)
+    /// <summary>
+    /// wdPaper* (Word) theo tên khổ chuẩn. GIÁ TRỊ ĐỌC TỪ Microsoft.Office.Interop.Word.WdPaperSize
+    /// (GAC 15.0.0.0) — KHÔNG phải DMPAPER_* và KHÔNG suy từ Excel.
+    /// Word dùng hệ số RIÊNG, lệch hẳn DMPAPER: A4=7 (DMPAPER 9), A3=6 (8), A5=9 (11), B5=11 (13),
+    /// Letter=2 (1), Legal=4 (5), Executive=5 (7), Ledger=19 (4), Tabloid=23 (3).
+    /// Nguy hiểm: Word KHÔNG ném lỗi khi gặp mã hợp lệ nhưng khác nghĩa — nó remap im lặng sang khổ
+    /// gần nhất (đã đo trên máy thật: set 8 → đọc lại 7 = A4; set 1 → 11×17; set 5 → Executive).
+    /// Chỉ mã > 41 mới ném "Value out of range". Vì thế bảng này PHẢI đúng từng số, sai một số là in
+    /// nhầm khổ mà job vẫn báo Done.
+    /// A0/A1/A2 KHÔNG có thành viên trong WdPaperSize và KÍCH THƯỚC của chúng (594–841 mm) cũng
+    /// vượt trần 1584 pt của Word → không đặt được bằng cách nào; PlanWordPaper giữ nguyên khổ
+    /// trong file và ghi log. Chỉ A6 và các phong bì đi được đường PageWidth/PageHeight.
+    /// </summary>
+    internal static readonly IReadOnlyDictionary<string, int> WordPaperCode =
+        new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
     {
-        ["A0"] = 69,
-        ["A1"] = 68,
-        ["A2"] = 66,
-        ["A3"] = 8,
+        ["A3"] = 6,
         ["A4"] = 7,
-        ["A5"] = 11,
-        ["A6"] = 70,
-        ["B5"] = 13,
-        ["Letter"] = 1,
-        ["Legal"] = 5,
-        ["Ledger"] = 4,
-        ["Executive"] = 7,
+        ["A5"] = 9,
+        ["B4"] = 10,
+        ["B5"] = 11,
+        ["Letter"] = 2,
+        ["Legal"] = 4,
+        ["Ledger"] = 19,
+        ["Executive"] = 5,
+        ["Tabloid"] = 23,
+        ["Statement"] = 22,
     };
 
-    /// <summary>xlPaper* (Excel) theo tên khổ chuẩn.</summary>
-    private static readonly Dictionary<string, int> ExcelPaperCode = new(StringComparer.OrdinalIgnoreCase)
+    /// <summary>xlPaper* (Excel) theo tên khổ chuẩn — trùng số với DMPAPER_* (đã đọc từ
+    /// Microsoft.Office.Interop.Excel.XlPaperSize GAC 15.0.0.0: xlPaperB5=13, xlPaperA4=9...).
+    /// Excel không có A0/A1/A2 → không đưa vào bảng (66/67/68 đều ném "Unable to set the PaperSize").</summary>
+    internal static readonly IReadOnlyDictionary<string, int> ExcelPaperCode =
+        new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
     {
-        ["A0"] = 68,
-        ["A1"] = 67,
-        ["A2"] = 66,
         ["A3"] = 8,
         ["A4"] = 9,
         ["A5"] = 11,
-        ["A6"] = 70,
+        ["B4"] = 12,
         ["B5"] = 13,
         ["Letter"] = 1,
         ["Legal"] = 5,
         ["Ledger"] = 4,
         ["Executive"] = 7,
+        ["Tabloid"] = 3,
+        ["Statement"] = 6,
     };
 
     private static void Try(Action a)

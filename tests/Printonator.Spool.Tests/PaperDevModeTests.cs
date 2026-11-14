@@ -60,6 +60,7 @@ public class PaperDevModeTests
     [InlineData(9, "A4")]          // DMPAPER_A4
     [InlineData(11, "A5")]         // DMPAPER_A5
     [InlineData(12, "B4")]         // DMPAPER_B4 (JIS, chênh 1 mm)
+    [InlineData(13, "B5")]         // DMPAPER_B5 (JIS 182×257)
     [InlineData(27, "DL")]         // DMPAPER_ENV_DL
     [InlineData(42, "B4")]         // DMPAPER_ISO_B4 (khớp chính xác)
     [InlineData(66, "A2")]         // DMPAPER_A2
@@ -67,20 +68,30 @@ public class PaperDevModeTests
     public void Ma_dmPaperSize_chuan_doi_ra_dung_ten_kho(short dmPaperSize, string expected)
         => Assert.Equal(expected, PrinterDialogs.DmPaperSizeName(dmPaperSize));
 
-    /// <summary>DMPAPER_B5 (13) là B5 **JIS** 182×257, catalog "B5" là **ISO** 176×250 — lệch 7 mm.
-    /// Map bừa sẽ ghi sai khổ vào cfg.PaperSize rồi in sai; phải trả null (UI giữ "theo máy in").</summary>
+    /// <summary>DMPAPER_B5 (13) = B5 JIS 182×257, khớp PaperCatalog["B5"] sau khi sửa catalog từ
+    /// ISO 176×250 sang JIS — đó là khổ Windows/Office thật sự dùng (đo trên 10 driver).</summary>
     [Fact]
-    public void Ma_B5_JIS_khong_map_thanh_B5_ISO()
-        => Assert.Null(PrinterDialogs.DmPaperSizeName(13));
+    public void Ma_B5_JIS_map_thanh_B5()
+        => Assert.Equal("B5", PrinterDialogs.DmPaperSizeName(13));
+
+    /// <summary>Và khổ catalog đó phải là 182×257, không phải 176×250 — sai kích thước ở đây
+    /// nghĩa là in ra giấy khác với cái user chọn.</summary>
+    [Fact]
+    public void Kho_B5_trong_catalog_la_JIS_182x257()
+    {
+        var d = PaperCatalog.Dimensions("B5");
+        Assert.NotNull(d);
+        Assert.Equal((182, 257), d!.Value);
+    }
 
     /// <summary>Tên trả về PHẢI có trong PaperCatalog, nếu không combo khổ giấy không chọn được
     /// (TrySelectTag thất bại → nút "Lấy theo máy in" báo lỗi oan).</summary>
     [Theory]
     [InlineData((short)1)] [InlineData((short)3)] [InlineData((short)4)] [InlineData((short)5)]
     [InlineData((short)7)] [InlineData((short)8)] [InlineData((short)9)] [InlineData((short)11)]
-    [InlineData((short)12)] [InlineData((short)27)] [InlineData((short)28)] [InlineData((short)29)]
-    [InlineData((short)30)] [InlineData((short)31)] [InlineData((short)42)] [InlineData((short)66)]
-    [InlineData((short)70)]
+    [InlineData((short)12)] [InlineData((short)13)] [InlineData((short)27)] [InlineData((short)28)]
+    [InlineData((short)29)] [InlineData((short)30)] [InlineData((short)31)] [InlineData((short)42)]
+    [InlineData((short)66)] [InlineData((short)70)]
     public void Ten_kho_doc_tu_dmPaperSize_luon_co_trong_PaperCatalog(short dmPaperSize)
     {
         var name = PrinterDialogs.DmPaperSizeName(dmPaperSize);

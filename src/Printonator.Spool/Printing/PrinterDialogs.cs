@@ -623,11 +623,11 @@ public static class PrinterDialogs
     /// Mã dmPaperSize chuẩn → tên khổ trong PaperCatalog. Nguồn: wingdi.h (SDK 10.0.19041.0) 2482-2612.
     /// CHỈ map khổ có trong PaperCatalog VÀ đúng kích thước — sai kích thước còn tệ hơn không biết,
     /// vì giá trị này được ghi thẳng vào cfg.PaperSize rồi đem đi in.
-    /// - DMPAPER_B5 (13) là B5 **JIS** 182×257, còn PaperCatalog "B5" là **ISO** 176×250 → KHÔNG map.
-    ///   (Word/Excel cũng coi 13 = JIS nên app đã lệch sẵn ở đó; thêm ánh xạ này chỉ làm lệch thêm.)
-    /// - DMPAPER_B4 (12, JIS 250×354) và DMPAPER_ISO_B4 (42, ISO 250×353) cùng map "B4" (catalog
-    ///   250×353): chênh 1 mm, nằm trong dung sai ±2 mm của đường width/length.
-    /// - Mã lạ (khổ driver riêng, phong bì hiếm) → null để UI giữ "theo máy in", không đoán bừa.
+    /// DMPAPER_B5 (13) = B5 JIS 182×257, khớp PaperCatalog["B5"] (đã sửa từ ISO 176×250 → JIS
+    /// 182×257 cho đúng những gì Windows/Office dùng).
+    /// DMPAPER_B4 (12, JIS 250×354) và DMPAPER_ISO_B4 (42, ISO 250×353) cùng map "B4" (catalog
+    /// 250×353): chênh 1 mm, nằm trong dung sai ±2 mm của đường width/length.
+    /// Mã lạ (khổ driver riêng, phong bì hiếm) → null để UI giữ "theo máy in", không đoán bừa.
     /// </summary>
     private static readonly IReadOnlyDictionary<short, string> DmPaperSizeNames = new Dictionary<short, string>
     {
@@ -641,6 +641,7 @@ public static class PrinterDialogs
         [9] = "A4",          // DMPAPER_A4
         [11] = "A5",         // DMPAPER_A5
         [12] = "B4",         // DMPAPER_B4 (JIS, chênh 1 mm)
+        [13] = "B5",         // DMPAPER_B5 (JIS 182×257 — khớp catalog)
         [27] = "DL",         // DMPAPER_ENV_DL
         [28] = "C5",         // DMPAPER_ENV_C5
         [29] = "C3Envelope", // DMPAPER_ENV_C3

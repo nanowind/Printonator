@@ -754,7 +754,7 @@ public sealed class GdiPrintEngine : IPrintEngine
         else if (Near(pw, ph, 148, 210)) kind = PaperKind.A5;
         else if (Near(pw, ph, 216, 279)) kind = PaperKind.Letter;
         else if (Near(pw, ph, 216, 356)) kind = PaperKind.Legal;
-        else if (Near(pw, ph, 176, 250)) kind = PaperKind.B5;
+        else if (Near(pw, ph, 182, 257)) kind = PaperKind.B5;   // B5 JIS — khớp PaperCatalog
 
         return (kind, (int)Math.Round(pw * 100), (int)Math.Round(ph * 100));
     }

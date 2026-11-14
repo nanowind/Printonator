@@ -9,7 +9,11 @@ public static class PaperCatalog
     /// <summary>Giá trị đặc biệt của PrintConfig.PaperSize = "theo tài liệu" (in đúng khổ gốc từng trang file).</summary>
     public const string AsDocument = "AsDocument";
 
-    /// <summary>Tên khổ giấy (chuẩn tên máy in hay dùng) → kích thước mm.</summary>
+    /// <summary>Tên khổ giấy (chuẩn tên máy in hay dùng) → kích thước mm.
+    /// LƯU Ý B5: theo đúng những gì Windows và Office dùng, "B5" = **JIS 182×257**, không phải
+    /// ISO 176×250. Đã đo trên máy thật: cả 10 driver báo B5 (DMPAPER 13) = 182×257, và
+    /// WdPaperSize.wdPaperB5 / XlPaperSize.xlPaperB5 đều trỏ vào tờ đó. B5 ISO không có mã Win32
+    /// riêng (chỉ có dạng phong bì ISOB5Envelope) nên không đưa vào danh mục.</summary>
     private static readonly IReadOnlyDictionary<string, (int W, int H)> Known = new Dictionary<string, (int, int)>
     {
         ["A0"] = (841, 1189),
@@ -20,7 +24,7 @@ public static class PaperCatalog
         ["A5"] = (148, 210),
         ["A6"] = (105, 148),
         ["B4"] = (250, 353),
-        ["B5"] = (176, 250),
+        ["B5"] = (182, 257),
         ["B6"] = (125, 176),
         ["Letter"] = (216, 279),
         ["Legal"] = (216, 356),
