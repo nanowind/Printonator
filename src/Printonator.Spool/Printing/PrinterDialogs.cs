@@ -490,9 +490,8 @@ public static class PrinterDialogs
     /// Dùng cho nút "Lấy theo máy in" trong form cài đặt (điền sẵn giá trị rồi user sửa).
     /// Giá trị đọc được là cài đặt ĐANG LƯU trong driver, không phải bảo đảm máy in sẽ in đúng như vậy:
     /// nhiều driver bỏ qua dmColor/dmDuplex khi in thật (mỗi app tự dựng DEVMODE tài liệu của nó).
-    /// ponytail: chỉ map khổ giấy qua dmPaperWidth/dmPaperLength (không có bảng DMPAPER trong repo);
-    /// driver chỉ đặt dmPaperSize chuẩn mà không set width/length thì khổ trả về null.
-    /// Đường nâng cấp: thêm bảng DMPAPER khi cần nhận cả khổ chuẩn.
+    /// Khổ giấy đọc qua <see cref="PaperNameFromDevMode"/>: ưu tiên dmPaperWidth/dmPaperLength
+    /// (kích thước thật, chính xác nhất), rơi về mã dmPaperSize chuẩn khi driver không set/không khớp.
     /// </summary>
     public static Result<PrinterDefaults?> ReadPrinterDefaults(string printerName)
     {
@@ -543,7 +542,8 @@ public static class PrinterDialogs
                 ColorFromDm(Honoured(DM_COLOR) ? ReadColor(devMode) : (short)0),
                 DuplexFromDm(Honoured(DM_DUPLEX) ? ReadDuplex(devMode) : (short)0),
                 OrientationFromDm(Honoured(DM_ORIENTATION) ? Marshal.ReadInt16(devMode, DmOrientationOffset) : (short)0),
-                Honoured(DM_PAPERWIDTH | DM_PAPERLENGTH) ? PaperNameFromDm(devMode) : null));
+                Honoured(DM_PAPERWIDTH | DM_PAPERLENGTH) || Honoured(DM_PAPERSIZE)
+                    ? PaperNameFromDevMode(devMode) : null));
         }
         catch (Exception ex)
         {
@@ -602,6 +602,58 @@ public static class PrinterDialogs
         }
         return null;
     }
+
+    /// <summary>
+    /// Tên khổ đọc từ DEVMODE. Ưu tiên kích thước thật (dmPaperWidth/Length, ±2 mm); không khớp khổ
+    /// nào HOẶC driver để 0 thì mới rơi về mã dmPaperSize. Driver rất hay set cờ kích thước mà để giá
+    /// trị 0 — nếu chỉ xét cờ thì đúng những driver đó vẫn ra null và nút "Lấy theo máy in" lại im lặng.
+    /// Cả hai đường đều không đọc được → null (UI giữ "theo máy in").
+    /// </summary>
+    internal static string? PaperNameFromDevMode(IntPtr devMode)
+    {
+        var fields = Marshal.ReadInt32(devMode, DmFieldsOffset);
+        var byDimension = (fields & (DM_PAPERWIDTH | DM_PAPERLENGTH)) != 0 ? PaperNameFromDm(devMode) : null;
+        if (byDimension is not null) return byDimension;
+        return (fields & DM_PAPERSIZE) != 0
+            ? DmPaperSizeName(Marshal.ReadInt16(devMode, DmPaperSizeOffset))
+            : null;
+    }
+
+    /// <summary>
+    /// Mã dmPaperSize chuẩn → tên khổ trong PaperCatalog. Nguồn: wingdi.h (SDK 10.0.19041.0) 2482-2612.
+    /// CHỈ map khổ có trong PaperCatalog VÀ đúng kích thước — sai kích thước còn tệ hơn không biết,
+    /// vì giá trị này được ghi thẳng vào cfg.PaperSize rồi đem đi in.
+    /// - DMPAPER_B5 (13) là B5 **JIS** 182×257, còn PaperCatalog "B5" là **ISO** 176×250 → KHÔNG map.
+    ///   (Word/Excel cũng coi 13 = JIS nên app đã lệch sẵn ở đó; thêm ánh xạ này chỉ làm lệch thêm.)
+    /// - DMPAPER_B4 (12, JIS 250×354) và DMPAPER_ISO_B4 (42, ISO 250×353) cùng map "B4" (catalog
+    ///   250×353): chênh 1 mm, nằm trong dung sai ±2 mm của đường width/length.
+    /// - Mã lạ (khổ driver riêng, phong bì hiếm) → null để UI giữ "theo máy in", không đoán bừa.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<short, string> DmPaperSizeNames = new Dictionary<short, string>
+    {
+        [1] = "Letter",      // DMPAPER_LETTER
+        // DMPAPER_TABLOID (3) và DMPAPER_LEDGER (4) cùng là tờ 279×432, catalog không có "Tabloid".
+        [3] = "Ledger",
+        [4] = "Ledger",
+        [5] = "Legal",       // DMPAPER_LEGAL
+        [7] = "Executive",   // DMPAPER_EXECUTIVE
+        [8] = "A3",          // DMPAPER_A3
+        [9] = "A4",          // DMPAPER_A4
+        [11] = "A5",         // DMPAPER_A5
+        [12] = "B4",         // DMPAPER_B4 (JIS, chênh 1 mm)
+        [27] = "DL",         // DMPAPER_ENV_DL
+        [28] = "C5",         // DMPAPER_ENV_C5
+        [29] = "C3Envelope", // DMPAPER_ENV_C3
+        [30] = "C4Envelope", // DMPAPER_ENV_C4
+        [31] = "C6",         // DMPAPER_ENV_C6
+        [42] = "B4",         // DMPAPER_ISO_B4 (khớp chính xác catalog "B4")
+        [66] = "A2",         // DMPAPER_A2
+        [70] = "A6",         // DMPAPER_A6
+    };
+
+    /// <summary>dmPaperSize → tên khổ PaperCatalog; mã chưa map → null (UI giữ "theo máy in").</summary>
+    internal static string? DmPaperSizeName(short dmPaperSize)
+        => DmPaperSizeNames.TryGetValue(dmPaperSize, out var name) ? name : null;
 
     private static Result<PrinterDefaults?> FailPrinterDefaultsWin32(string message, string hint)
         => FailPrinterDefaults(message, hint, Marshal.GetLastWin32Error().ToString());
