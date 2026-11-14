@@ -423,8 +423,16 @@ public static class Keys
         public const string OptionQuality = "Settings.OptionQuality";
         public const string OptionScale = "Settings.OptionScale";
         public const string PrefsButton = "Settings.PrefsButton";
+        public const string PreviewEstimated = "Settings.PreviewEstimated";
+        public const string PreviewNothing = "Settings.PreviewNothing";
+        public const string PreviewNupPdfOnly = "Settings.PreviewNupPdfOnly";
         public const string PreviewRangeAll = "Settings.PreviewRangeAll";
         public const string PreviewRangePrompt = "Settings.PreviewRangePrompt";
+        public const string PreviewSheets = "Settings.PreviewSheets";
+        public const string PreviewSkipped = "Settings.PreviewSkipped";
+        public const string PreviewTitle = "Settings.PreviewTitle";
+        public const string PreviewToggle = "Settings.PreviewToggle";
+        public const string PreviewUnknown = "Settings.PreviewUnknown";
         public const string PreviewWillPrint = "Settings.PreviewWillPrint";
         public const string PrinterNotSelectedError = "Settings.PrinterNotSelectedError";
         public const string PrinterNotSelectedHint = "Settings.PrinterNotSelectedHint";

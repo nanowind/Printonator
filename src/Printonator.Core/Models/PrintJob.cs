@@ -393,9 +393,15 @@ public sealed class PrintJob
     /// Giải page-range (hỗ trợ section) thành danh sách trang VẬT LÝ để gửi xuống in.
     /// Trả về lỗi PrintError nếu range không hợp lệ.
     /// </summary>
-    public Result<int[]> ResolvePhysicalPages()
+    public Result<int[]> ResolvePhysicalPages() => ResolvePhysicalPages(Config);
+
+    /// <summary>
+    /// Như <see cref="ResolvePhysicalPages()"/> nhưng giải theo cấu hình DRAFT `cfg` — KHÔNG đọc/ghi Config,
+    /// nên UI preview gọi được an toàn trên job đang in dở.
+    /// </summary>
+    public Result<int[]> ResolvePhysicalPages(PrintConfig cfg)
     {
-        var raw = string.IsNullOrWhiteSpace(Config.PageRange) ? "All" : Config.PageRange.Trim();
+        var raw = string.IsNullOrWhiteSpace(cfg.PageRange) ? "All" : cfg.PageRange.Trim();
 
         if (raw.Equals("All", StringComparison.OrdinalIgnoreCase))
             return Result<int[]>.Ok(Enumerable.Range(1, Math.Max(PageCount, 1)).ToArray());
@@ -486,20 +492,26 @@ public sealed class PrintJob
     /// KHÁC ResolvePhysicalPages (giữ nguyên, KHÔNG lọc parity): EstimatedPages/quota/PageCount cần số trang
     /// thật. Lọc xong MÀ RỖNG thì trả LỖI — trước đây rơi về "in cả file" (bug im lặng: chọn trang lẻ vẫn in đủ).
     /// </summary>
-    public Result<int[]> ResolvePrintPages()
+    public Result<int[]> ResolvePrintPages() => ResolvePrintPages(Config);
+
+    /// <summary>
+    /// Như <see cref="ResolvePrintPages()"/> nhưng giải theo cấu hình DRAFT `cfg` — KHÔNG đọc/ghi Config,
+    /// nên UI preview gọi được an toàn trên job đang in dở.
+    /// </summary>
+    public Result<int[]> ResolvePrintPages(PrintConfig cfg)
     {
-        var r = ResolvePhysicalPages();
+        var r = ResolvePhysicalPages(cfg);
         if (!r.IsSuccess) return r;
 
-        var pages = ApplyParity(Config.Parity, r.Value!);
+        var pages = ApplyParity(cfg.Parity, r.Value!);
         if (pages.Length > 0) return Result<int[]>.Ok(pages);
 
-        var filterText = Config.Parity == PageParityFilter.Even ? "trang chẵn" : "trang lẻ";
+        var filterText = cfg.Parity == PageParityFilter.Even ? "trang chẵn" : "trang lẻ";
         return Result<int[]>.Fail(new PrintError
         {
             Code = ErrorCodes.InvalidPageRange,
             Category = PrintErrorCategory.Config,
-            Message = $"Không còn trang nào để in: phạm vi \"{Config.PageRange}\" lọc {filterText} xong không còn trang phù hợp.",
+            Message = $"Không còn trang nào để in: phạm vi \"{cfg.PageRange}\" lọc {filterText} xong không còn trang phù hợp.",
             Hint = $"Bỏ bộ lọc lẻ/chẵn, hoặc chọn phạm vi trang khác (file có {PageCount} trang).",
         });
     }

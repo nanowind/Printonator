@@ -1,5 +1,8 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Shapes;
 using Microsoft.Win32;
 using Printonator.Core.Models;
 using Printonator.Core.Presets;
@@ -30,6 +33,9 @@ public partial class PrintSettingsWindow : Window
     private bool _loadingProfile;
     // Đang có 1 lần đọc cài đặt driver chưa xong — chặn bấm lần 2 mở thêm OpenPrinter (xem TakeFromPrinter_Click).
     private bool _readingPrinterDefaults;
+    // Lần render preview trước — chỉ dùng để biết GIÁ TRỊ NÀO vừa đổi mà chạy animation tương ứng.
+    // null = chưa render lần nào → render đầu tiên không animate.
+    private PrintPreviewModel? _lastPreview;
 
     /// <summary>Cấu hình sau khi bấm Áp dụng — MainWindow copy vào từng job.</summary>
     public PrintConfig Result { get; private set; } = new();
@@ -64,6 +70,7 @@ public partial class PrintSettingsWindow : Window
         LoadFromConfig(_source);
         RefreshRangePreview();
         LoadProfiles();
+        RefreshPreview();
         _ = LoadExcelSheetsAsync();   // file Excel → probe danh sách sheet cho dropdown
     }
 
@@ -262,6 +269,7 @@ public partial class PrintSettingsWindow : Window
             var invalid = RangeCustom.IsChecked == true && !IsValidPageRangeSyntax(RangeBox.Text);
             RangeErrText.Visibility = invalid ? Visibility.Visible : Visibility.Collapsed;
         }
+        RefreshPreview();
     }
 
     private void Copies_TextChanged(object sender, TextChangedEventArgs e)
@@ -272,6 +280,7 @@ public partial class PrintSettingsWindow : Window
         var t = CopiesBox.Text.Trim();
         var invalid = t.Length > 0 && (!int.TryParse(t, out var n) || n is < 1 or > 999);
         CopiesError.Visibility = invalid ? Visibility.Visible : Visibility.Collapsed;
+        RefreshPreview();   // số bản đổi → caption "×N" đổi
     }
 
     private void RefreshRangePreview()
@@ -296,30 +305,22 @@ public partial class PrintSettingsWindow : Window
             SectionInfo.Visibility = Visibility.Visible;
         }
 
-        var spec = RangeAll.IsChecked == true ? "All" : NormalizeRange(RangeBox.Text);
-        var old = representative.Config.PageRange;
-        try
+        // MỘT nguồn sự thật cho cả dialog: dùng đúng resolver của panel preview (range + lẻ/chẵn) trên
+        // cấu hình DRAFT — không ghi vào Config của job đang in, và không bao giờ lệch với panel bên cạnh.
+        var r = representative.ResolvePrintPages(DraftConfig());
+        if (r.IsSuccess)
         {
-            representative.Config.PageRange = spec;
-            var r = representative.ResolvePhysicalPages();
-            if (r.IsSuccess)
-            {
-                var pages = r.Value!;
-                var shown = pages.Length > 20
-                    ? string.Join(",", pages.Take(20)) + L10n.F(Keys.Common.PagesCountSuffix, pages.Length)
-                    : string.Join(",", pages);
-                RangePreview.Text = L10n.F(Keys.Settings.PreviewWillPrint, shown);
-                RangePreview.Foreground = System.Windows.Media.Brushes.SeaGreen;
-            }
-            else
-            {
-                RangePreview.Text = L10n.F(Keys.Common.PreviewErrorFormat, r.Error!.Message);
-                RangePreview.Foreground = System.Windows.Media.Brushes.Firebrick;
-            }
+            var pages = r.Value!;
+            var shown = pages.Length > 20
+                ? string.Join(",", pages.Take(20)) + L10n.F(Keys.Common.PagesCountSuffix, pages.Length)
+                : string.Join(",", pages);
+            RangePreview.Text = L10n.F(Keys.Settings.PreviewWillPrint, shown);
+            RangePreview.Foreground = System.Windows.Media.Brushes.SeaGreen;
         }
-        finally
+        else
         {
-            representative.Config.PageRange = old;
+            RangePreview.Text = L10n.F(Keys.Common.PreviewErrorFormat, r.Error!.Message);
+            RangePreview.Foreground = System.Windows.Media.Brushes.Firebrick;
         }
     }
 
@@ -328,6 +329,266 @@ public partial class PrintSettingsWindow : Window
         var t = text?.Trim() ?? "";
         return t.Length == 0 ? "All" : t;
     }
+
+    // ============ Xem trước khi in (sơ đồ tờ giấy) ============
+
+    /// <summary>Vẽ lại sơ đồ theo ĐÚNG những gì form đang hiển thị. Gọi từ mọi option làm đổi tờ giấy.</summary>
+    private void RefreshPreview()
+    {
+        // Event của XAML bắn ra trong lúc parse (trước khi field kịp gán) — xem guard ở RefreshRangePreview.
+        if (SheetBorder is null) return;
+        var cfg = DraftConfig();
+        RenderPreview(PrintPreviewModel.Build(_representative, cfg), cfg);
+    }
+
+    /// <summary>Cấu hình DRAFT = form hiện tại áp lên bản clone của _source (WriteConfigInto ghi vào clone),
+    /// nên gõ trong form không hề đụng cấu hình thật — nút Hủy vẫn sạch như cũ.</summary>
+    private PrintConfig DraftConfig()
+    {
+        var draft = _source.Clone();
+        WriteConfigInto(draft);
+        return draft;
+    }
+
+    /// <summary>Mọi combo đổi khổ giấy / chiều / 2 mặt / số trang mỗi tờ / màu / lẻ-chẵn đều đi qua đây.
+    /// CỐ Ý không hook ZoomBox, QualityCombo, PaperSourceCombo: chúng không làm đổi hình tờ giấy.</summary>
+    private void PreviewOption_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        RefreshRangePreview();   // lẻ/chẵn đổi → dòng "Sẽ in trang" phải đổi theo, không để lệch panel
+        RefreshPreview();
+    }
+
+    private void PreviewToggle_Click(object sender, RoutedEventArgs e)
+    {
+        // Collapsed (không phải Hidden) để cột Auto co về 0 — cửa sổ hẹp lại y như trước khi có preview.
+        PreviewPanel.Visibility = PreviewPanel.Visibility == Visibility.Visible
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+    }
+
+    private void RenderPreview(PrintPreviewModel m, PrintConfig cfg)
+    {
+        const double Play = 190;    // chiều cao vùng sân khấu (khớp Grid Height trong XAML)
+        const double MaxSide = 170; // cạnh LỚN NHẤT của tờ giấy, chừa 10px mỗi bên
+
+        // --- Lỗi: không vẽ tờ nào, chỉ nói lý do + VIỆC CẦN LÀM (Hint) ---
+        if (m.IsError)
+        {
+            SheetBorder.Visibility = Visibility.Collapsed;
+            BackSheetBorder.Visibility = Visibility.Collapsed;
+            AssumedSheetOutline.Visibility = Visibility.Collapsed;
+            FlipEdgeLine.Visibility = Visibility.Collapsed;
+            GrayOverlay.Visibility = Visibility.Collapsed;
+            ThumbHost.Children.Clear();
+            PreviewError.Text = string.IsNullOrWhiteSpace(m.ErrorHint)
+                ? m.ErrorMessage ?? L10n.S(Keys.Settings.PreviewNothing)
+                : $"{m.ErrorMessage} {m.ErrorHint}";
+            PreviewError.Visibility = Visibility.Visible;
+            PreviewCaption.Text = "";    // lý do đã nằm ở PreviewError, không lặp 2 lần
+            PreviewSkippedText.Visibility = Visibility.Collapsed;
+            _lastPreview = m;
+            return;
+        }
+
+        SheetBorder.Visibility = Visibility.Visible;
+        PreviewError.Visibility = Visibility.Collapsed;
+
+        // --- Khổ giấy: giữ đúng tỉ lệ thật, cạnh lớn vừa 170 ---
+        var wMm = Math.Max(m.SheetWidthMm, 1);
+        var hMm = Math.Max(m.SheetHeightMm, 1);
+        var scale = Math.Min(MaxSide / wMm, MaxSide / hMm);
+        var w = Math.Round(wMm * scale);
+        var h = Math.Round(hMm * scale);
+        if (h > Play) h = Play;    // an toàn: không tràn khỏi vùng sân khấu
+
+        // Animation 1: khổ giấy đổi → tờ giấy co giãn sang kích thước mới (180ms).
+        // !IsLoaded (đang nạp form trong ctor / host test không show) → prev = null = không animate:
+        // mở dialog không thấy hình tự lớn lên, và không có storyboard nào sống ngoài cửa sổ.
+        var prev = IsLoaded ? _lastPreview : null;
+        var animateSize = prev is not null && !prev.IsError
+            && (Math.Abs(prev.SheetWidthMm - m.SheetWidthMm) > 0.01 || Math.Abs(prev.SheetHeightMm - m.SheetHeightMm) > 0.01);
+        SetSize(SheetBorder, w, h, animateSize);
+        // Tờ mặt sau cùng khổ, lệch 6px để nhìn ra 2 tờ.
+        SetSize(BackSheetBorder, w, h, false);
+        BackSheetBorder.Visibility = m.BackSideFlipped ? Visibility.Visible : Visibility.Collapsed;
+
+        // Khổ phỏng đoán (AsDocument/AsPrinter/không có trong danh mục): viền xám ĐỨT nét cùng khung tờ,
+        // ngầm hiểu "hình này chỉ là ước lượng"; viền liền = đúng khổ đã chọn.
+        SheetBorder.BorderBrush = new SolidColorBrush(Color.FromRgb(0xD4, 0xD4, 0xD4));
+        AssumedSheetOutline.Width = w;
+        AssumedSheetOutline.Height = h;
+        AssumedSheetOutline.Visibility = m.PaperIsAssumed ? Visibility.Visible : Visibility.Collapsed;
+
+        // --- Đường lật cạnh (chỉ khi in 2 mặt) ---
+        FlipEdgeLine.Visibility = m.BackSideFlipped ? Visibility.Visible : Visibility.Collapsed;
+        var horizontal = m.FlipEdgeHorizontal;
+        var animateEdge = m.BackSideFlipped && prev is not null && prev.BackSideFlipped && prev.FlipEdgeHorizontal != horizontal;
+        // Dọn clock nằm NGOÀI guard BackSideFlipped: chuyển 2 mặt → Simplex trước đây bỏ qua bước này,
+        // để lại animation 150ms sống trên Line đã Collapsed (vô hình nhưng vẫn chạy).
+        if (!animateEdge)
+        {
+            FlipEdgeLine.BeginAnimation(Line.X1Property, null);
+            FlipEdgeLine.BeginAnimation(Line.Y1Property, null);
+            FlipEdgeLine.BeginAnimation(Line.X2Property, null);
+            FlipEdgeLine.BeginAnimation(Line.Y2Property, null);
+        }
+        if (m.BackSideFlipped)
+        {
+            // Trục lật nằm GIỮA tờ, không nằm trên viền (viền bị đường kẻ đè lên thì không thấy gì):
+            // ngang = trục ngang giữa tờ, dọc = trục dọc giữa tờ.
+            var (ax1, ay1, ax2, ay2) = horizontal
+                ? (0d, h / 2, w, h / 2)
+                : (w / 2, 0d, w / 2, h);
+
+            if (animateEdge)
+            {
+                // Animation 2: trục lật quét từ giữa-theo-chiều-dọc sang giữa-theo-chiều-ngang, 150ms.
+                FlipEdgeLine.BeginAnimation(Line.X1Property, To(ax1, 150));
+                FlipEdgeLine.BeginAnimation(Line.Y1Property, To(ay1, 150));
+                FlipEdgeLine.BeginAnimation(Line.X2Property, To(ax2, 150));
+                FlipEdgeLine.BeginAnimation(Line.Y2Property, To(ay2, 150));
+            }
+            FlipEdgeLine.X1 = ax1;
+            FlipEdgeLine.Y1 = ay1;
+            FlipEdgeLine.X2 = ax2;
+            FlipEdgeLine.Y2 = ay2;
+        }
+
+        // --- Chia tờ thành lưới theo số trang mỗi tờ (định dạng không hỗ trợ N-up → lưới 1×1) ---
+        var (cols, rows) = GridFor(m.PagesPerSheetHonoured ? m.PagesPerSheet : 1);
+        BuildThumbs(m, cols, rows);
+
+        // Animation 3: số trang/tờ đổi → lưới mới hiện lên (opacity 0→1 + scale 1.18→1), 140ms.
+        var animateGrid = prev is not null && !prev.IsError && prev.PagesPerSheet != m.PagesPerSheet;
+        if (animateGrid)
+        {
+            ThumbHost.BeginAnimation(UIElement.OpacityProperty,
+                new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(140)) { EasingFunction = EaseOut() });
+            ThumbScale.BeginAnimation(ScaleTransform.ScaleXProperty,
+                new DoubleAnimation(1.18, 1, TimeSpan.FromMilliseconds(140)) { EasingFunction = EaseOut() });
+            ThumbScale.BeginAnimation(ScaleTransform.ScaleYProperty,
+                new DoubleAnimation(1.18, 1, TimeSpan.FromMilliseconds(140)) { EasingFunction = EaseOut() });
+        }
+        else
+        {
+            ThumbHost.BeginAnimation(UIElement.OpacityProperty, null);
+            ThumbScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            ThumbScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            ThumbHost.Opacity = 1;
+            ThumbScale.ScaleX = 1;
+            ThumbScale.ScaleY = 1;
+        }
+
+        // --- Caption: số tờ (+ số bản khi > 1) + nói rõ chỗ preview CHỈ LÀ ƯỚC LƯỢNG ---
+        var caption = m.IsUnknownPageCount
+            ? L10n.S(Keys.Settings.PreviewUnknown)
+            : L10n.F(Keys.Settings.PreviewSheets, m.Sheets.Count);
+        if (m.Copies > 1) caption = $"{caption} ×{m.Copies}";
+        // Khổ giấy phỏng đoán là TRẠNG THÁI MẶC ĐỊNH (PaperSize=AsDocument) — thiếu chữ này thì tờ A4
+        // vẽ ra trông y như đã chọn A4.
+        if (m.PaperIsAssumed) caption = $"{caption} {L10n.S(Keys.Settings.PreviewEstimated)}";
+        // N-up chỉ có thật với PDF (xem PagesPerSheetHonoured) — không nói ra thì "3 tờ" là lời hứa suông.
+        if (!m.PagesPerSheetHonoured) caption = $"{caption} {L10n.S(Keys.Settings.PreviewNupPdfOnly)}";
+        PreviewCaption.Text = caption;
+
+        // Dòng "bỏ N trang" chỉ nói về bộ lọc lẻ/chẵn — bộ lọc đang TẮT thì không có gì để nói.
+        PreviewSkippedText.Text = L10n.F(Keys.Settings.PreviewSkipped, m.SkippedCount);
+        PreviewSkippedText.Visibility = cfg.Parity != PageParityFilter.All && m.SkippedCount > 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        _lastPreview = m;
+    }
+
+    /// <summary>Số cột/hàng cho lưới trang: 1→1×1, 2→2×1, 4→2×2, 6→3×2, 9→3×3, 16→4×4.</summary>
+    private static (int Cols, int Rows) GridFor(int perSheet) => perSheet switch
+    {
+        >= 16 => (4, 4),
+        >= 9 => (3, 3),
+        >= 6 => (3, 2),
+        >= 4 => (2, 2),
+        >= 2 => (2, 1),
+        _ => (1, 1),
+    };
+
+    /// <summary>Dựng lại toàn bộ trang thu nhỏ trên tờ. Chỉ 1 tờ được vẽ (tờ đang xem) — cần minh hoạ
+    /// "tờ này chứa trang nào", không phải liệt kê cả tệp.</summary>
+    private void BuildThumbs(PrintPreviewModel m, int cols, int rows)
+    {
+        ThumbHost.Rows = rows;
+        ThumbHost.Columns = cols;
+        ThumbHost.Children.Clear();
+        GrayOverlay.Visibility = m.Grayscale ? Visibility.Visible : Visibility.Collapsed;
+
+        var sheet = m.Sheets.Count > 0 ? m.Sheets[0] : null;
+        if (sheet is null) return;
+
+        foreach (var thumb in sheet.Thumbs.Take(cols * rows))
+            ThumbHost.Children.Add(MakeThumb(thumb, m.Grayscale));
+    }
+
+    private static Border MakeThumb(PreviewThumb thumb, bool grayscale)
+    {
+        var lineBrush = new SolidColorBrush(grayscale ? Color.FromRgb(0xB0, 0xB0, 0xB0) : Color.FromRgb(0xC8, 0xC8, 0xC8));
+        var card = new Border
+        {
+            Margin = new Thickness(2),
+            Background = new SolidColorBrush(thumb.Kept ? Colors.White : Color.FromRgb(0xEF, 0xEF, 0xEF)),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0xD4, 0xD4, 0xD4)),
+            BorderThickness = new Thickness(1),
+        };
+
+        var body = new Grid();
+        // Badge số trang (góc trên trái); "?" = chưa biết số trang, "—" = trang bị bỏ qua.
+        var badge = new TextBlock
+        {
+            Text = thumb.Kept ? (thumb.PageNumber?.ToString() ?? "?") : "—",
+            FontSize = 9,
+            Foreground = new SolidColorBrush(Color.FromRgb(0x6B, 0x6B, 0x6B)),
+            Margin = new Thickness(3, 1, 0, 0),
+            VerticalAlignment = VerticalAlignment.Top,
+            HorizontalAlignment = HorizontalAlignment.Left,
+        };
+        body.Children.Add(badge);
+
+        // 3 vạch xám = "chữ" trên trang, để hình đọc ra là trang giấy chứ không phải ô trống.
+        var lines = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 4, 0) };
+        for (var i = 0; i < 3; i++)
+        {
+            lines.Children.Add(new Rectangle
+            {
+                Height = 1.5,
+                Fill = lineBrush,
+                Margin = new Thickness(0, 2, i == 2 ? 10 : 0, 0),   // dòng cuối ngắn hơn
+            });
+        }
+        body.Children.Add(lines);
+        card.Child = body;
+        return card;
+    }
+
+    /// <summary>Đặt kích thước tờ; animate=true thì co giãn mượt từ kích thước hiện tại (180ms).</summary>
+    private static void SetSize(FrameworkElement el, double w, double h, bool animate)
+    {
+        if (!animate)
+        {
+            el.BeginAnimation(FrameworkElement.WidthProperty, null);
+            el.BeginAnimation(FrameworkElement.HeightProperty, null);
+            el.Width = w;
+            el.Height = h;
+            return;
+        }
+        // FillBehavior mặc định (HoldEnd): giữ đúng giá trị cuối sau khi chạy xong.
+        el.BeginAnimation(FrameworkElement.WidthProperty, To(w, 180));
+        el.BeginAnimation(FrameworkElement.HeightProperty, To(h, 180));
+    }
+
+    private static DoubleAnimation To(double to, int ms) => new(to, TimeSpan.FromMilliseconds(ms))
+    {
+        EasingFunction = EaseOut(),
+    };
+
+    private static CubicEase EaseOut() => new() { EasingMode = EasingMode.EaseOut };
 
     // ============ Scale mode: bật/tắt ZoomBox ============
 

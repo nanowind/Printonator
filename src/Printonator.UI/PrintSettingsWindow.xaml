@@ -2,8 +2,8 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:l10n="clr-namespace:Printonator.UI.Localization"
-        Title="{l10n:Loc Settings.WindowTitle}" Height="680" Width="840"
-        MinHeight="600" MinWidth="720"
+        Title="{l10n:Loc Settings.WindowTitle}" Height="680" Width="1000"
+        MinHeight="600" MinWidth="900"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
         AutomationProperties.AutomationId="PrintSettingsWindow"
         Background="#FFFFFF" FontFamily="Segoe UI">
@@ -85,7 +85,14 @@
         </Style>
     </Window.Resources>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <!-- Auto: khi ẩn PreviewPanel cột co về 0, cửa sổ hành xử y như trước khi có preview -->
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+    <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto">
         <StackPanel Margin="20">
 
             <!-- ===== Tiêu đề + chỉ dẫn ===== -->
@@ -182,11 +189,13 @@
                                 <TextBlock x:Name="SheetHint" Text="{l10n:Loc Settings.SheetHint}" Style="{StaticResource HintText}" Visibility="Collapsed"/>
 
                                 <TextBlock Text="{l10n:Loc Settings.OptionPaper}" Style="{StaticResource OptionLabel}"/>
-                                <ComboBox x:Name="PaperCombo" Width="330" FontSize="12" HorizontalAlignment="Left"/>
+                                <ComboBox x:Name="PaperCombo" Width="330" FontSize="12" HorizontalAlignment="Left"
+                                          SelectionChanged="PreviewOption_Changed"/>
                                 <TextBlock Text="{l10n:Loc Settings.HintPaper}" Style="{StaticResource HintText}"/>
 
                                 <TextBlock x:Name="DuplexLabel" Text="{l10n:Loc Settings.OptionDuplex}" Style="{StaticResource OptionLabel}"/>
-                                <ComboBox x:Name="DuplexCombo" Width="330" FontSize="12" HorizontalAlignment="Left">
+                                <ComboBox x:Name="DuplexCombo" Width="330" FontSize="12" HorizontalAlignment="Left"
+                                          SelectionChanged="PreviewOption_Changed">
                                     <ComboBoxItem Content="{l10n:Loc Option.AsPrinter}" Tag="AsPrinter"/>
                                     <ComboBoxItem Content="{l10n:Loc Option.Simplex}" Tag="Simplex"/>
                                     <ComboBoxItem Content="{l10n:Loc Option.LongEdge}" Tag="LongEdge"/>
@@ -195,7 +204,8 @@
                                 <TextBlock x:Name="DuplexHint" Text="{l10n:Loc Settings.HintDuplex}" Style="{StaticResource HintText}"/>
 
                                 <TextBlock x:Name="ColorLabel" Text="{l10n:Loc Settings.OptionColor}" Style="{StaticResource OptionLabel}"/>
-                                <ComboBox x:Name="ColorModeCombo" Width="330" FontSize="12" HorizontalAlignment="Left">
+                                <ComboBox x:Name="ColorModeCombo" Width="330" FontSize="12" HorizontalAlignment="Left"
+                                          SelectionChanged="PreviewOption_Changed">
                                     <ComboBoxItem Content="{l10n:Loc Option.AsPrinter}" Tag="AsPrinter"/>
                                     <ComboBoxItem Content="{l10n:Loc Option.AsDocument}" Tag="AsDocument"/>
                                     <ComboBoxItem Content="{l10n:Loc Option.Color}" Tag="Color"/>
@@ -256,7 +266,8 @@
                                 <TextBlock Text="{l10n:Loc Settings.GroupPagesCopiesAdvanced}" Style="{StaticResource GroupTitle}"/>
 
                                 <TextBlock Text="{l10n:Loc Settings.OptionParity}" Style="{StaticResource OptionLabel}"/>
-                                <ComboBox x:Name="ParityCombo" Width="280" FontSize="12" HorizontalAlignment="Left">
+                                <ComboBox x:Name="ParityCombo" Width="280" FontSize="12" HorizontalAlignment="Left"
+                                          SelectionChanged="PreviewOption_Changed">
                                     <ComboBoxItem Content="{l10n:Loc Option.AllPages}" Tag="All"/>
                                     <ComboBoxItem Content="{l10n:Loc Option.OddPages}" Tag="Odd"/>
                                     <ComboBoxItem Content="{l10n:Loc Option.EvenPages}" Tag="Even"/>
@@ -282,7 +293,8 @@
                                 <TextBlock Text="{l10n:Loc Settings.HintPaperSource}" Style="{StaticResource HintText}"/>
 
                                 <TextBlock Text="{l10n:Loc Settings.OptionOrientation}" Style="{StaticResource OptionLabel}"/>
-                                <ComboBox x:Name="OrientationCombo" Width="300" FontSize="12" HorizontalAlignment="Left">
+                                <ComboBox x:Name="OrientationCombo" Width="300" FontSize="12" HorizontalAlignment="Left"
+                                          SelectionChanged="PreviewOption_Changed">
                                     <ComboBoxItem Content="{l10n:Loc Option.AsDocument}" Tag="AsDocument"/>
                                     <ComboBoxItem Content="{l10n:Loc Option.AsPrinter}" Tag="AsPrinter"/>
                                     <ComboBoxItem Content="{l10n:Loc Option.Portrait}" Tag="Portrait"/>
@@ -317,7 +329,8 @@
                         <TextBlock Text="{l10n:Loc Settings.HintScale}" Style="{StaticResource HintText}"/>
 
                         <TextBlock Text="{l10n:Loc Settings.OptionPerSheet}" Style="{StaticResource OptionLabel}"/>
-                        <ComboBox x:Name="PerSheetCombo" Width="340" FontSize="12" HorizontalAlignment="Left">
+                        <ComboBox x:Name="PerSheetCombo" Width="340" FontSize="12" HorizontalAlignment="Left"
+                                  SelectionChanged="PreviewOption_Changed">
                             <ComboBoxItem Content="{l10n:Loc Option.PerSheet1}" Tag="1"/>
                             <ComboBoxItem Content="{l10n:Loc Option.PerSheet2}" Tag="2"/>
                             <ComboBoxItem Content="{l10n:Loc Option.PerSheet4}" Tag="4"/>
@@ -372,6 +385,12 @@
 
             <!-- ===== Footer ===== -->
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                <!-- Nút Xem trước nằm ở footer, KHÔNG nằm trong panel: panel ẩn đi mà nút nằm trong đó
+                     thì không còn cách nào mở lại -->
+                <Button x:Name="PreviewToggleBtn" Content="{l10n:Loc Settings.PreviewToggle}"
+                        Style="{StaticResource GhostBtn}" Padding="14,8" Margin="0,0,10,0"
+                        Click="PreviewToggle_Click"
+                        AutomationProperties.AutomationId="PreviewToggleBtn"/>
                 <Button x:Name="ApplyBtn" Content="{l10n:Loc Settings.ApplyButton}" Style="{StaticResource RoundedBtn}"
                         Padding="18,8" Click="Apply_Click"/>
                 <Button Content="{l10n:Loc Common.CancelButton}" Style="{StaticResource GhostBtn}" Padding="18,8" Margin="10,0,0,0"
@@ -379,4 +398,58 @@
             </StackPanel>
         </StackPanel>
     </ScrollViewer>
+
+    <!-- ===== Xem trước khi in: sơ đồ tờ giấy sẽ in, cập nhật theo form =====
+         Panel riêng cột phải (thay vì nhét vào tab) để không đẩy form rộng ra; nút PreviewToggle ẩn đi
+         thì cột Auto co về 0 → cửa sổ y hệt trước khi có preview. -->
+    <Border x:Name="PreviewPanel" Grid.Column="1" Width="248" VerticalAlignment="Top"
+            Margin="16,24,16,0" Background="#F6F6F4" BorderBrush="#D4D4D4" BorderThickness="1"
+            CornerRadius="8" Padding="12" AutomationProperties.AutomationId="PrintPreview">
+        <StackPanel>
+            <TextBlock Text="{l10n:Loc Settings.PreviewTitle}" FontSize="12.5" FontWeight="Bold" Foreground="#1F1F1F"/>
+            <TextBlock x:Name="PreviewCaption" FontSize="11" Foreground="#6B6B6B" TextWrapping="Wrap"
+                       Margin="0,2,0,0"/>
+
+            <!-- Vùng "sân khấu" cố định 190px: đổi khổ giấy chỉ đổi tờ bên trong, panel không nhảy chiều cao -->
+            <Grid Height="190" Margin="0,8,0,0">
+                <!-- Tờ mặt sau (in 2 mặt) — xếp DƯỚI tờ trước, lệch 6px để thấy là 2 tờ -->
+                <Border x:Name="BackSheetBorder" HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Background="#FAFAF8" BorderBrush="#C9C9C9" BorderThickness="1" Visibility="Collapsed">
+                    <Border.RenderTransform>
+                        <TranslateTransform X="6" Y="6"/>
+                    </Border.RenderTransform>
+                </Border>
+
+                <Border x:Name="SheetBorder" HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Background="White" BorderBrush="#D4D4D4" BorderThickness="1"
+                        RenderTransformOrigin="0.5,0.5">
+                    <Grid ClipToBounds="True">
+                        <UniformGrid x:Name="ThumbHost" RenderTransformOrigin="0.5,0.5">
+                            <UniformGrid.RenderTransform>
+                                <ScaleTransform x:Name="ThumbScale" ScaleX="1" ScaleY="1"/>
+                            </UniformGrid.RenderTransform>
+                        </UniformGrid>
+                        <!-- Phủ xám mờ khi in đen trắng: nhìn 1 giây là hiểu "bản in không có màu" -->
+                        <Border x:Name="GrayOverlay" Background="#9A9A9A" Opacity="0.10"
+                                IsHitTestVisible="False" Visibility="Collapsed"/>
+                        <!-- Đường lật cạnh (duplex): ngang = lật cạnh dài tờ ngang, dọc = còn lại -->
+                        <Line x:Name="FlipEdgeLine" Stroke="#2563EB" StrokeThickness="1.5"
+                              StrokeDashArray="3 2" Visibility="Collapsed"/>
+                    </Grid>
+                </Border>
+
+                <!-- Khổ phỏng đoán (AsDocument/AsPrinter): viền ĐỨT nét cùng khung tờ. Border không dash được
+                     nên phủ 1 Rectangle cùng kích thước; code bật/tắt theo PaperIsAssumed. -->
+                <Rectangle x:Name="AssumedSheetOutline" HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Stroke="#B0B0B0" StrokeThickness="1" StrokeDashArray="3 2"
+                           IsHitTestVisible="False" Visibility="Collapsed"/>
+            </Grid>
+
+            <TextBlock x:Name="PreviewError" FontSize="11" Foreground="{StaticResource ErrorBrush}"
+                       TextWrapping="Wrap" Margin="0,6,0,0" Visibility="Collapsed"/>
+            <TextBlock x:Name="PreviewSkippedText" FontSize="10.5" Foreground="#8A8A8A"
+                       TextWrapping="Wrap" Margin="0,4,0,0" Visibility="Collapsed"/>
+        </StackPanel>
+    </Border>
+    </Grid>
 </Window>
