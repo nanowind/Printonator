@@ -405,8 +405,9 @@ public sealed class OfficeComPrintEngine : IPrintEngine
     /// <summary>Đặt khổ + chiều cho Word. Khổ có thành viên WdPaperSize → đặt mã; khổ Word không có
     /// mã nhưng đặt được bằng kích thước (A6, phong bì) → PageWidth/PageHeight, Word tự chuyển
     /// sang wdPaperCustom; khổ quá lớn (A0/A1/A2) → giữ nguyên (xem PlanWordPaper).
-    /// Chiều giấy đặt trong Try RIÊNG: khổ lỗi không được kéo theo chiều giấy của user.</summary>
-    private static void ApplyWordPaper(dynamic doc, string paperSize, PrintOrientation orientation)
+    /// Chiều giấy đặt trong Try RIÊNG: khổ lỗi không được kéo theo chiều giấy của user.
+    /// internal để test gọi ĐÚNG đường production (chép lại thân hàm vào test thì test xanh dù hàm hỏng).</summary>
+    internal static void ApplyWordPaper(dynamic doc, string paperSize, PrintOrientation orientation)
     {
         var plan = PlanWordPaper(paperSize);
         if (plan.Code is { } wdCode)
