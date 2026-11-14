@@ -8,6 +8,7 @@ Có bản xem trước tờ giấy trước khi in, và các tuỳ chọn trong 
 
 ### Đã sửa
 - In file Word, Excel, PowerPoint giờ ra đúng khổ giấy đã chọn. Trước đây chọn A3 lại ra A4, chọn Legal lại ra Executive — app vẫn báo in xong nên không ai biết là in nhầm giấy.
+- Mở bảng cài đặt in rồi bấm Áp dụng không còn tự tắt "Tự xoay chiều giấy" và "Fit cột" của file Excel nữa.
 - Chọn "Đen trắng" giờ ép được máy in, không còn ra bản in màu; PDF, ảnh và file TXT cũng ra đen trắng đúng như đã chọn.
 - In lẻ/chẵn và chọn chất lượng in giờ có tác dụng với cả Word, Excel, PowerPoint; nếu lọc xong không còn trang nào, app báo rõ thay vì in hết cả file.
 - Ai in qua trợ lý AI mà không nêu rõ in 1 hay 2 mặt thì giờ in theo cài đặt máy in, không bị ép in 1 mặt nữa.
