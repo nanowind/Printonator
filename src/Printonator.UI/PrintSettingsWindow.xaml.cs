@@ -28,6 +28,8 @@ public partial class PrintSettingsWindow : Window
     private readonly PrintJob? _representative;
     private readonly PresetStore _store = new();
     private bool _loadingProfile;
+    // Đang có 1 lần đọc cài đặt driver chưa xong — chặn bấm lần 2 mở thêm OpenPrinter (xem TakeFromPrinter_Click).
+    private bool _readingPrinterDefaults;
 
     /// <summary>Cấu hình sau khi bấm Áp dụng — MainWindow copy vào từng job.</summary>
     public PrintConfig Result { get; private set; } = new();
@@ -231,6 +233,18 @@ public partial class PrintSettingsWindow : Window
             if ((combo.Items[i] as ComboBoxItem)?.Tag?.ToString() == fallbackTag) { combo.SelectedIndex = i; return; }
         }
         if (combo.Items.Count > 0) combo.SelectedIndex = 0;
+    }
+
+    /// <summary>Chọn item có ĐÚNG tag đó. false = không có item nào khớp (selection giữ nguyên) —
+    /// để nơi gọi biết field nào KHÔNG điền được thay vì báo thành công chung chung.</summary>
+    private static bool TrySelectTag(ComboBox combo, string? tag)
+    {
+        if (tag is null) return false;
+        for (var i = 0; i < combo.Items.Count; i++)
+        {
+            if ((combo.Items[i] as ComboBoxItem)?.Tag?.ToString() == tag) { combo.SelectedIndex = i; return true; }
+        }
+        return false;
     }
 
     private static string? SelectedTag(ComboBox combo) => (combo.SelectedItem as ComboBoxItem)?.Tag?.ToString();
@@ -527,16 +541,22 @@ public partial class PrintSettingsWindow : Window
         // Chạy TRƯỚC khi disable nút: không có máy in thì thoát luôn, finally bên dưới không được
         // chạy (nếu chạy sẽ bật lại nút mà constructor đã disable ở dòng ~138).
         if (_printer is null) return;
+        // Bấm lần 2 trong lúc lần 1 còn kẹt: không mở thêm 1 OpenPrinter nữa (mỗi lần kẹt = 1 thread treo
+        // vĩnh viễn — WaitAsync chỉ bỏ CHỜ, không hủy P/Invoke).
+        if (_readingPrinterDefaults) return;
+        _readingPrinterDefaults = true;
 
         TakeFromPrinterBtn.IsEnabled = false;
+        Task? read = null;
         try
         {
             var name = _printer.Name;
             // P/Invoke OpenPrinter/GetPrinter có thể TREO vô hạn với máy in mạng bị firewall chặn
             // (PrinterService.ListPrinters cũng vì thế mà chạy trên worker thread + watchdog 4s).
             // Đọc trên UI thread sẽ đóng băng cả dialog, kể cả nút Hủy — đừng "tối giản" thành gọi trực tiếp.
-            var r = await Task.Run(() => PrinterDialogs.ReadPrinterDefaults(name))
-                             .WaitAsync(TimeSpan.FromSeconds(4));
+            var typed = Task.Run(() => PrinterDialogs.ReadPrinterDefaults(name));
+            read = typed;
+            var r = await typed.WaitAsync(TimeSpan.FromSeconds(4));
 
             if (!r.IsSuccess || r.Value is not { } d)
             {
@@ -546,14 +566,32 @@ public partial class PrintSettingsWindow : Window
                 return;
             }
 
-            SelectTag(ColorModeCombo, d.ColorMode.ToString(), "AsPrinter");
-            SelectTag(DuplexCombo, d.DuplexMode.ToString(), "AsPrinter");
-            SelectTag(OrientationCombo, d.Orientation.ToString(), "Portrait");
-            // PaperName null = không khớp khổ nào trong catalog → để nguyên "theo máy in"
-            SelectTag(PaperCombo, string.IsNullOrWhiteSpace(d.PaperName) ? "" : d.PaperName, "");
+            // Chiều giấy: CHỈ điền khi form đang ép 1 chiều CỤ THỂ. Đang "theo tài liệu"/"theo máy in" thì giữ
+            // nguyên — dmOrientation=1 (Portrait) là mặc định của gần như MỌI driver, điền nó vào biến "theo
+            // tài liệu" thành Portrait cứng và ApplyWordPaper ép wdOrientPortrait cho cả file ngang.
+            if (SelectedTag(OrientationCombo) is "Portrait" or "Landscape")
+                TrySelectTag(OrientationCombo, d.Orientation.ToString());
+
+            // Khổ giấy: bấm nút này là để lấy khổ CỦA MÁY IN → driver trả khổ KHÔNG có trong list (list dựng
+            // từ khả năng máy in + khổ chuẩn) thì THÊM vào rồi chọn, thay vì im lặng để nguyên khổ cũ mà
+            // vẫn báo "đã điền".
+            var paper = d.PaperName;
+            var paperOk = !string.IsNullOrWhiteSpace(paper);
+            if (paperOk && !TrySelectTag(PaperCombo, paper))
+            {
+                PaperCombo.Items.Add(Item(PaperCatalog.Describe(paper!), paper!));
+                PaperCombo.SelectedIndex = PaperCombo.Items.Count - 1;
+            }
+            var colorOk = TrySelectTag(ColorModeCombo, d.ColorMode.ToString());
+            var duplexOk = TrySelectTag(DuplexCombo, d.DuplexMode.ToString());
 
             UpdateCapabilityVisibility();   // khả năng máy in không đổi, nhưng giá trị combo vừa đổi
-            ShowToast(L10n.S(Keys.Settings.TakeFromPrinterDone));
+            // Chỉ báo "đã điền theo máy in" khi khổ giấy THẬT SỰ đổi (khớp list hoặc vừa được thêm) — nếu
+            // driver không trả khổ đọc được thì giữ nguyên khổ cũ và nói rõ, không hứa điều không làm.
+            if (paperOk && colorOk && duplexOk)
+                ShowToast(L10n.S(Keys.Settings.TakeFromPrinterDone));
+            else
+                ShowBanner(L10n.S(Keys.Settings.TakeFromPrinterFailed));
         }
         catch (TimeoutException)
         {
@@ -562,7 +600,27 @@ public partial class PrintSettingsWindow : Window
         }
         finally
         {
-            TakeFromPrinterBtn.IsEnabled = true;
+            // Nút chỉ bật lại khi lần đọc đã KẾT THÚC. Bấm lúc đang kẹt mà bật lại ngay thì lần bấm thứ hai mở
+            // thêm 1 OpenPrinter nữa — mỗi lần kẹt là 1 thread treo vĩnh viễn (WaitAsync chỉ bỏ CHỜ, không hủy).
+            if (read is null || read.IsCompleted)
+            {
+                _readingPrinterDefaults = false;
+                TakeFromPrinterBtn.IsEnabled = true;
+            }
+            else
+            {
+                _ = read.ContinueWith(_ =>
+                {
+                    // Cửa sổ/Dispatcher đã đóng (người dùng đóng dialog trong 4s chờ) → BeginInvoke ném
+                    // InvalidOperationException trong continuation KHÔNG ai await → nuốt im lặng.
+                    if (Dispatcher.HasShutdownStarted) return;
+                    Dispatcher.BeginInvoke(() =>
+                    {
+                        _readingPrinterDefaults = false;
+                        TakeFromPrinterBtn.IsEnabled = true;
+                    });
+                }, TaskScheduler.Default);
+            }
         }
     }
 

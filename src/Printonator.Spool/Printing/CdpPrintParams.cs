@@ -27,47 +27,90 @@ public static class CdpPrintParams
     /// <summary>
     /// Trang cần in → chuỗi pageRanges (chỉ dùng cho NON-PDF: PDF viewer từ chối ranges CDP).
     /// null = in toàn bộ.
+    /// GIỮ NGUYÊN chữ ký cho caller cũ — đường IN JOB phải dùng
+    /// <see cref="BuildPageRangesChecked"/> (range sai ở đây thành "in cả file" im lặng).
     /// </summary>
     public static string? BuildPageRanges(PrintJob job)
     {
-        if (job.PageCount <= 0) return null; // chưa probe được số trang → in hết
-        if (string.IsNullOrWhiteSpace(job.Config.PageRange)
-            || job.Config.PageRange.Equals("All", StringComparison.OrdinalIgnoreCase))
-            return null;
+        var r = BuildPageRangesChecked(job);
+        return r.IsSuccess ? r.Value : null;
+    }
 
-        var r = ResolveSelectedPages(job);
-        return r is { Length: > 0 } pages ? CompactRanges(pages) : null;
+    /// <summary>
+    /// BẢN CHECKED của <see cref="BuildPageRanges"/> — dùng ở đường IN JOB (non-PDF qua browser).
+    /// Ok(null)  = in toàn bộ (chưa probe được số trang, hoặc All + không lọc lẻ/chẵn).
+    /// Ok(ranges)= chuỗi pageRanges CDP ("1-3, 5") đã áp range + lẻ/chẵn.
+    /// Fail = range không đọc được / ngoài phạm vi file, HOẶC lọc lẻ/chẵn xong không còn trang nào.
+    /// LƯU Ý: chỉ đúng khi ĐÃ có số trang. TXT/CSV không được probe (PageCountProber bỏ qua) → PageCount
+    /// &lt;= 0 → Ok(null) ở trên, TRƯỚC khi parse range → range trên TXT/CSV vẫn bị BỎ QUA im lặng (in cả file).
+    // ponytail: trần = range/lẻ-chẵn trên TXT/CSV là best-effort "in hết"; nâng cấp = probe số trang bằng
+    // cách render TXT/CSV ra PDF trước (PageCountProber đếm từ PDF đó), rồi đường checked này chạy như PDF.
+    /// </summary>
+    public static Result<string?> BuildPageRangesChecked(PrintJob job)
+    {
+        var r = ResolveSelectedPagesChecked(job);
+        if (!r.IsSuccess) return Result<string?>.Fail(r.Error!);
+        return Result<string?>.Ok(r.Value is { Length: > 0 } pages ? CompactRanges(pages) : null);
     }
 
     /// <summary>
     /// Danh sách trang vật lý user muốn in (1-based), dựa trên Config.PageRange + PageCount đã probe,
     /// SAU KHI áp bộ lọc trang lẻ/chẵn (Parity — PC: Print odd or even pages).
     /// null = in toàn bộ KHÔNG cần lọc (All + không lẻ/chẵn / chưa biết số trang / range lỗi).
+    /// GIỮ NGUYÊN chữ ký cho caller cũ — đường IN JOB phải dùng
+    /// <see cref="ResolveSelectedPagesChecked"/> (range sai ở đây thành "in cả file" im lặng).
     /// </summary>
     public static int[]? ResolveSelectedPages(PrintJob job)
     {
-        if (job.PageCount <= 0) return null;
+        var r = ResolveSelectedPagesChecked(job);
+        return r.IsSuccess ? r.Value : null;
+    }
+
+    /// <summary>
+    /// BẢN CHECKED của <see cref="ResolveSelectedPages"/> — dùng ở đường IN JOB.
+    /// Ok(null)  = in toàn bộ, KHÔNG cần lọc (chưa probe được số trang, hoặc All + không lẻ/chẵn).
+    /// Ok(pages) = danh sách trang vật lý sẽ in (đã áp bộ lọc lẻ/chẵn).
+    /// Fail = range không đọc được / ngoài phạm vi file, HOẶC lọc lẻ/chẵn xong không còn trang nào.
+    /// Trước đây cả 3 trường hợp cùng trả null → "in cả file" im lặng: PDF 3 trang + range "1" + lọc
+    /// chẵn vẫn in trang 1; range "1-20" trên file 10 trang vẫn in cả file, job Done.
+    /// </summary>
+    public static Result<int[]?> ResolveSelectedPagesChecked(PrintJob job)
+    {
         var isAll = string.IsNullOrWhiteSpace(job.Config.PageRange)
                     || job.Config.PageRange.Equals("All", StringComparison.OrdinalIgnoreCase);
+
+        // Chưa probe được số trang → không biết trang nào là lẻ/chẵn, không có range để tính → in hết.
+        if (job.PageCount <= 0) return Result<int[]?>.Ok(null);
+        // All + không lọc lẻ/chẵn → in hết, không cần range (browser tự quyết)
+        if (isAll && job.Config.Parity == PageParityFilter.All) return Result<int[]?>.Ok(null);
 
         int[] pages;
         if (isAll)
         {
-            // All + không lọc lẻ/chẵn → in hết, không cần range (browser tự quyết)
-            if (job.Config.Parity == PageParityFilter.All) return null;
             pages = Enumerable.Range(1, job.PageCount).ToArray();
         }
         else
         {
             var r = job.ResolvePhysicalPages();
-            if (!r.IsSuccess || r.Value is not { Length: > 0 } p) return null;
-            pages = p;
+            if (!r.IsSuccess) return Result<int[]?>.Fail(r.Error!); // range sai → LỖI, không in cả file
+            pages = r.Value ?? [];
         }
 
         if (job.Config.Parity == PageParityFilter.Odd) pages = pages.Where(n => n % 2 == 1).ToArray();
         else if (job.Config.Parity == PageParityFilter.Even) pages = pages.Where(n => n % 2 == 0).ToArray();
 
-        return pages.Length > 0 ? pages : null;
+        if (pages.Length > 0) return Result<int[]?>.Ok(pages);
+
+        // Lọc hết sạch → LỖI (giống PrintJob.ResolvePrintPages), không rơi về "in cả file".
+        var filterText = job.Config.Parity == PageParityFilter.Even ? "trang chẵn" : "trang lẻ";
+        var rangeText = isAll ? "All" : job.Config.PageRange;
+        return Result<int[]?>.Fail(new PrintError
+        {
+            Code = ErrorCodes.InvalidPageRange,
+            Category = PrintErrorCategory.Config,
+            Message = $"Không còn trang nào để in: phạm vi \"{rangeText}\" lọc {filterText} xong không còn trang phù hợp.",
+            Hint = $"Bỏ bộ lọc lẻ/chẵn, hoặc chọn phạm vi trang khác (file có {job.PageCount} trang).",
+        });
     }
 
     /// <summary>Chất lượng in → DPI rasterize (dùng cho WindowsPdfRasterizer khi không để driver quyết).</summary>

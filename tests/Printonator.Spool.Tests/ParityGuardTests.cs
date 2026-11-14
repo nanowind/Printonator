@@ -30,12 +30,23 @@ public class ParityGuardTests
     }
 
     [Fact]
-    public void WordPrintArgs_All_All_LietKeDuTrang()
+    public void WordPrintArgs_All_All_InCaTaiLieu()
     {
         var r = OfficeComPrintEngine.WordPrintArgs(MakeJob());
         Assert.True(r.IsSuccess, r.Error?.Message);
-        Assert.False(r.Value.All);   // giữ hành vi cũ: gửi danh sách trang tường minh
-        Assert.Equal("1,2,3,4,5,6,7,8,9,10", r.Value.Pages);
+        // "Cả tài liệu" → All=true (Range: 0). Liệt kê 1..N làm chuỗi > 255 ký tự bị Word từ chối/cắt.
+        Assert.True(r.Value.All);
+        Assert.Equal("", r.Value.Pages);
+    }
+
+    [Fact]
+    public void WordPrintArgs_PageCountKhongBiet_InCaTaiLieu()
+    {
+        // ComputeStatistics lỗi → PageCount 0 → ResolvePrintPages trả [1]. Liệt kê "1" là in đúng TRANG 1.
+        var r = OfficeComPrintEngine.WordPrintArgs(MakeJob(pageCount: 0));
+        Assert.True(r.IsSuccess, r.Error?.Message);
+        Assert.True(r.Value.All);
+        Assert.Equal("", r.Value.Pages);
     }
 
     [Fact]

@@ -84,13 +84,19 @@ public sealed class BrowserPrintEngine : IPrintEngine
             var isPdf = job.Format.Equals("PDF", StringComparison.OrdinalIgnoreCase);
             bool ok; string? base64; string? err;
 
-            if (isPdf && CdpPrintParams.ResolveSelectedPages(job) is { Length: > 0 } sel)
+            // Chọn trang MỘT LẦN, bằng bản CHECKED: range sai / lọc lẻ-chẵn hết trang → LỖI TRƯỚC khi
+            // render. Bản lenient trả null = "in cả file" im lặng (range "1-20" trên file 10 trang vẫn
+            // in đủ 10 trang, job Done).
+            var sel = CdpPrintParams.ResolveSelectedPagesChecked(job);
+            if (!sel.IsSuccess) return FailSelection(job, sel.Error!);
+
+            if (isPdf && sel.Value is { Length: > 0 } selPages)
             {
                 // PDF + range cụ thể → SLICING bằng PDF renderer CÓ SẴN của Windows (Windows.Data.Pdf):
                 // render đúng các trang chọn → HTML ảnh (page-break) → headless printToPDF đúng khổ gốc.
                 // (PDF viewer browser TỪ CHỐI pageRanges CDP — đã verify; Windows API không cần bundle gì.)
                 var rendered = await WindowsPdfRasterizer.RenderPagesAsync(
-                    job.FilePath, sel, ct, CdpPrintParams.DpiFor(job.Config.Quality));
+                    job.FilePath, selPages, ct, CdpPrintParams.DpiFor(job.Config.Quality));
                 if (rendered.IsSuccess && rendered.Value is { Count: > 0 } imgs)
                 {
                     // Chiều tờ theo user: Ngang → tờ NGANG, Dọc → tờ DỌC, còn lại (Theo tài liệu /
@@ -126,6 +132,10 @@ public sealed class BrowserPrintEngine : IPrintEngine
             else if (isPdf)
             {
                 // PDF in toàn bộ → printToPDF (giữ scale/khổ giấy/chiều — không có pageRanges)
+                // B&W: không chèn được CSS vào PDF gốc → từ đây màu do dmColor của driver quyết.
+                if (job.Config.ColorMode == PrintColorMode.Grayscale)
+                    BrowserLog($"{job.FileName}: cần B&W nhưng render PDF gốc — không chèn được CSS lọc xám " +
+                               "vào PDF, từ đây màu phụ thuộc driver (driver bỏ qua dmColor → ra màu).");
                 (ok, base64, err) = await DevToolsPrintClient.PrintPdfAsync(
                     b.Path, url, CdpPrintParams.Build(job.Config, null), Path.Combine(tempDir, "profile"), ct);
             }
@@ -133,26 +143,40 @@ public sealed class BrowserPrintEngine : IPrintEngine
             {
                 // Grayscale: đưa file vào HTML bọc để chèn được CSS lọc xám (ảnh/TXT không có HTML
                 // nên trước đây in màu trên driver bỏ qua dmColor).
-                // ponytail: HTML bọc là 1 trang chứa toàn bộ ảnh/chữ — TXT nhiều trang trước đây phân
-                // trang tự nhiên nay phân trang trong viewport. Nâng cấp khi user báo pagination lạ:
-                // phát từng khối page-break-after như MergePrintEngine.
+                // KHÔNG @page{margin:0}: nó đè lên margin CDP (CdpPrintParams.Build) → B&W in tràn lề
+                // còn màu thì không, và có thể lọt vùng không in được của máy. Margin chỉ do CDP quyết.
+                // KHÔNG ép page-break-after: ảnh cao hơn khung trang bị cắt sang trang 2 (1080x1920 → 2 trang).
                 var body = await MergePrintEngine.BuildFileHtmlAsync(job, ct);
+                // Ảnh: cột chiều cao html→body→div là 100% để img max-height:100% có nghĩa → ảnh
+                // (kể cả 1080x1920, 800x4000) vừa ĐÚNG 1 trang, không tràn. !important để thắng style
+                // inline width/height:100% của BuildFileHtmlAsync (dùng chung với đường gộp lô — không sửa).
+                // TXT/CSV: <pre> chảy tự nhiên nhiều trang, chỉ bỏ page-break thừa ở cuối.
+                var fmt = (job.Format ?? "").ToUpperInvariant();
+                var fit = fmt is "TXT" or "CSV"
+                    ? "<style>html,body{margin:0}div{page-break-after:auto!important;break-after:auto!important}</style>"
+                    : "<style>html,body{height:100%;margin:0}" +
+                      "div{height:100%;page-break-after:auto!important;break-after:auto!important}" +
+                      "img{width:auto!important;height:auto!important;max-width:100%!important;" +
+                      "max-height:100%!important;object-fit:contain;display:block;margin:0 auto}</style>";
                 var htmlPath = Path.Combine(tempDir, "grayscale.html");
                 await File.WriteAllTextAsync(htmlPath,
                     "<!DOCTYPE html><html><head><meta charset=\"utf-8\">" +
-                    BrowserPrintPipeline.GrayscaleFilterCss(job.Config) +
-                    "<style>@page{margin:0}html,body{margin:0;padding:0}</style></head><body>" +
+                    BrowserPrintPipeline.GrayscaleFilterCss(job.Config) + fit + "</head><body>" +
                     body + "</body></html>", ct);
-                // pageRanges = null: HTML bọc là 1 trang — range tính cho file gốc không áp lên nó.
+                // pageRanges = null: HTML bọc không cùng phân trang với file gốc — range tính cho file
+                // gốc không áp lên nó.
                 (ok, base64, err) = await DevToolsPrintClient.PrintPdfAsync(
                     b.Path, new Uri(htmlPath).AbsoluteUri, CdpPrintParams.Build(job.Config, null),
                     Path.Combine(tempDir, "profile"), ct);
             }
             else
             {
-                // Non-PDF: pageRanges CDP hoạt động (đã verify) — cắt trang khi có range
+                // Non-PDF: pageRanges CDP hoạt động (đã verify) — cắt trang khi có range.
+                // Bản CHECKED: range sai → LỖI, không build params không có pageRanges (in cả file im lặng).
+                var ranges = CdpPrintParams.BuildPageRangesChecked(job);
+                if (!ranges.IsSuccess) return FailSelection(job, ranges.Error!);
                 (ok, base64, err) = await DevToolsPrintClient.PrintPdfAsync(
-                    b.Path, url, CdpPrintParams.Build(job.Config, CdpPrintParams.BuildPageRanges(job)),
+                    b.Path, url, CdpPrintParams.Build(job.Config, ranges.Value),
                     Path.Combine(tempDir, "profile"), ct);
             }
 
@@ -265,15 +289,25 @@ public sealed class BrowserPrintEngine : IPrintEngine
     /// <summary>
     /// Có cần render browser hay không? Chỉ render khi user đặt option mà shell printto bỏ qua:
     /// cắt trang / lọc lẻ-chẵn (PDF slice hoặc pageRanges CDP), khổ giấy "theo tài liệu", scale,
-    /// chất lượng rasterize, ép chiều ngang, khổ giấy khác A4. Còn lại ("mặc định / theo máy") → shell thẳng.
+    /// chất lượng rasterize, ép chiều ngang, khổ giấy khác A4, chế độ B&W. Còn lại ("mặc định / theo máy") → shell thẳng.
     /// </summary>
     public static bool NeedsBrowserRender(PrintJob job)
     {
         if (job?.Config is null) return false;
         var cfg = job.Config;
 
-        // Cắt trang hoặc lọc lẻ/chẵn (ResolveSelectedPages khác null khi cần lọc)
-        if (CdpPrintParams.ResolveSelectedPages(job) is { Length: > 0 }) return true;
+        // B&W: đường shell chỉ đặt được dmColor của DEVMODE — driver bỏ qua dmColor là in RA MÀU.
+        // Ảnh ở cấu hình mặc định (A4/dọc/theo file) không có option nào khác kích hoạt render, nên
+        // thiếu dòng này thì nhánh grayscale bên dưới KHÔNG BAO GIỜ chạy với luồng in ảnh thường.
+        // Đổi lại: tốn thêm 1 lần render browser (chậm hơn) để bảo đảm xám không phụ thuộc driver.
+        if (cfg.ColorMode == PrintColorMode.Grayscale) return true;
+
+        // Cắt trang hoặc lọc lẻ/chẵn → cần render. Dùng bản CHECKED: range SAI ("1-20" trên file TXT
+        // 10 trang) cũng trả true — CỐ Ý đẩy sang đường render, nơi ResolveSelectedPagesChecked sinh
+        // PrintError cho user thấy. Trả false ở đây = fast-path shell printto, mà shell không có khái
+        // niệm page range → IN CẢ FILE im lặng (đúng cái lỗi đang phải bịt).
+        var sel = CdpPrintParams.ResolveSelectedPagesChecked(job);
+        if (!sel.IsSuccess || sel.Value is { Length: > 0 }) return true;
 
         // Khổ giấy "theo tài liệu" → cần render để dùng đúng khổ gốc từng trang
         if (cfg.PaperSize == PaperCatalog.AsDocument) return true;
@@ -315,8 +349,10 @@ public sealed class BrowserPrintEngine : IPrintEngine
         // Lọc lẻ/chẵn: shell printto không lọc được (chỉ cắt được qua danh sách trang đã resolve)
         if (cfg.Parity != PageParityFilter.All) return true;
 
-        // Page range cụ thể → phải cắt trang, shell printto in cả file
-        if (CdpPrintParams.ResolveSelectedPages(job) is { Length: > 0 }) return true;
+        // Page range cụ thể → phải cắt trang, shell printto in cả file. Bản CHECKED: range SAI cũng
+        // trả true — CỐ Ý đẩy sang đường render để user thấy PrintError thay vì in cả file im lặng.
+        var sel = CdpPrintParams.ResolveSelectedPagesChecked(job);
+        if (!sel.IsSuccess || sel.Value is { Length: > 0 }) return true;
 
         // Scale khác mặc định
         if (cfg.ScaleMode is not (PrintScaleMode.AsDocument or PrintScaleMode.Original))
@@ -346,6 +382,15 @@ public sealed class BrowserPrintEngine : IPrintEngine
     private (string Name, string Path)? GetBrowser()
     {
         try { return _browserResolver(); } catch { return null; }
+    }
+
+    /// <summary>Lỗi chọn trang (range sai / lọc lẻ-chẵn hết trang) → Fail nguyên lỗi + log đường đi.
+    /// Trước đây các nhánh này in CẢ file rồi báo Done.</summary>
+    private static Result<bool> FailSelection(PrintJob job, PrintError error)
+    {
+        BrowserLog($"{job.FileName}: range='{job.Config.PageRange}' parity={job.Config.Parity} " +
+                   $"→ KHÔNG in được: code={error.Code} msg='{error.Message}'; báo lỗi (không in cả file).");
+        return Result<bool>.Fail(error);
     }
 
     /// <summary>Ghi log debug vào %TEMP%\printonator-office.log — engine browser đi đường nào, rớt vì sao.</summary>

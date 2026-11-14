@@ -6,7 +6,7 @@ using Printonator.Spool.Printing;
 namespace Printonator.Spool.Tests;
 
 /// <summary>
-/// Test ép XÁM lúc vẽ của GdiPrintEngine.GrayscaleAttributes (đường PDF → rasterize → GDI).
+/// Test ép XÁM lúc vẽ của GdiPrintEngine.CreateGrayscaleAttributes (đường PDF → rasterize → GDI).
 /// Đây là thứ đảm bảo "Grayscale" ra xám thật, không phụ thuộc driver có xử lý dmColor hay không.
 /// </summary>
 public class GrayscaleDrawTests
@@ -40,7 +40,7 @@ public class GrayscaleDrawTests
         Assert.True(p.R == p.G && p.G == p.B, $"vẫn phải xám, được ({p.R},{p.G},{p.B})");
     }
 
-    /// <summary>Tô 1 điểm màu lên bitmap 1x1 rồi vẽ nó qua GrayscaleAttributes sang bitmap mới.</summary>
+    /// <summary>Tô 1 điểm màu lên bitmap 1x1 rồi vẽ nó qua CreateGrayscaleAttributes sang bitmap mới.</summary>
     private static Bitmap DrawThroughGrayscale(Color color)
     {
         using var src = new Bitmap(1, 1, PixelFormat.Format32bppArgb);
@@ -50,9 +50,11 @@ public class GrayscaleDrawTests
         try
         {
             using var g = Graphics.FromImage(dst);
+            // ImageAttributes là handle GDI+ KHÔNG thread-safe → tự tạo + Dispose trong phạm vi dùng.
+            using var attrs = GdiPrintEngine.CreateGrayscaleAttributes();
             g.CompositingMode = CompositingMode.SourceCopy; // ghi đè — kết quả không phụ thuộc nền
             g.DrawImage(src, new Rectangle(0, 0, 1, 1), 0, 0, src.Width, src.Height,
-                GraphicsUnit.Pixel, GdiPrintEngine.GrayscaleAttributes);
+                GraphicsUnit.Pixel, attrs);
             return dst;
         }
         catch

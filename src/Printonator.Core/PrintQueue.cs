@@ -385,10 +385,16 @@ public sealed class PrintQueue : IDisposable
             // EngineFailed = engine đã TỰ QUYẾT định không áp được cấu hình của job (vd render trang thất bại
             // khi user chọn page range/lẻ-chẵn) — engine kế (shell) sẽ in file GỐC không cấu hình rồi báo Done,
             // đúng cái "in sai mà im lặng" cần tránh. Dừng chuỗi fallback.
+            //
+            // UnsupportedOption = engine TỪ CHỐI CÓ Ý THỨC vì không áp được option user yêu cầu (lẻ/chẵn,
+            // page range khi xuất PDF của Office). Engine kế chắc chắn KHÔNG áp được hơn — cuối chuỗi luôn là
+            // SpoolPrintEngine (shell printto, CanHandle=true mọi format) in NGUYÊN file → job Done mà in SAI.
+            // Không có engine nào "làm tốt hơn" cho cùng option này, nên fallback chỉ đổi lỗi rõ thành in sai.
             var code = r.Error?.Code;
             if (code is ErrorCodes.FileNotFound or ErrorCodes.PrinterNotFound or ErrorCodes.UnsupportedFormat
                 or ErrorCodes.InvalidPageRange or ErrorCodes.SectionNotFound or ErrorCodes.FileCorrupted
-                or ErrorCodes.EngineTimeout or ErrorCodes.OfficeAppBusy or ErrorCodes.EngineFailed)
+                or ErrorCodes.EngineTimeout or ErrorCodes.OfficeAppBusy or ErrorCodes.EngineFailed
+                or ErrorCodes.UnsupportedOption)
                 break;
         }
         return lastFail ?? Result<bool>.Fail(PrintErrorFactory.SpoolerFailed("Không có engine in nào hoạt động."));

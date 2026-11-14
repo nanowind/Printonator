@@ -80,9 +80,11 @@ claude mcp add printonator -t stdio -- <đường_dẫn>\Printonator.Mcp.exe --s
 |---|---|
 | PDF (in thẳng, cấu hình mặc định) | **Chắc chắn** — Printonator tự đổi sang đen trắng trước khi gửi máy in, driver nào cũng vậy |
 | Word / Excel / PowerPoint | Nhờ trình điều khiển máy in làm theo; đa số máy in văn phòng làm được, máy lạ thì không đảm bảo |
-| Ảnh / TXT / CSV / file có dấu mờ / lô gộp | **Chắc chắn** — trang in được đổi sang đen trắng trước khi in |
+| Ảnh / TXT / CSV / file có dấu mờ | **Chắc chắn** khi máy có Edge/Chrome — Printonator đổi trang sang đen trắng trước khi in. Máy không có trình duyệt nào thì lại nhờ trình điều khiển máy in |
+| Lô gộp nhiều file thành 1 bản in | **Chắc chắn** — bản in luôn dựng qua trình duyệt; máy không có Edge/Chrome thì báo lỗi, không in ra bản còn màu |
 | PDF cần dựng lại (khổ giấy khác, thu phóng, xoay, chất lượng khác mặc định) | Nhờ trình điều khiển máy in làm theo |
-| In sang máy ảo (Microsoft Print to PDF / XPS) | **Không đổi** — file xuất ra vẫn giữ màu gốc |
+| In sang máy ảo (Microsoft Print to PDF / XPS) — PDF / ảnh / TXT / CSV | **Chắc chắn** — file xuất ra đã đổi sang đen trắng |
+| In sang máy ảo — Word / Excel / PowerPoint | **Không đổi** — file xuất ra vẫn giữ màu gốc (chương trình gốc tự xuất bản màu) |
 
 > Engine in (thứ tự đăng ký, engine đầu tiên `CanHandle` thắng — KHÔNG bundle lib):
 > 1. `OfficeComPrintEngine` — Word/Excel/PowerPoint COM nếu có trên máy (giữ page setup/section).

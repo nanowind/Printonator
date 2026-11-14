@@ -228,15 +228,24 @@ public sealed class PrinterService
         return names.ToArray();
     }
 
-    /// <summary>Enum PageMediaSizeName → tên hiển thị (ISOA4 → A4, NALetter → Letter...).</summary>
+    /// <summary>Tiền tố họ khổ chuẩn trong enum PageMediaSizeName — ĐÚNG tên thật
+    /// ("NorthAmericaLetter", KHÔNG phải "NALetter": tiền tố "NA" không tồn tại nên bug cũ
+    /// làm mọi khổ Mỹ bị bỏ → máy in Letter-only rơi về A4).</summary>
+    private static readonly string[] StandardPaperPrefixes = ["ISO", "NorthAmerica", "JIS", "OtherMetric"];
+
+    /// <summary>Enum PageMediaSizeName → tên hiển thị (ISOA4 → A4, NorthAmericaLetter → Letter...).</summary>
     private static string? FriendlyPaperName(PageMediaSizeName name)
     {
-        var s = name.ToString(); // vd ISOA4, NALetter, NALegal, JISOB5...
-        if (s.StartsWith("ISO", StringComparison.Ordinal)) return s[3..];     // A4, A3, B5...
-        if (s.StartsWith("NA", StringComparison.Ordinal)) return s[2..];      // Letter, Legal...
-        if (s.StartsWith("JIS", StringComparison.Ordinal)) return s[3..];     // B5...
-        if (s.StartsWith("OtherMetric", StringComparison.Ordinal) && s.Length > 11)
-            return s[11..];
+        var s = name.ToString(); // vd ISOA4, NorthAmericaLetter, JISB5...
+
+        // Hậu tố "Rotated" = CÙNG khổ, chỉ khác chiều giấy → bỏ (PaperNames Distinct tự gộp bản trùng).
+        if (s.EndsWith("Rotated", StringComparison.Ordinal))
+            s = s[..^"Rotated".Length];
+
+        foreach (var prefix in StandardPaperPrefixes)
+            if (s.StartsWith(prefix, StringComparison.Ordinal))
+                return s[prefix.Length..]; // A4, Letter, Legal, Tabloid, DLEnvelope...
+
         return s.Length <= 5 ? s : null; // quá dài/custom → không hiện
     }
 

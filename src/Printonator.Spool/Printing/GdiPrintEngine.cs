@@ -27,9 +27,14 @@ public sealed class GdiPrintEngine : IPrintEngine
     /// mỗi trang (WindowsPdfRasterizer giữ tới PrintGuard.MaxPagesPerBatch ảnh trong RAM).
     /// Trọng số luminance Rec.601 0.299/0.587/0.114 cho cả 3 kênh ra → R=G=B; alpha giữ nguyên.
     /// Đây là CHẮC CHẮN xám, không phụ thuộc driver có tôn trọng dmColor hay không.</summary>
-    internal static ImageAttributes GrayscaleAttributes { get; } = CreateGrayscaleAttributes();
-
-    private static ImageAttributes CreateGrayscaleAttributes()
+    /// <remarks>
+    /// KHÔNG dùng chung 1 instance toàn process: ImageAttributes (GDI+) KHÔNG thread-safe — 2 thread
+    /// cùng vẽ → "Object is currently in use elsewhere", và có ca ra TRANG TRẮNG không exception.
+    /// Đường in chạy Task.Run + WaitAsync (bỏ rơi thread khi timeout) nên race là CÓ THẬT.
+    /// Mỗi phạm vi dùng tự tạo instance và Dispose: <see cref="PrintImagesToPrinter"/> (cả batch),
+    /// <see cref="ToGrayscalePng"/> (1 trang).
+    /// </remarks>
+    internal static ImageAttributes CreateGrayscaleAttributes()
     {
         var luma = new[] { 0.299f, 0.587f, 0.114f };
         // GDI+ nhan pixel la VECTOR HANG: [R G B A 1] x M -> R' = R*M[0][0] + G*M[1][0] + B*M[2][0].
@@ -148,19 +153,37 @@ public sealed class GdiPrintEngine : IPrintEngine
         }
         GdiLog($"GdiPrintEngine: PageCount={job.PageCount} range='{job.Config.PageRange}' parity={job.Config.Parity}");
 
-        // CdpPrintParams.ResolveSelectedPages trả null khi "All + không lọc lẻ/chẵn" — KHÔNG phải lỗi mà
-        // là "in TẤT CẢ trang". GDI engine cần chuyển thành danh sách đầy đủ (không có pageRanges CDP).
+        // Dùng bản CHECKED: Ok(null) = "All + không lọc lẻ/chẵn" (in TẤT CẢ trang — GDI cần danh sách
+        // đầy đủ vì không có pageRanges CDP); Fail = range sai/lọc hết sạch → DỪNG, KHÔNG rớt browserInner
+        // (rớt xuống đó là in cả file im lặng: range "1-20" trên file 10 trang vẫn ra đủ 10 trang, Done).
         int[]? pages;
-        try { pages = CdpPrintParams.ResolveSelectedPages(job); }
-        catch { pages = null; }
-
-        // Tham số: là All (không range cụ thể) mà không Lẻ/Chẵn → in hết trang (không lọc)
-        var isAll = string.IsNullOrWhiteSpace(job.Config.PageRange)
-                    || job.Config.PageRange.Equals("All", StringComparison.OrdinalIgnoreCase);
-        if (pages is null && isAll && job.Config.Parity == PageParityFilter.All && job.PageCount > 0)
+        try
         {
-            pages = Enumerable.Range(1, job.PageCount).ToArray();
+            var sel = CdpPrintParams.ResolveSelectedPagesChecked(job);
+            if (!sel.IsSuccess)
+            {
+                GdiLog($"GdiPrintEngine: range '{job.Config.PageRange}' không in được → code={sel.Error!.Code} msg='{sel.Error.Message}'");
+                return Result<bool>.Fail(sel.Error!);
+            }
+            pages = sel.Value;
         }
+        catch (Exception ex)
+        {
+            // Bộ resolve CHECKED ném lỗi = KHÔNG biết chọn trang nào → rơi về "in hết" là đúng kiểu in
+            // sai im lặng mà bản checked vừa chặn. Dừng job với lỗi thật thay vì null.
+            GdiLog($"GdiPrintEngine: ResolveSelectedPagesChecked ném lỗi range='{job.Config.PageRange}' → dừng: {ex}");
+            return Result<bool>.Fail(new PrintError
+            {
+                Code = ErrorCodes.EngineFailed,
+                Category = PrintErrorCategory.App,
+                Message = $"Không xác định được trang cần in của \"{job.FileName}\" do lỗi khi đọc cài đặt trang.",
+                Hint = "Kiểm tra lại ô \"Trang in\" (ví dụ 1-3,5) rồi in lại — hoặc để trống để in toàn bộ tài liệu.",
+                Detail = ex.Message,
+            });
+        }
+
+        // Ok(null) mà biết số trang → in hết (chỉ còn đúng trường hợp All + không lọc lẻ/chẵn).
+        pages ??= job.PageCount > 0 ? Enumerable.Range(1, job.PageCount).ToArray() : null;
 
         if (pages is not { Length: > 0 })
         {
@@ -246,14 +269,29 @@ public sealed class GdiPrintEngine : IPrintEngine
             });
         outPdf ??= Path.Combine(Path.GetTempPath(), Path.GetFileNameWithoutExtension(job.FilePath) + "_printonator.pdf");
 
-        // Trang cần in (range/parity) — null + All + không lẻ/chẵn → in hết.
+        // Trang cần in (range/parity) — bản CHECKED: Ok(null) = in hết (chưa biết số trang hoặc
+        // All + không lẻ/chẵn); Fail = range sai → báo lỗi, KHÔNG xuất cả file.
         int[]? pages;
-        try { pages = CdpPrintParams.ResolveSelectedPages(job); }
-        catch { pages = null; }
-        var isAll = string.IsNullOrWhiteSpace(job.Config.PageRange)
-                    || job.Config.PageRange.Equals("All", StringComparison.OrdinalIgnoreCase);
-        if (pages is null && isAll && job.Config.Parity == PageParityFilter.All && job.PageCount > 0)
-            pages = Enumerable.Range(1, job.PageCount).ToArray();
+        try
+        {
+            var sel = CdpPrintParams.ResolveSelectedPagesChecked(job);
+            if (!sel.IsSuccess) return Result<bool>.Fail(sel.Error!);
+            pages = sel.Value;
+        }
+        catch (Exception ex)
+        {
+            // Như PrintAsync: lỗi trong resolve checked KHÔNG được rơi về "xuất cả file".
+            GdiLog($"GdiPrintEngine: ResolveSelectedPagesChecked ném lỗi range='{job.Config.PageRange}' (export PDF) → dừng: {ex}");
+            return Result<bool>.Fail(new PrintError
+            {
+                Code = ErrorCodes.EngineFailed,
+                Category = PrintErrorCategory.App,
+                Message = $"Không xác định được trang cần xuất của \"{job.FileName}\" do lỗi khi đọc cài đặt trang.",
+                Hint = "Kiểm tra lại ô \"Trang in\" (ví dụ 1-3,5) rồi xuất lại — hoặc để trống để xuất toàn bộ tài liệu.",
+                Detail = ex.Message,
+            });
+        }
+        pages ??= job.PageCount > 0 ? Enumerable.Range(1, job.PageCount).ToArray() : null;
 
         if (pages is not { Length: > 0 })
             return Result<bool>.Fail(new PrintError
@@ -386,6 +424,12 @@ public sealed class GdiPrintEngine : IPrintEngine
     {
         try
         {
+            // Ép xám lúc vẽ — instance RIÊNG cho lần in này, Dispose khi thoát (kể cả lỗi): GDI+
+            // ImageAttributes KHÔNG thread-safe, còn thread in bị bỏ rơi lúc timeout/cancel vẫn đang vẽ.
+            // ponytail: chỉ phủ đường GDI/raster này (PDF và PDF→PDF export); Office/LibreOffice/shell
+            // đã ép qua DEVMODE lease riêng.
+            using var gray = job.Config.ColorMode == PrintColorMode.Grayscale ? CreateGrayscaleAttributes() : null;
+
             using var pd = new PrintDocument();
             pd.PrinterSettings.PrinterName = printer;
 
@@ -532,10 +576,7 @@ public sealed class GdiPrintEngine : IPrintEngine
             var nUpCols = nUp > 1 ? (int)Math.Ceiling(Math.Sqrt(nUp)) : 1;
             var nUpRows = nUp > 1 ? (int)Math.Ceiling(nUp / (double)nUpCols) : 1;
 
-            // Ép xám ngay lúc vẽ (null = giữ nguyên màu). ponytail: chỉ phủ đường GDI/raster này
-            // (PDF và PDF→PDF export); Office/LibreOffice/shell đã ép qua DEVMODE lease riêng.
-            // Driver vẫn sai màu → không cần làm gì thêm ở đây, pixel đã chắc chắn xám rồi.
-            var gray = job.Config.ColorMode == PrintColorMode.Grayscale ? GrayscaleAttributes : null;
+            // Ép xám ngay lúc vẽ (null = giữ nguyên màu) — `gray` tạo 1 lần cho cả file in này ở đầu method.
             pd.PrintPage += (_, e) =>
             {
                 ct.ThrowIfCancellationRequested();
@@ -725,7 +766,7 @@ public sealed class GdiPrintEngine : IPrintEngine
         catch { return null; }
     }
 
-    /// <summary>PNG → PNG XÁM (dùng lại <see cref="GrayscaleAttributes"/> — cùng ma trận với đường in GDI).
+    /// <summary>PNG → PNG XÁM (dùng cùng ma trận với đường in GDI — <see cref="CreateGrayscaleAttributes"/>).
     /// Lỗi bất kỳ → null + <paramref name="error"/> (lý do): caller DỪNG việc xuất PDF và báo lỗi cho job.
     /// Không bao giờ trả lại ảnh màu — user chọn "Đen trắng" mà nhận file màu là in sai im lặng.
     /// ponytail: đổi cả trang thành bitmap → chữ mất vector, PDF xuất ra nặng hơn.
@@ -742,11 +783,13 @@ public sealed class GdiPrintEngine : IPrintEngine
                 return null;
             }
             using var dst = new Bitmap(src.Width, src.Height, PixelFormat.Format32bppArgb);
+            // ImageAttributes RIÊNG cho lần gọi này (GDI+ không thread-safe — không dùng chung static).
+            using var gray = CreateGrayscaleAttributes();
             using (var g = Graphics.FromImage(dst))
             {
                 g.CompositingMode = System.Drawing.Drawing2D.CompositingMode.SourceCopy;
                 g.DrawImage(src, new Rectangle(0, 0, src.Width, src.Height),
-                    0, 0, src.Width, src.Height, GraphicsUnit.Pixel, GrayscaleAttributes);
+                    0, 0, src.Width, src.Height, GraphicsUnit.Pixel, gray);
             }
             using var ms = new MemoryStream();
             dst.Save(ms, ImageFormat.Png);

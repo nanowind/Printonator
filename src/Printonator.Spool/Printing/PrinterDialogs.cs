@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -179,8 +180,13 @@ public static class PrinterDialogs
 
     private const int DM_ORIENTATION = 0x00000001; // dmFields
     private const int DM_PAPERSIZE = 0x00000002;   // dmFields
-    private const int DM_PAPERWIDTH = 0x00000004;  // dmFields
-    private const int DM_PAPERLENGTH = 0x00000008; // dmFields
+    // Nguồn sự thật: wingdi.h (Windows SDK 10.0.19041.0), dòng 2439-2440 —
+    //   #define DM_PAPERLENGTH 0x00000004L
+    //   #define DM_PAPERWIDTH  0x00000008L
+    // ĐỪNG "sửa lại cho đối xứng": LENGTH là 0x4, WIDTH là 0x8. Đảo hai bit này làm driver
+    // nhận cờ sai → SetPrinter fail → cả job rơi về shell, mất luôn màu + duplex + khổ giấy.
+    private const int DM_PAPERLENGTH = 0x00000004; // dmFields — wingdi.h:2439
+    private const int DM_PAPERWIDTH = 0x00000008;  // dmFields — wingdi.h:2440
     private const int DM_PRINTQUALITY = 0x00000400; // dmFields
     private const int DM_COLOR = 0x00000800;       // dmFields
     private const int DM_DUPLEX = 0x00001000;      // dmFields
@@ -210,13 +216,17 @@ public static class PrinterDialogs
         private readonly object _lock = new();     // STA thread + timeout path cùng gọi Dispose → guard chống double-free
         private bool _disposed;
 
-        internal DevModeLease(IntPtr hPrinter, IntPtr buffer, IntPtr devMode, byte[] original)
+        internal DevModeLease(string printerName, IntPtr hPrinter, IntPtr buffer, IntPtr devMode, byte[] original)
         {
+            PrinterName = printerName;
             _hPrinter = hPrinter;
             _buffer = buffer;
             _devMode = devMode;
             _original = original;
         }
+
+        /// <summary>Máy in mà lease này đã ghi — khoá của slot trong _activeLeases (không phải khoá cấp phát).</summary>
+        public string PrinterName { get; }
 
         /// <summary>Restore nguyên vùng 72..95 qua MỘT SetPrinter(2) rồi ClosePrinter + LocalFree.
         /// Idempotent (thread-safe — khoá _lock, lần gọi thứ hai là no-op, KHÔNG free lần hai);
@@ -246,23 +256,41 @@ public static class PrinterDialogs
                     }
                     finally
                     {
-                        if (ReferenceEquals(Volatile.Read(ref _activeLease), this)) Volatile.Write(ref _activeLease, null);
+                        // Chỉ bỏ entry NẾU nó VẪN LÀ lease này. TryRemove(key) là remove-theo-khoá →
+                        // lease khác đã ghi đè slot cùng máy in (_activeLeases[printerName] = lease) thì
+                        // nó xoá entry của lease ĐÓ, lease còn sống mất dấu, timeout không tìm ra để restore
+                        // → DEVMODE kẹt cho mọi app. ICollection<KeyValuePair>.Remove trên
+                        // ConcurrentDictionary là atomic VÀ so sánh VALUE = remove-if-value-matches.
+                        if (!((ICollection<KeyValuePair<string, DevModeLease>>)_activeLeases)
+                                .Remove(new(PrinterName, this)))
+                            DevModeLog($"lease \"{PrinterName}\" không còn là entry active (lease khác đã ghi đè) — không xoá");
                     }
                 }
             }
         }
     }
 
-    /// <summary>Lease DEVMODE đang sống (nếu có) — timeout kill STA thread thì Dispose không kịp chạy
-    /// → RestoreActive() bên chờ bù. MỘT lease tại một thời điểm (mỗi job tự giữ lease của nó).</summary>
-    private static DevModeLease? _activeLease;
+    /// <summary>Lease DEVMODE đang sống, KHOÁ THEO TÊN MÁY IN — timeout kill STA thread thì Dispose không kịp chạy
+    /// → RestoreActive() bên chờ bù. Phải khoá theo máy in: MCP PrintQueue, PrintQueue của UI và WatchFolderService
+    /// enqueue độc lập trong CÙNG tiến trình, hai job khác máy in hoàn toàn có thể chồng nhau; restore nhầm lease
+    /// của máy in khác đang in giữa PrintOut là hỏng job đó.</summary>
+    private static readonly ConcurrentDictionary<string, DevModeLease> _activeLeases =
+        new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Dọn lease DEVMODE đang treo khi thread STA bị abandon (timeout/cancel trong
-    /// OfficeComPrintEngine) — gọi từ luồng await, KHÔNG thay Dispose của caller (luồng thường vẫn tự restore).</summary>
-    public static void RestoreActive()
+    /// OfficeComPrintEngine) — gọi từ luồng await, KHÔNG thay Dispose của caller (luồng thường vẫn tự restore).
+    /// printerName = null → dọn TẤT CẢ (giữ nguyên hành vi cho call site cũ); có tên → chỉ lease của máy in đó.</summary>
+    public static void RestoreActive(string? printerName = null)
     {
-        var lease = Volatile.Read(ref _activeLease);
-        lease?.Dispose();   // swallow-and-log như Dispose — không ném ra ngoài
+        if (printerName is not null)
+        {
+            if (_activeLeases.TryRemove(printerName, out var lease)) lease.Dispose();
+            return;
+        }
+
+        foreach (var key in _activeLeases.Keys)
+            if (_activeLeases.TryRemove(key, out var lease))
+                lease.Dispose();   // swallow-and-log như Dispose — không ném ra ngoài
     }
 
     /// <summary>Cài đặt MẶC ĐỊNH hiện tại của máy in (đọc từ DEVMODE) — dùng cho nút "Lấy theo máy in".
@@ -381,15 +409,23 @@ public static class PrinterDialogs
             // CỔNG CHẶN (khác color): theo MS DeviceCapabilities(DC_FIELDS), dmFields là lời khai của driver
             // về các thành viên DEVMODE nó hỗ trợ; driver không khai DM_PRINTQUALITY thì ghi vào là vô nghĩa
             // (và .NET cũng không ghi). Bỏ qua + ghi log, KHÔNG làm hỏng job — chất lượng in là tối ưu.
-            // ponytail: dmPrintQuality chỉ thô 4 nấc và nhiều driver giữ thang chất lượng thật ở chỗ khác
+            // CỔNG CHẶN 2: dmPrintQuality hai nghĩa — ÂM là DMRES_* (enum), DƯƠNG là DPI thật (1200, 600...).
+            // Driver đang giữ DPI/thang thật thì ghi -3 vào là âm thầm hạ độ phân giải của user, và vì
+            // SetPrinter ảnh hưởng MỌI app trong lúc lease sống nên cả máy in bị hạ theo. Chỉ ghi khi giá trị
+            // ĐANG LƯU đã là enum (âm); dương/0 = driver tự quản thang chất lượng → bỏ qua + log.
+            // ponytail: vẫn chỉ thô 4 nấc DMRES_* và nhiều driver giữ thang chất lượng thật ở chỗ khác
             // (driver data riêng / ICM), nên trên vài máy đây là no-op — dòng log là chẩn đoán.
-            // Đường nâng cấp: đọc DeviceCapabilities(DC_ENUMRESOLUTIONS), chọn DPI thật rồi mới ghi.
+            // Cái TRẦN mới: driver lưu DPI thì ta KHÔNG đặt được chất lượng nữa (bỏ qua, giữ nguyên driver).
+            // Đường nâng cấp: đọc DeviceCapabilities(DC_ENUMRESOLUTIONS), chọn DPI thật gần nhất rồi mới ghi.
             if (wantQuality)
             {
-                if ((Marshal.ReadInt32(devMode, DmFieldsOffset) & DM_PRINTQUALITY) != 0)
+                var storedQuality = Marshal.ReadInt16(devMode, DmPrintQualityOffset);
+                if ((Marshal.ReadInt32(devMode, DmFieldsOffset) & DM_PRINTQUALITY) == 0)
+                    DevModeLog($"print quality: printer=\"{printerName}\" driver không khai DM_PRINTQUALITY — bỏ qua (giữ chất lượng của driver)");
+                else if (storedQuality < 0)
                     WritePrintQuality(devMode, targetQuality);
                 else
-                    DevModeLog($"print quality: printer=\"{printerName}\" driver không khai DM_PRINTQUALITY — bỏ qua (giữ chất lượng của driver)");
+                    DevModeLog($"print quality: printer=\"{printerName}\" dmPrintQuality={storedQuality} (DPI/thang thật, không phải DMRES_*) — bỏ qua (giữ chất lượng của driver)");
             }
 
             if (!SetPrinter(hPrinter, 2, buffer, 0))
@@ -412,16 +448,16 @@ public static class PrinterDialogs
             }
 
             leaseGiven = true;
-            var lease = new DevModeLease(hPrinter, buffer, devMode, snapshot);
-            Volatile.Write(ref _activeLease, lease);   // timeout path gọi RestoreActive() nếu STA bị abandon
+            var lease = new DevModeLease(printerName, hPrinter, buffer, devMode, snapshot);
+            _activeLeases[printerName] = lease;   // timeout path gọi RestoreActive(printerName) nếu STA bị abandon
             return Result<DevModeLease?>.Ok(lease);
         }
         catch (Exception ex)
         {
-            // SetPrinter đã thành công mà có gì ném sau đó (cấp phát lease / Volatile.Write) thì máy in
-            // vẫn đang mang DEVMODE đã sửa cho MỌI app, và lease chưa tồn tại nên RestoreActive() cũng
-            // không cứu được → tự hoàn lại ở đây, y hệt DevModeLease.Dispose (cùng 2 dòng, cố ý không
-            // tách hàm để lease giữ nguyên). Lỗi hoàn lại chỉ ghi log, không che lỗi gốc.
+            // SetPrinter đã thành công mà có gì ném sau đó (đăng ký lease vào _activeLeases) thì máy in
+            // vẫn đang mang DEVMODE đã sửa cho MỌI app, và lease chưa nằm trong từ điển nên
+            // RestoreActive(printerName) cũng không cứu được → tự hoàn lại ở đây, y hệt DevModeLease.Dispose
+            // (cùng 2 dòng, cố ý không tách hàm để lease giữ nguyên). Lỗi hoàn lại chỉ ghi log, không che lỗi gốc.
             if (wrote && snapshot is not null)
             {
                 try
@@ -492,11 +528,16 @@ public static class PrinterDialogs
 
             // dmFields = trường driver KHAI là có hiệu lực — mirror của ApplyDevMode (driver không khai
             // DM_COLOR thì dmColor còn lại chỉ là rác, đọc lên sẽ hiện "Màu" cho khả năng driver phủ nhận).
-            // Nhưng driver không khai dmFields (== 0) là kiểu khác: nó KHÔNG nói gì, đọc hết là đúng.
-            // Vì vậy chỉ gate khi fields != 0 — ĐỪNG "đơn giản hoá" điều kiện này thành luôn-gate.
+            // dmFields == 0 KHÔNG phải "driver tin hết mọi trường" mà là "driver không khai gì": dmColor/
+            // dmPaperWidth/dmPaperLength khi đó là byte chưa khởi tạo, đọc lên có thể ra "A4" hay "Letter"
+            // từ rác. Không đọc được trường nào → trả cài đặt trung tính (theo máy in / theo tài liệu).
             var fields = Marshal.ReadInt32(devMode, DmFieldsOffset);
-            var declares = fields != 0;
-            bool Honoured(int mask) => !declares || (fields & mask) != 0;
+            if (fields == 0)
+                return Result<PrinterDefaults?>.Ok(new PrinterDefaults(
+                    PrintColorMode.AsPrinter, PrintDuplexMode.AsPrinter,
+                    PrintOrientation.AsDocument, null));
+
+            bool Honoured(int mask) => (fields & mask) != 0;
 
             return Result<PrinterDefaults?>.Ok(new PrinterDefaults(
                 ColorFromDm(Honoured(DM_COLOR) ? ReadColor(devMode) : (short)0),

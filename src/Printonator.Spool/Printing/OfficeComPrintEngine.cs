@@ -125,7 +125,9 @@ public sealed class OfficeComPrintEngine : IPrintEngine
             // ponytail: chỉ restore được lease CÒN SỐNG trong tiến trình này — nếu app bị kill cứng giữa
             // chừng thì DEVMODE vẫn kẹt (không có bước đối soát lúc khởi động); nâng cấp: lưu giá trị
             // gốc xuống đĩa + đối soát/khôi phục khi app start.
-            PrinterDialogs.RestoreActive();
+            // CHỈ máy in của job NÀY: RestoreActive() không tham số dọn MỌI lease → job khác đang in trên
+            // máy in khác dưới lease riêng sẽ bị revert khổ giấy/màu/duplex GIỮA PrintOut (in sai giấy).
+            RestoreLeaseFor(job);
             return Result<bool>.Fail(new PrintError
             {
                 Code = ErrorCodes.EngineTimeout,
@@ -140,10 +142,23 @@ public sealed class OfficeComPrintEngine : IPrintEngine
             // OCE lan tới PrintQueue.DrainLoopAsync → job chuyển Cancelled (KHÔNG Error, KHÔNG retry).
             // Timeout THẬT (TimeoutException ở trên) vẫn trả Fail(EngineTimeout) như cũ.
             KillSpawnedOffice(spawnedOfficePids);
-            PrinterDialogs.RestoreActive();   // cùng lý do nhánh timeout: Dispose trên STA bị bỏ rơi
+            // Cùng lý do nhánh timeout: Dispose trên STA bị bỏ rơi — và CHỈ máy in của job NÀY,
+            // restore nhầm lease của job khác đang in giữa PrintOut là hỏng job đó.
+            RestoreLeaseFor(job);
             try { worker.Join(TimeSpan.FromSeconds(3)); } catch { }
             throw;
         }
+    }
+
+    /// <summary>Khôi phục DEVMODE của ĐÚNG máy in job này đã dùng khi STA thread bị bỏ rơi (timeout/cancel).
+    /// TUYỆT ĐỐI không gọi RestoreActive() trần: bản không tham số dọn MỌI lease trong tiến trình → job khác
+    /// đang PrintOut trên máy in khác sẽ bị revert khổ giấy/màu/duplex giữa chừng (in sai giấy).
+    /// Khoá = chính tên ApplyDevMode đã dùng; không xác định được tên thì không có lease nào của job này
+    /// để dọn (và null nghĩa là dọn tất cả) → bỏ qua.</summary>
+    private static void RestoreLeaseFor(PrintJob job)
+    {
+        var leasePrinter = ResolvePrinterNameForDevMode(DefaultPrinter.Resolve(job.Config.PrinterName));
+        if (leasePrinter is not null) PrinterDialogs.RestoreActive(leasePrinter);
     }
 
     /// <summary>Dọn PID Office do engine tự spawn khi timeout/cancel — không đụng Office người dùng đang mở
@@ -255,11 +270,13 @@ public sealed class OfficeComPrintEngine : IPrintEngine
             doc = app.Documents.Open(job.FilePath, ReadOnly: true, AddToRecentFiles: false);
             doc.Activate();
 
-            // Số trang THẬT từ Word (wdStatisticPages=2) — bắt buộc trước khi resolve page range
-            Try(() => { var n = (int)doc.ComputeStatistics(2); if (n > 0) job.PageCount = n; });
-
-            // Page setup: khổ giấy + chiều giấy theo cấu hình
+            // Page setup: khổ giấy + chiều giấy theo cấu hình. Đổi PaperSize/Orientation làm Word
+            // PHÂN TRANG LẠI (12 trang A4 → ~20 trang A5), nên phải áp TRƯỚC khi đếm.
             ApplyWordPaper(doc, job.Config.PaperSize, job.Config.Orientation);
+
+            // Số trang THẬT từ Word (wdStatisticPages=2) — SAU page setup, TRƯỚC khi resolve page range.
+            // Đếm trước khi đổi khổ → list "1..12" cho tài liệu 20 trang → 8 trang mất trong im lặng.
+            Try(() => { var n = (int)doc.ComputeStatistics(2); if (n > 0) job.PageCount = n; });
 
             var wa = WordPrintArgs(job);
             if (!wa.IsSuccess) return Result<bool>.Fail(wa.Error!);
@@ -296,8 +313,10 @@ public sealed class OfficeComPrintEngine : IPrintEngine
                 // Không được export cả tài liệu trong im lặng (user chọn "chỉ trang lẻ" mà nhận đủ file).
                 if (job.Config.Parity != PageParityFilter.All)
                     return Result<bool>.Fail(UnsupportedParity(job, "xuất PDF qua Word"));
-                // ponytail: gọi không có Range/From/To → page range tường minh cũng bị xuất CẢ tài liệu
-                // (lỗ hổng có sẵn, ngoài scope lần này). Nâng cấp: truyền Range/From/To, hoặc chặn như guard parity.
+                // Word.ExportAsFixedFormat KHÔNG có Range/From/To → page range tường minh cũng bị xuất
+                // CẢ tài liệu. Chặn như parity thay vì xuất sai trong im lặng.
+                if (HasExplicitRange(job))
+                    return Result<bool>.Fail(UnsupportedPageRange(job, "xuất PDF qua Word"));
                 doc.ExportAsFixedFormat(OutputFileName: outputPath, ExportFormat: 17 /* wdExportFormatPDF */);
                 return Result<bool>.Ok(true);
             }
@@ -332,8 +351,16 @@ public sealed class OfficeComPrintEngine : IPrintEngine
     {
         var r = job.ResolvePrintPages();
         if (!r.IsSuccess) return Result<(bool, string)>.Fail(r.Error!);
-        // Giữ nguyên hành vi cũ: luôn gửi danh sách trang tường minh (Word nhận "1,3,5").
-        return Result<(bool, string)>.Ok((false, string.Join(",", r.Value!)));
+        var pages = r.Value!;
+        // "Cả tài liệu" → để Word tự in hết (Range: 0). Hai lý do:
+        // 1) PageCount <= 0 (ComputeStatistics lỗi/bị nuốt) → ResolvePrintPages trả [1] → in đúng TRANG 1
+        //    của tài liệu 10 trang, job vẫn Done. Range 0 in đúng cả file.
+        // 2) Danh sách = 1..PageCount (300 trang) thành chuỗi ~1300 ký tự — Word chỉ nhận 255 ký tự.
+        if (job.PageCount <= 0) return Result<(bool, string)>.Ok((true, string.Empty));
+        if (pages.Length == job.PageCount && pages[0] == 1 && pages[^1] == job.PageCount)
+            return Result<(bool, string)>.Ok((true, string.Empty));
+        // Range lẻ/chẵn hoặc "1-2,5" → phải liệt kê tường minh (Word nhận "1,3,5").
+        return Result<(bool, string)>.Ok((false, string.Join(",", pages)));
     }
 
     private static void ApplyWordPaper(dynamic doc, string paperSize, PrintOrientation orientation)
@@ -394,16 +421,9 @@ public sealed class OfficeComPrintEngine : IPrintEngine
             // Page range: Excel in theo TỪ-TỚI của TỪNG sheet (PrintOut From/To). Range KHÔNG liên tiếp
             // ("1-2,4" bỏ trang 3) → nhóm trang liên tiếp (GroupPages) để in đúng. Không phụ thuộc PageCount
             // (app không đếm trang Excel đáng tin — GET.DOCUMENT trả sai khi đổi sheet).
-            object from = Missing.Value;
-            object to = Missing.Value;
             int[]? pages = null;
             var pr = PrintJob.ParsePageRange(job.Config.PageRange);
-            if (pr.IsSuccess && pr.Value!.Length > 0)
-            {
-                pages = pr.Value;
-                from = pages[0];
-                to = pages[^1];
-            }
+            if (pr.IsSuccess && pr.Value!.Length > 0) pages = pr.Value;
 
             // Áp cấu hình + ẨN sheet không cần in: sheet TRỐNG hoặc KHÔNG phải sheet đã chọn (SheetName —
             // user chọn qua dropdown, áp hàng loạt file). ExportAsFixedFormat xuất CẢ workbook, sheet ẨN bỏ qua.
@@ -455,8 +475,13 @@ public sealed class OfficeComPrintEngine : IPrintEngine
                 // Không được export cả workbook trong im lặng (user chọn "chỉ trang lẻ" mà nhận đủ file).
                 if (job.Config.Parity != PageParityFilter.All)
                     return Result<bool>.Fail(UnsupportedParity(job, "xuất PDF qua Excel"));
-                // From/To = Missing.Value khi không có range → export CẢ workbook; có range → đúng trang.
-                wb.ExportAsFixedFormat(0 /* xlTypePDF */, outputPath, 0 /* xlQualityStandard */, false, false, from, to);
+                // From/To là MỘT khoảng liên tiếp = bao lồi của danh sách → "1-2,5" xuất 1-5 (sai).
+                // Chặn range tường minh thay vì xuất sai trong im lặng.
+                if (HasExplicitRange(job))
+                    return Result<bool>.Fail(UnsupportedPageRange(job, "xuất PDF qua Excel"));
+                // From/To = Missing.Value (range tường minh đã bị chặn ở trên) → export CẢ workbook.
+                wb.ExportAsFixedFormat(0 /* xlTypePDF */, outputPath, 0 /* xlQualityStandard */, false, false,
+                    Missing.Value, Missing.Value);
             }
             else
             {
@@ -469,14 +494,27 @@ public sealed class OfficeComPrintEngine : IPrintEngine
                     foreach (var sheet in keptSheets)
                     {
                         var n = SheetPageCount(sheet);
-                        sheetPages.Add((sheet, n, offset));
-                        offset += n;
+                        if (n is null)
+                            // Không đếm được trang sheet này → universe global KHÔNG biết → mọi range/parity
+                            // map sai (trước đây coi là 1 trang → in đúng trang đầu của 1 sheet rồi Done).
+                            return Result<bool>.Fail(new PrintError
+                            {
+                                Code = ErrorCodes.FileCorrupted,
+                                Category = PrintErrorCategory.App,
+                                Message = $"Không đếm được số trang của sheet '{sheet.Name}' trong {job.FileName} nên không áp được \"{job.Config.PageRange}\".",
+                                Hint = "Bỏ page range và bộ lọc lẻ/chẵn để in cả file, hoặc mở file Excel kiểm tra sheet bị bảo vệ/hỏng.",
+                            });
+                        sheetPages.Add((sheet, n.Value, offset));
+                        offset += n.Value;
                     }
                     // Không có range nhưng bật lẻ/chẵn → universe = toàn bộ trang in thật của workbook.
                     var pgs = pages ?? Enumerable.Range(1, offset).ToArray();
                     pgs = PrintJob.ApplyParity(job.Config.Parity, pgs);
                     if (pgs.Length == 0) return Result<bool>.Fail(NoPagesAfterParity(job, offset));
                     var mapped = PageGrouping.MapGlobalPages(pgs, sheetPages);
+                    // Range nằm ngoài tài liệu (vd "50-60" trên file 4 trang) → không in gì. Trước đây vòng
+                    // foreach rỗng → Ok(true) → job Done mà KHÔNG ra trang giấy nào.
+                    if (mapped.Count == 0) return Result<bool>.Fail(NoPagesAfterParity(job, offset));
                     OfficeLog($"Excel range '{job.Config.PageRange}' parity={job.Config.Parity} → " + string.Join("; ", mapped.Select(m => $"'{m.Sheet.Name}' pages {string.Join(",", m.Groups.Select(g => $"{g.From}-{g.To}"))}")));
                     foreach (var (sheet, groups) in mapped)
                         foreach (var (f, t) in groups)
@@ -515,15 +553,50 @@ public sealed class OfficeComPrintEngine : IPrintEngine
         };
     }
 
-    /// <summary>Range + bộ lọc lẻ/chẵn lọc xong không còn trang nào → lỗi config (không in cả file).</summary>
+    /// <summary>Page range có cụ thể (không rỗng, không "All") — đường export PDF của Office bỏ qua nó.
+    /// Range hỏng định dạng cũng tính là "có" (chặn ở đây không được thành xuất cả tài liệu).</summary>
+    private static bool HasExplicitRange(PrintJob job)
+    {
+        var pr = PrintJob.ParsePageRange(job.Config.PageRange);
+        return !pr.IsSuccess || pr.Value!.Length > 0;
+    }
+
+    /// <summary>Engine này KHÔNG áp được page range khi xuất PDF qua Office → báo lỗi RÕ thay vì
+    /// xuất cả tài liệu (user chọn "3-4" mà nhận đủ 20 trang).</summary>
+    private static PrintError UnsupportedPageRange(PrintJob job, string what)
+    {
+        OfficeLog($"PageRange '{job.Config.PageRange}' không áp được khi {what} — trả UNSUPPORTED_OPTION: {job.FileName}");
+        return new PrintError
+        {
+            Code = ErrorCodes.UnsupportedOption,
+            Category = PrintErrorCategory.Config,
+            Message = $"Không in riêng phạm vi trang \"{job.Config.PageRange}\" được khi {what} cho {job.FileName}.",
+            Hint = "Chọn máy in thật (không phải máy PDF ảo) để in đúng phạm vi trang, hoặc đặt page range = All.",
+        };
+    }
+
+    /// <summary>Range + bộ lọc lẻ/chẵn lọc xong không còn trang nào → lỗi config (không in cả file).
+    /// Parity=All (không lọc) mà vẫn rỗng = range nằm ngoài tài liệu — nói đúng nguyên nhân đó, KHÔNG
+    /// gán bừa "lọc trang lẻ" cho người dùng chưa hề bật bộ lọc.</summary>
     private static PrintError NoPagesAfterParity(PrintJob job, int totalPages)
     {
-        var filterText = job.Config.Parity == PageParityFilter.Even ? "trang chẵn" : "trang lẻ";
+        var rangeText = string.IsNullOrWhiteSpace(job.Config.PageRange) ? "All" : job.Config.PageRange;
+        var parity = job.Config.Parity;
+        if (parity == PageParityFilter.All)
+            return new PrintError
+            {
+                Code = ErrorCodes.InvalidPageRange,
+                Category = PrintErrorCategory.Config,
+                Message = $"Không còn trang nào để in: phạm vi \"{rangeText}\" nằm ngoài tài liệu (tài liệu có {totalPages} trang).",
+                Hint = $"Chọn phạm vi trang trong khoảng 1-{totalPages}, hoặc đặt page range = All để in cả tài liệu.",
+            };
+
+        var filterText = parity == PageParityFilter.Even ? "trang chẵn" : "trang lẻ";
         return new PrintError
         {
             Code = ErrorCodes.InvalidPageRange,
             Category = PrintErrorCategory.Config,
-            Message = $"Không còn trang nào để in: phạm vi \"{job.Config.PageRange}\" lọc {filterText} xong không còn trang phù hợp.",
+            Message = $"Không còn trang nào để in: phạm vi \"{rangeText}\" lọc {filterText} xong không còn trang phù hợp.",
             Hint = $"Bỏ bộ lọc lẻ/chẵn, hoặc chọn phạm vi trang khác (tài liệu có {totalPages} trang).",
         };
     }
@@ -753,12 +826,17 @@ public sealed class OfficeComPrintEngine : IPrintEngine
                 // ExportAsFixedFormat chỉ xuất được MỘT khoảng LIÊN TIẾP → không lọc được lẻ/chẵn.
                 if (job.Config.Parity != PageParityFilter.All)
                     return Result<bool>.Fail(UnsupportedParity(job, "xuất PDF qua PowerPoint"));
+                // Export của PowerPoint KHÔNG có tham số range nào → page range tường minh mất trong im lặng.
+                if (HasExplicitRange(job))
+                    return Result<bool>.Fail(UnsupportedPageRange(job, "xuất PDF qua PowerPoint"));
                 pres.ExportAsFixedFormat(Path: outputPath, FixedFormatType: 2 /* ppFixedFormatTypePDF */);
                 return Result<bool>.Ok(true);
             }
             if (pages is not null || job.Config.Parity != PageParityFilter.All)
             {
-                var total = job.PageCount > 0 ? job.PageCount : (int)pres.Slides.Count;
+                // Số slide THẬT từ presentation đang mở. KHÔNG dùng job.PageCount: thường đã bị engine
+                // trước (LibreOffice/shell/queue) set = 1 → universe [1] → lẻ/chẵn chỉ in slide 1 rồi Done.
+                var total = (int)pres.Slides.Count;
                 var pgs = PrintJob.ApplyParity(job.Config.Parity, pages ?? Enumerable.Range(1, Math.Max(total, 1)).ToArray());
                 if (pgs.Length == 0) return Result<bool>.Fail(NoPagesAfterParity(job, total));
                 foreach (var g in PageGrouping.GroupConsecutive(pgs))
@@ -994,17 +1072,18 @@ public sealed class OfficeComPrintEngine : IPrintEngine
         try { a(); } catch { /* dọn dẹp COM — lỗi ở đây không được che lỗi gốc */ }
     }
 
-    /// <summary>Số trang in của 1 sheet (GET.DOCUMENT(50) — cần sheet ACTIVE; sai layout → trả 1 an toàn).
-    /// Dùng để map range sang số trang GLOBAL cộng dồn các sheet (file nhiều sheet in đúng "1-3,5" = 4 trang).</summary>
-    private static int SheetPageCount(dynamic sheet)
+    /// <summary>Số trang in của 1 sheet (GET.DOCUMENT(50) — cần sheet ACTIVE). Sheet thật 1 trang → 1.
+    /// Đếm LỖI (Activate ném, macro không có, sheet bị bảo vệ) → null — KHÁC hẳn "1 trang": caller phải
+    /// phân biệt được, vì offset sai làm range/parity map lệch → in thiếu/trùng trang trong im lặng.</summary>
+    private static int? SheetPageCount(dynamic sheet)
     {
         try
         {
             sheet.Activate();
             var n = (int)sheet.Application.ExecuteExcel4Macro("GET.DOCUMENT(50)");
-            return n > 0 ? n : 1;
+            return n > 0 ? n : null;
         }
-        catch { return 1; }
+        catch { return null; }
     }
 
     /// <summary>
@@ -1039,13 +1118,18 @@ public sealed class OfficeComPrintEngine : IPrintEngine
                         {
                             wb = app.Workbooks.Open(job.FilePath, ReadOnly: true, AddToMru: false, UpdateLinks: 0);
                             // Cộng dồn MỌI sheet không trống — khớp cách PrintWithExcel map range global.
+                            // 1 sheet không đếm được (bảo vệ/hỏng) → KHÔNG công bố tổng thiếu: giữ PageCount=0
+                            // để bìa ghi "?" — thà thiếu số còn hơn số SAI (đường in đã fail-closed như vậy).
                             var total = 0;
+                            var unknown = false;
                             foreach (var sheet in wb.Worksheets)
                             {
                                 if (IsSheetBlank(sheet)) continue;
-                                total += SheetPageCount(sheet);
+                                var n = SheetPageCount(sheet);
+                                if (n is null) { unknown = true; break; }
+                                total += n.Value;
                             }
-                            if (total > 0) job.PageCount = total;
+                            if (!unknown && total > 0) job.PageCount = total;
                         }
                         catch (Exception ex)
                         {

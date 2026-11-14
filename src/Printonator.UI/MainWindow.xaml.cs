@@ -957,7 +957,24 @@ public partial class MainWindow : Window
     /// </summary>
     private void OpenPrintSettings(IReadOnlyList<PrintJob> targets)
     {
-        var dlg = new PrintSettingsWindow(targets, targets.Count > 0 ? targets[0].Config : _defaultConfig, SelectedPrinter)
+        // Máy in cho form = máy in của CHÍNH các file sắp in, không phải máy toolbar: job có máy riêng GIỮ
+        // máy đó lúc in (ApplySelectedPrinter chỉ đè khi !HasPerFilePrinter). Mở form bằng máy toolbar làm
+        // Lite mode ẩn Màu/2 mặt theo khả năng của máy SAI, và "Lấy theo máy in" điền cài đặt máy đó vào job
+        // (job HP màu in ra đen trắng/1 mặt/khổ Canon). Nhiều máy khác nhau → null (form hiện đủ option, nút
+        // "Lấy theo máy in" disabled) — trung thực hơn là đoán một máy.
+        var perFilePrinters = targets
+            .Where(t => t.HasPerFilePrinter && !string.IsNullOrWhiteSpace(t.Config.PrinterName))
+            .Select(t => t.Config.PrinterName!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var printer = perFilePrinters.Count switch
+        {
+            0 => SelectedPrinter,   // không file nào có máy riêng → máy toolbar đúng là máy sẽ in
+            1 => Printers.FirstOrDefault(p => p.Name.Equals(perFilePrinters[0], StringComparison.OrdinalIgnoreCase)),
+            _ => null,              // không đoán: form hiện đủ option, nút Lấy theo máy in disabled
+        };
+
+        var dlg = new PrintSettingsWindow(targets, targets.Count > 0 ? targets[0].Config : _defaultConfig, printer)
         {
             Owner = this,
         };
