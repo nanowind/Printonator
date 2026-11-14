@@ -265,6 +265,14 @@ public static class PrinterDialogs
         lease?.Dispose();   // swallow-and-log như Dispose — không ném ra ngoài
     }
 
+    /// <summary>Cài đặt MẶC ĐỊNH hiện tại của máy in (đọc từ DEVMODE) — dùng cho nút "Lấy theo máy in".
+    /// Chỉ là ảnh chụp để điền form; KHÔNG ghi gì và KHÔNG được lưu vào preset.</summary>
+    public sealed record PrinterDefaults(
+        PrintColorMode ColorMode,
+        PrintDuplexMode DuplexMode,
+        PrintOrientation Orientation,
+        string? PaperName);
+
     /// <summary>
     /// Đặt DUPLEX + MÀU + KHỔ GIẤY + CHIỀU của một lần in vào DEVMODE driver — Office/PowerPoint không
     /// có COM cho duplex/color/page setup nên phải qua driver. Không có gì phải đặt → Ok(null), KHÔNG mở máy in.
@@ -440,6 +448,132 @@ public static class PrinterDialogs
             }
         }
     }
+
+    /// <summary>
+    /// Đọc cài đặt MẶC ĐỊNH đang lưu trong driver máy in — CHỈ ĐỌC: không lease, không SetPrinter.
+    /// Dùng cho nút "Lấy theo máy in" trong form cài đặt (điền sẵn giá trị rồi user sửa).
+    /// Giá trị đọc được là cài đặt ĐANG LƯU trong driver, không phải bảo đảm máy in sẽ in đúng như vậy:
+    /// nhiều driver bỏ qua dmColor/dmDuplex khi in thật (mỗi app tự dựng DEVMODE tài liệu của nó).
+    /// ponytail: chỉ map khổ giấy qua dmPaperWidth/dmPaperLength (không có bảng DMPAPER trong repo);
+    /// driver chỉ đặt dmPaperSize chuẩn mà không set width/length thì khổ trả về null.
+    /// Đường nâng cấp: thêm bảng DMPAPER khi cần nhận cả khổ chuẩn.
+    /// </summary>
+    public static Result<PrinterDefaults?> ReadPrinterDefaults(string printerName)
+    {
+        if (string.IsNullOrWhiteSpace(printerName))
+            return FailPrinterDefaults("Chưa có máy in để đọc cài đặt in.", "Chọn máy in trước.");
+
+        if (!OpenPrinter(printerName, out var hPrinter, IntPtr.Zero))
+            return FailPrinterDefaultsWin32($"Không mở được máy in \"{printerName}\" để đọc cài đặt in.",
+                "Kiểm tra tên máy in còn tồn tại và spooler đang chạy.");
+
+        var buffer = IntPtr.Zero;
+        try
+        {
+            // Đo size trước (GetPrinter level 2 luôn trả false ở lần gọi rỗng — chỉ đọc cbNeeded).
+            GetPrinter(hPrinter, 2, IntPtr.Zero, 0, out var needed);
+            if (needed <= 0)
+                return FailPrinterDefaultsWin32($"Không lấy được cài đặt của máy in \"{printerName}\".",
+                    "Mở 'Printing Preferences' một lần hoặc cài lại driver máy in.");
+
+            buffer = Marshal.AllocHGlobal(needed);
+            if (!GetPrinter(hPrinter, 2, buffer, needed, out _))
+                return FailPrinterDefaultsWin32($"Không đọc được bảng cài đặt (DEVMODE) của \"{printerName}\".",
+                    "Mở 'Printing Preferences' một lần hoặc cài lại driver máy in.");
+
+            var devMode = Marshal.ReadIntPtr(buffer, PDevModeFieldIndex * IntPtr.Size);
+            if (devMode == IntPtr.Zero)
+                return FailPrinterDefaults($"Máy in \"{printerName}\" không trả về bảng cài đặt (DEVMODE).",
+                    "Mở 'Printing Preferences' để driver tạo cài đặt, rồi thử lại.");
+
+            if (Marshal.ReadInt16(devMode, DmSizeOffset) < MinDevModeSize)
+                return FailPrinterDefaults($"Bảng cài đặt của \"{printerName}\" quá ngắn (không đủ ô cài đặt in).",
+                    "Cập nhật driver máy in — bản cũ không hỗ trợ các cài đặt này.");
+
+            // dmFields = trường driver KHAI là có hiệu lực — mirror của ApplyDevMode (driver không khai
+            // DM_COLOR thì dmColor còn lại chỉ là rác, đọc lên sẽ hiện "Màu" cho khả năng driver phủ nhận).
+            // Nhưng driver không khai dmFields (== 0) là kiểu khác: nó KHÔNG nói gì, đọc hết là đúng.
+            // Vì vậy chỉ gate khi fields != 0 — ĐỪNG "đơn giản hoá" điều kiện này thành luôn-gate.
+            var fields = Marshal.ReadInt32(devMode, DmFieldsOffset);
+            var declares = fields != 0;
+            bool Honoured(int mask) => !declares || (fields & mask) != 0;
+
+            return Result<PrinterDefaults?>.Ok(new PrinterDefaults(
+                ColorFromDm(Honoured(DM_COLOR) ? ReadColor(devMode) : (short)0),
+                DuplexFromDm(Honoured(DM_DUPLEX) ? ReadDuplex(devMode) : (short)0),
+                OrientationFromDm(Honoured(DM_ORIENTATION) ? Marshal.ReadInt16(devMode, DmOrientationOffset) : (short)0),
+                Honoured(DM_PAPERWIDTH | DM_PAPERLENGTH) ? PaperNameFromDm(devMode) : null));
+        }
+        catch (Exception ex)
+        {
+            return FailPrinterDefaults($"Không đọc được cài đặt của máy in \"{printerName}\".",
+                "Mở 'Printing Preferences' một lần rồi thử lại; nếu vẫn lỗi thì cập nhật driver máy in.",
+                ex.Message);
+        }
+        finally
+        {
+            if (buffer != IntPtr.Zero) LocalFree(buffer);
+            ClosePrinter(hPrinter);
+        }
+    }
+
+    /// <summary>dmColor → PrintColorMode (nghịch đảo TryDmColor); giá trị lạ = theo máy in.</summary>
+    private static PrintColorMode ColorFromDm(short dmColor) => dmColor switch
+    {
+        DmColorMonochrome => PrintColorMode.Grayscale,
+        DmColorColor => PrintColorMode.Color,
+        _ => PrintColorMode.AsPrinter,
+    };
+
+    /// <summary>dmDuplex → PrintDuplexMode (nghịch đảo TryDmDuplex: 1 = DMDUP_SIMPLEX,
+    /// 2 = DMDUP_VERTICAL, 3 = DMDUP_HORIZONTAL); giá trị lạ = theo máy in.</summary>
+    private static PrintDuplexMode DuplexFromDm(short dmDuplex) => dmDuplex switch
+    {
+        1 => PrintDuplexMode.Simplex,
+        2 => PrintDuplexMode.LongEdge,
+        3 => PrintDuplexMode.ShortEdge,
+        _ => PrintDuplexMode.AsPrinter,
+    };
+
+    /// <summary>dmOrientation → PrintOrientation; giá trị lạ = theo tài liệu.</summary>
+    private static PrintOrientation OrientationFromDm(short dmOrientation) => dmOrientation switch
+    {
+        DmOrientLandscape => PrintOrientation.Landscape,
+        DmOrientPortrait => PrintOrientation.Portrait,
+        _ => PrintOrientation.AsDocument,
+    };
+
+    /// <summary>Tên khổ trong PaperCatalog khớp dmPaperWidth@82 (cạnh ngắn) + dmPaperLength@80 (cạnh dài),
+    /// đơn vị 1/10 mm → mm, sai số ±2 mm, so CẢ HAI chiều vì cặp đã lưu có thể bị xoay. Không khớp → null.</summary>
+    private static string? PaperNameFromDm(IntPtr devMode)
+    {
+        var widthMm = (Marshal.ReadInt16(devMode, DmPaperWidthOffset) + 5) / 10;
+        var lengthMm = (Marshal.ReadInt16(devMode, DmPaperLengthOffset) + 5) / 10;
+        if (widthMm <= 0 || lengthMm <= 0) return null;
+
+        foreach (var display in PaperCatalog.StandardSizes())
+        {
+            var name = PaperCatalog.SizeName(display);
+            if (PaperCatalog.Dimensions(name) is not { } d) continue;
+            if ((Math.Abs(widthMm - d.W) <= 2 && Math.Abs(lengthMm - d.H) <= 2)
+                || (Math.Abs(widthMm - d.H) <= 2 && Math.Abs(lengthMm - d.W) <= 2))
+                return name;
+        }
+        return null;
+    }
+
+    private static Result<PrinterDefaults?> FailPrinterDefaultsWin32(string message, string hint)
+        => FailPrinterDefaults(message, hint, Marshal.GetLastWin32Error().ToString());
+
+    private static Result<PrinterDefaults?> FailPrinterDefaults(string message, string hint, string? detail = null)
+        => Result<PrinterDefaults?>.Fail(new PrintError
+        {
+            Code = ErrorCodes.SpoolerFailed,
+            Category = PrintErrorCategory.Printer,
+            Message = message,
+            Hint = hint,
+            Detail = detail,
+        });
 
     /// <summary>Đọc lại dmColor từ driver (buffer MỚI) — CHỈ để ghi log chẩn đoán, không phải cổng chặn.
     /// null = không đọc được (buffer tạm luôn được free trước khi trả về).</summary>

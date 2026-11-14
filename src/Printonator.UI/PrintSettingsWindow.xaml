@@ -227,6 +227,8 @@
                                             Padding="12,6" Margin="12,0,0,0" Click="Prefs_Click"/>
                                     <Button x:Name="PropsBtn" Content="{l10n:Loc Settings.PropsButton}" Style="{StaticResource GhostBtn}"
                                             Padding="12,6" Margin="8,0,0,0" Click="Props_Click"/>
+                                    <Button x:Name="TakeFromPrinterBtn" Content="{l10n:Loc Settings.TakeFromPrinterButton}"
+                                            Style="{StaticResource GhostBtn}" Padding="12,6" Margin="8,0,0,0" Click="TakeFromPrinter_Click"/>
                                 </StackPanel>
                                 <TextBlock Text="{l10n:Loc Settings.HintDriver}"
                                            FontSize="10.5" Foreground="#8A8A8A" TextWrapping="Wrap" Margin="0,6,0,0"/>

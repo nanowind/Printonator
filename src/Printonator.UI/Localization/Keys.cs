@@ -446,6 +446,9 @@ public static class Keys
         public const string SheetOption = "Settings.SheetOption";
         public const string TabAdvanced = "Settings.TabAdvanced";
         public const string TabBasic = "Settings.TabBasic";
+        public const string TakeFromPrinterButton = "Settings.TakeFromPrinterButton";
+        public const string TakeFromPrinterDone = "Settings.TakeFromPrinterDone";
+        public const string TakeFromPrinterFailed = "Settings.TakeFromPrinterFailed";
         public const string TitlePlural = "Settings.TitlePlural";
         public const string WatermarkOpacity = "Settings.WatermarkOpacity";
         public const string WatermarkOpacityHint = "Settings.WatermarkOpacityHint";

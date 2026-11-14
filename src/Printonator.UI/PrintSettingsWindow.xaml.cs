@@ -135,6 +135,7 @@ public partial class PrintSettingsWindow : Window
         {
             PrefsBtn.IsEnabled = false;
             PropsBtn.IsEnabled = false;
+            TakeFromPrinterBtn.IsEnabled = false;
         }
         else
         {
@@ -518,6 +519,52 @@ public partial class PrintSettingsWindow : Window
     private void Prefs_Click(object sender, RoutedEventArgs e) => OpenNative("/e", "Printing Preferences");
 
     private void Props_Click(object sender, RoutedEventArgs e) => OpenNative("/p", "Printer Properties");
+
+    /// <summary>Điền 4 combo phụ thuộc máy in bằng cài đặt ĐANG LƯU trong driver. Chỉ đọc: không lưu preset,
+    /// không đụng các field khác của form (KHÔNG gọi LoadFromConfig — nó ghi đè cả copies/page range/...).</summary>
+    private async void TakeFromPrinter_Click(object sender, RoutedEventArgs e)
+    {
+        // Chạy TRƯỚC khi disable nút: không có máy in thì thoát luôn, finally bên dưới không được
+        // chạy (nếu chạy sẽ bật lại nút mà constructor đã disable ở dòng ~138).
+        if (_printer is null) return;
+
+        TakeFromPrinterBtn.IsEnabled = false;
+        try
+        {
+            var name = _printer.Name;
+            // P/Invoke OpenPrinter/GetPrinter có thể TREO vô hạn với máy in mạng bị firewall chặn
+            // (PrinterService.ListPrinters cũng vì thế mà chạy trên worker thread + watchdog 4s).
+            // Đọc trên UI thread sẽ đóng băng cả dialog, kể cả nút Hủy — đừng "tối giản" thành gọi trực tiếp.
+            var r = await Task.Run(() => PrinterDialogs.ReadPrinterDefaults(name))
+                             .WaitAsync(TimeSpan.FromSeconds(4));
+
+            if (!r.IsSuccess || r.Value is not { } d)
+            {
+                ShowBanner(r.Error is { } err
+                    ? L10n.F(Keys.Common.NativeErrFormat, err.Message, err.Hint)
+                    : L10n.S(Keys.Settings.TakeFromPrinterFailed));
+                return;
+            }
+
+            SelectTag(ColorModeCombo, d.ColorMode.ToString(), "AsPrinter");
+            SelectTag(DuplexCombo, d.DuplexMode.ToString(), "AsPrinter");
+            SelectTag(OrientationCombo, d.Orientation.ToString(), "Portrait");
+            // PaperName null = không khớp khổ nào trong catalog → để nguyên "theo máy in"
+            SelectTag(PaperCombo, string.IsNullOrWhiteSpace(d.PaperName) ? "" : d.PaperName, "");
+
+            UpdateCapabilityVisibility();   // khả năng máy in không đổi, nhưng giá trị combo vừa đổi
+            ShowToast(L10n.S(Keys.Settings.TakeFromPrinterDone));
+        }
+        catch (TimeoutException)
+        {
+            // Driver không trả lời trong 4s: bỏ chờ, báo lỗi — task nền tự kết thúc khi driver nhả.
+            ShowBanner(L10n.S(Keys.Settings.TakeFromPrinterFailed));
+        }
+        finally
+        {
+            TakeFromPrinterBtn.IsEnabled = true;
+        }
+    }
 
     private void OpenNative(string arg, string label)
     {
