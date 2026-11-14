@@ -10,18 +10,11 @@ namespace Printonator.Spool.Tests;
 /// bằng point. Đây là lớp duy nhất phát hiện được lỗi "mã khổ sai hệ số": Word NUỐT IM LẶNG mã hợp lệ
 /// nhưng khác nghĩa (đặt 8 tưởng là A3, Word hiểu A4, không ném lỗi, job vẫn báo Done).
 ///
-/// Chỉ chạy trên máy có Office — xem <see cref="OfficeFactAttribute"/>.
+/// Chỉ chạy trên máy có Word — xem <see cref="OfficeWordFactAttribute"/>.
 /// </summary>
-[Collection(RealOfficeCollection.Name)]
+[Collection(RealOfficeCom.CollectionName)]
 public class OfficeRealPaperTests
 {
-    /// <summary>Word COM là out-of-process: chạy song song với test khác dùng chung máy in ảo sẽ
-    /// tranh nhau hàng đợi. Serialize cả bộ test dùng Office thật.</summary>
-    public static class RealOfficeCollection
-    {
-        public const string Name = "RealOffice";
-    }
-
     /// <summary>1 mm = 72/25.4 point. Word làm tròn/clamp nên cho dung sai 2 pt (≈0.7 mm) — trừ
     /// trường hợp tự đặt kích thước, nơi dung sai chặt hơn vì ở đó công thức mm→pt mới là thứ đang
     /// được kiểm (xem AssertSizeExact).</summary>
@@ -44,7 +37,7 @@ public class OfficeRealPaperTests
     /// </summary>
     private const int ComTimeoutMs = 120_000;
 
-    [OfficeFact(Timeout = ComTimeoutMs)]
+    [OfficeWordFact(Timeout = ComTimeoutMs)]
     public void Word_dat_kho_A3_ra_dung_A3_khong_phai_A4()
         => RunOnWordDoc("t.docx", d =>
         {
@@ -62,7 +55,7 @@ public class OfficeRealPaperTests
             AssertSize((double)d.PageSetup.PageWidth, 210, "mã 8 phải là A4 (không phải A3)");
         });
 
-    [OfficeFact(Timeout = ComTimeoutMs)]
+    [OfficeWordFact(Timeout = ComTimeoutMs)]
     public void Word_kho_khong_co_ma_dat_bang_kich_thuoc_duoc()
         => RunOnWordDoc("t2.docx", d =>
         {
@@ -99,23 +92,38 @@ public class OfficeRealPaperTests
             w.DisplayAlerts = 0;
 
             // Word kiểm khổ theo máy in ĐANG CHỌN và ném "Requested PaperSize is not available on
-            // the currently selected printer". Máy in mặc định của máy test có thể thiếu A3.
-            if (!TryUsePdfPrinter(w)) return;
+            // the currently selected printer", nên phải trỏ sang máy in nhiều khổ. Excel thì không
+            // đặt được ActivePrinter bằng tên trần (0x800A03EC) nên bên đó không làm bước này.
+            TryUsePdfPrinter(w);
 
-            // Word cần file thật để Open. Tạo bằng chính Word rồi đóng NGAY, nhả RCW của nó.
-            var created = w.Documents.Add();
+            // Word cần file thật để Open. Tạo bằng chính Word rồi đóng NGAY, nhả RCW của cả
+            // collection Documents lẫn document vừa tạo — bỏ qua collection thì Word ở lại sau Quit.
+            object? docs = null;
+            object? created = null;
             try
             {
+                docs = w.Documents;
+                created = ((dynamic)docs).Add();
                 ((dynamic)created).SaveAs2(file);
                 ((dynamic)created).Close(0);
             }
             finally
             {
-                if (created is not null && Marshal.IsComObject(created))
-                    Marshal.ReleaseComObject(created);
+                RealOfficeCom.Release(created);
+                RealOfficeCom.Release(docs);
             }
 
-            opened = w.Documents.Open(file, ReadOnly: false, AddToRecentFiles: false);
+            object? openedDocs = null;
+            try
+            {
+                openedDocs = w.Documents;
+                opened = ((dynamic)openedDocs).Open(file, ReadOnly: false, AddToRecentFiles: false);
+            }
+            finally
+            {
+                RealOfficeCom.Release(openedDocs);
+            }
+
             body((dynamic)opened);
         }
         finally
@@ -123,58 +131,18 @@ public class OfficeRealPaperTests
             // Mỗi bước một try: Close ném không được nuốt mất Quit.
             try { if (opened is not null) ((dynamic)opened).Close(0); } catch { }
             try { if (app is not null) ((dynamic)app).Quit(0); } catch { }
-            ReleaseCom(opened);
-            ReleaseCom(app);
+            RealOfficeCom.Release(opened);
+            RealOfficeCom.Release(app);
             try { Directory.Delete(dir, recursive: true); } catch { }
         }
     }
 
-    /// <summary>Trỏ Word sang máy in nhiều khổ. False nếu máy không có "Microsoft Print to PDF"
-    /// (bản Windows đổi tên/bị xoá) — khi đó test bỏ qua thay vì fail oan.</summary>
-    private static bool TryUsePdfPrinter(dynamic word)
+    /// <summary>Trỏ Word sang máy in nhiều khổ. Lỗi thì bỏ qua: attribute đã bảo đảm máy in tồn tại,
+    /// và nếu Word vẫn từ chối thì phép đặt khổ bên dưới sẽ tự đỏ với thông điệp thật — không nuốt
+    /// im lặng thành Passed (early-return từng làm 4 test Excel xanh rỗng).</summary>
+    private static void TryUsePdfPrinter(dynamic word)
     {
-        try
-        {
-            word.ActivePrinter = "Microsoft Print to PDF";
-            return true;
-        }
-        catch { return false; }
-    }
-
-    /// <summary>Nhả RCW rồi ép finalizer — Quit(0) một mình không đủ, Word ẩn vẫn sống nếu còn ref.</summary>
-    private static void ReleaseCom(object? com)
-    {
-        try { if (com is not null && Marshal.IsComObject(com)) Marshal.FinalReleaseComObject(com); }
+        try { word.ActivePrinter = RealOfficeCom.PdfPrinter; }
         catch { }
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
-    }
-}
-
-/// <summary>
-/// Chỉ chạy khi máy có Office VÀ có máy in ảo "Microsoft Print to PDF" (Word cần máy in nhiều khổ
-/// để nhận A3). Không có → SKIP thật (hiện là Skipped, không phải Passed) — nếu để `return` trần
-/// thì CI không có Office sẽ báo xanh trong khi test chưa hề chạy.
-/// xunit 2.5.3 không có Assert.Skip nên phải qua attribute.
-/// </summary>
-public sealed class OfficeFactAttribute : FactAttribute
-{
-    public OfficeFactAttribute()
-    {
-        if (!Printonator.Spool.Printing.InstalledApps.HasWord)
-            Skip = "Máy không có Microsoft Word — bỏ qua test Office thật.";
-        else if (!HasPdfPrinter())
-            Skip = "Không có máy in \"Microsoft Print to PDF\" — không kiểm được khổ A3.";
-    }
-
-    private static bool HasPdfPrinter()
-    {
-        try
-        {
-            return System.Drawing.Printing.PrinterSettings.InstalledPrinters
-                .Cast<string>()
-                .Any(n => n.Equals("Microsoft Print to PDF", StringComparison.OrdinalIgnoreCase));
-        }
-        catch { return false; }
     }
 }
