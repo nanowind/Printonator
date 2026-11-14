@@ -14,7 +14,8 @@ public static class PaperCatalog
     /// ISO 176×250. Đã đo trên máy thật: cả 10 driver báo B5 (DMPAPER 13) = 182×257, và
     /// WdPaperSize.wdPaperB5 / XlPaperSize.xlPaperB5 đều trỏ vào tờ đó. B5 ISO không có mã Win32
     /// riêng (chỉ có dạng phong bì ISOB5Envelope) nên không đưa vào danh mục.</summary>
-    private static readonly IReadOnlyDictionary<string, (int W, int H)> Known = new Dictionary<string, (int, int)>
+    private static readonly IReadOnlyDictionary<string, (int W, int H)> Known =
+        new Dictionary<string, (int, int)>(StringComparer.OrdinalIgnoreCase)
     {
         ["A0"] = (841, 1189),
         ["A1"] = (594, 841),
@@ -29,6 +30,8 @@ public static class PaperCatalog
         ["Letter"] = (216, 279),
         ["Legal"] = (216, 356),
         ["Ledger"] = (279, 432),
+        ["Tabloid"] = (279, 432),
+        ["Statement"] = (140, 216),
         ["Executive"] = (184, 267),
         ["DL"] = (110, 220),
         ["DLEnvelope"] = (110, 220),
@@ -41,12 +44,14 @@ public static class PaperCatalog
         ["Com10"] = (105, 241),
     };
 
-    /// <summary>Thứ tự hiển thị chuẩn (theo mức dùng phổ biến trước).</summary>
+    /// <summary>Thứ tự hiển thị chuẩn (theo mức dùng phổ biến trước).
+    /// "Tabloid" = cùng tờ 279×432 với "Ledger" (chỉ khác chiều), liệt kê để tên gọi nào cũng dùng
+    /// được — bảng mã Office dùng "Tabloid" còn DEVMODE dùng mã Ledger cho cùng tờ giấy đó.</summary>
     private static readonly string[] StandardOrder =
     {
         "A4", "A3", "A5", "A6", "A2", "A1", "A0",
         "B4", "B5", "B6",
-        "Letter", "Legal", "Ledger", "Executive",
+        "Letter", "Legal", "Ledger", "Tabloid", "Executive", "Statement",
         "DL", "C5", "C6", "Com10",
     };
 
@@ -79,9 +84,13 @@ public static class PaperCatalog
     public static IReadOnlyList<string> FromPrinter(IEnumerable<string> printerSizes)
     {
         var pruned = printerSizes.Select(Normalize).Where(s => !string.IsNullOrEmpty(s)).Distinct().ToList();
-        var ordered = StandardOrder.Where(pruned.Contains);
-        var rest = pruned.Where(p => !StandardOrder.Contains(p));
-        return ordered.Concat(rest).Select(Describe).ToList();
+        // So khớp KHÔNG phân biệt hoa thường cho đồng bộ với Known/Dimensions: driver báo "a4" phải
+        // xếp đúng vị trí A4, không bị đẩy xuống cuối danh sách như khổ lạ.
+        var set = new HashSet<string>(pruned, StringComparer.OrdinalIgnoreCase);
+        var ordered = StandardOrder.Where(set.Contains).Select(Describe);
+        var rest = pruned.Where(p => !StandardOrder.Contains(p, StringComparer.OrdinalIgnoreCase))
+                         .Select(Describe);
+        return ordered.Concat(rest).ToList();
     }
 
     private static string Normalize(string name)

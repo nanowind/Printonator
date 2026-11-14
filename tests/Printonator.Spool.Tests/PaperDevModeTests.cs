@@ -55,6 +55,7 @@ public class PaperDevModeTests
     [InlineData(3, "Ledger")]      // DMPAPER_TABLOID — cùng tờ 279x432
     [InlineData(4, "Ledger")]      // DMPAPER_LEDGER
     [InlineData(5, "Legal")]       // DMPAPER_LEGAL
+    [InlineData(6, "Statement")]   // DMPAPER_STATEMENT
     [InlineData(7, "Executive")]   // DMPAPER_EXECUTIVE
     [InlineData(8, "A3")]          // DMPAPER_A3
     [InlineData(9, "A4")]          // DMPAPER_A4
@@ -88,10 +89,10 @@ public class PaperDevModeTests
     /// (TrySelectTag thất bại → nút "Lấy theo máy in" báo lỗi oan).</summary>
     [Theory]
     [InlineData((short)1)] [InlineData((short)3)] [InlineData((short)4)] [InlineData((short)5)]
-    [InlineData((short)7)] [InlineData((short)8)] [InlineData((short)9)] [InlineData((short)11)]
-    [InlineData((short)12)] [InlineData((short)13)] [InlineData((short)27)] [InlineData((short)28)]
-    [InlineData((short)29)] [InlineData((short)30)] [InlineData((short)31)] [InlineData((short)42)]
-    [InlineData((short)66)] [InlineData((short)70)]
+    [InlineData((short)6)] [InlineData((short)7)] [InlineData((short)8)] [InlineData((short)9)]
+    [InlineData((short)11)] [InlineData((short)12)] [InlineData((short)13)] [InlineData((short)27)]
+    [InlineData((short)28)] [InlineData((short)29)] [InlineData((short)30)] [InlineData((short)31)]
+    [InlineData((short)42)] [InlineData((short)66)] [InlineData((short)70)]
     public void Ten_kho_doc_tu_dmPaperSize_luon_co_trong_PaperCatalog(short dmPaperSize)
     {
         var name = PrinterDialogs.DmPaperSizeName(dmPaperSize);

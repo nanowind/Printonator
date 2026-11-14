@@ -632,10 +632,12 @@ public static class PrinterDialogs
     private static readonly IReadOnlyDictionary<short, string> DmPaperSizeNames = new Dictionary<short, string>
     {
         [1] = "Letter",      // DMPAPER_LETTER
-        // DMPAPER_TABLOID (3) và DMPAPER_LEDGER (4) cùng là tờ 279×432, catalog không có "Tabloid".
+        // DMPAPER_TABLOID (3) và DMPAPER_LEDGER (4) cùng là tờ 279×432; catalog có cả hai tên,
+        // nhưng giữ "Ledger" cho khớp hành vi cũ (PaperNameFromDm cũng trả Ledger trước).
         [3] = "Ledger",
         [4] = "Ledger",
         [5] = "Legal",       // DMPAPER_LEGAL
+        [6] = "Statement",   // DMPAPER_STATEMENT
         [7] = "Executive",   // DMPAPER_EXECUTIVE
         [8] = "A3",          // DMPAPER_A3
         [9] = "A4",          // DMPAPER_A4

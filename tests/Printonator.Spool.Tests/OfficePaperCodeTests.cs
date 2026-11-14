@@ -1,3 +1,4 @@
+using Printonator.Core.Models;
 using Printonator.Spool.Printing;
 
 namespace Printonator.Spool.Tests;
@@ -55,13 +56,25 @@ public class OfficePaperCodeTests
 
     /// <summary>Khổ không có thành viên trong enum Office (A0/A1/A2/A6) KHÔNG được nằm trong bảng:
     /// mã bịa sẽ ném "Value out of range" (Word) hoặc "Unable to set the PaperSize" (Excel).
-    /// Word đi đường PageWidth/PageHeight, Excel bỏ qua và giữ khổ driver.</summary>
+    /// Word đi đường PageWidth/PageHeight, Excel bỏ qua (có log) và giữ khổ driver.</summary>
     [Theory]
     [InlineData("A0")] [InlineData("A1")] [InlineData("A2")] [InlineData("A6")]
     public void Kho_khong_co_ma_Office_khong_nam_trong_bang(string name)
     {
         Assert.False(OfficeComPrintEngine.WordPaperCode.ContainsKey(name));
         Assert.False(OfficeComPrintEngine.ExcelPaperCode.ContainsKey(name));
+    }
+
+    /// <summary>Mọi tên khổ trong bảng mã Office PHẢI có trong PaperCatalog, nếu không UI không bao
+    /// giờ tạo ra được lựa chọn đó (chỉ MCP free-text chạm tới) và preview rơi về A4 sai.</summary>
+    [Fact]
+    public void Moi_ten_kho_Office_deu_co_trong_PaperCatalog()
+    {
+        foreach (var name in OfficeComPrintEngine.WordPaperCode.Keys
+                     .Concat(OfficeComPrintEngine.ExcelPaperCode.Keys).Distinct())
+        {
+            Assert.NotNull(PaperCatalog.Dimensions(name));
+        }
     }
 
     /// <summary>Mọi mã Word phải nằm trong 0..41 (giới hạn thật của WdPaperSize — 42+ ném lỗi).</summary>

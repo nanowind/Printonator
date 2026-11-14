@@ -384,7 +384,7 @@ public sealed class OfficeComPrintEngine : IPrintEngine
     /// </summary>
     internal static WordPaperPlan PlanWordPaper(string paperSize)
     {
-        var name = paperSize.Trim();
+        var name = (paperSize ?? "").Trim();
         if (WordPaperCode.TryGetValue(name, out var code))
             return new WordPaperPlan(code, null, null);
         if (PaperCatalog.Dimensions(name) is not { } d)
@@ -501,7 +501,9 @@ public sealed class OfficeComPrintEngine : IPrintEngine
                 if (keep)
                 {
                     keptSheets.Add(sheet);
-                    ApplyExcelSetup(sheet, job.Config.PaperSize, job.Config.Orientation);
+                    // Log "khổ không có mã" chỉ cho sheet ĐẦU: 30 sheet cùng khổ sẽ ghi 30 dòng giống hệt.
+                    ApplyExcelSetup(sheet, job.Config.PaperSize, job.Config.Orientation,
+                                    logMissingCode: keptSheets.Count == 1);
                     ApplyExcelPageExtras(sheet, job.Config);
                 }
                 else
@@ -650,11 +652,24 @@ public sealed class OfficeComPrintEngine : IPrintEngine
         };
     }
 
-    private static void ApplyExcelSetup(dynamic sheet, string paperSize, PrintOrientation orientation)
+    private static void ApplyExcelSetup(
+        dynamic sheet, string paperSize, PrintOrientation orientation, bool logMissingCode = true)
     {
+        // Log khi user chọn khổ cụ thể mà Excel không có mã cho nó: Try bắt hết lỗi nên nếu không log
+        // thì không ai biết Excel đã không đặt được khổ. KHÔNG nói "bị bỏ qua": đường DEVMODE
+        // (ApplyDevMode) vẫn đặt được khổ theo kích thước cho máy in thật — chỉ máy ảo/không resolve
+        // được mới thật sự rơi về khổ driver.
+        // logMissingCode=false khi gọi trong vòng lặp sheet: 30 sheet cùng khổ sẽ ghi 30 dòng giống hệt.
+        var name = (paperSize ?? "").Trim();
+        var wantsPaper = !string.IsNullOrWhiteSpace(name)
+                         && !name.Equals(PaperCatalog.AsDocument, StringComparison.OrdinalIgnoreCase);
+        if (logMissingCode && wantsPaper && !ExcelPaperCode.ContainsKey(name))
+            OfficeLog($"Excel không có mã khổ cho \"{name}\" — để driver quyết khổ " +
+                      "(DEVMODE đã đặt nếu máy in thật).");
+
         Try(() =>
         {
-            if (ExcelPaperCode.TryGetValue(paperSize.Trim(), out var xlCode))
+            if (ExcelPaperCode.TryGetValue(name, out var xlCode))
                 sheet.PageSetup.PaperSize = xlCode;
             // AsDocument/AsPrinter: không ép chiều — giữ chiều trong file hoặc driver quyết
             if (orientation == PrintOrientation.Portrait)

@@ -28,6 +28,26 @@ public class PrintConfigTests
         Assert.False(cfg.Color);
     }
 
+    /// <summary>Tên khổ phải so KHÔNG phân biệt hoa thường: MCP nhận chuỗi tự do từ AI ("a4", "A4"),
+    /// so phân biệt thì "a4" trả null → engine bỏ qua khổ, in theo driver mà không báo.</summary>
+    [Theory]
+    [InlineData("A4")] [InlineData("a4")] [InlineData("A4 ")]
+    public void Dimensions_khong_phan_biet_hoa_thuong(string name)
+        => Assert.Equal((210, 297), PaperCatalog.Dimensions(name));
+
+    /// <summary>Tabloid và Ledger là cùng tờ 279×432 (khác chiều) — cả hai tên đều phải dùng được vì
+    /// bảng mã Office gọi "Tabloid" còn DEVMODE gọi "Ledger".</summary>
+    [Fact]
+    public void Tabloid_va_Ledger_cung_mot_to_giay()
+    {
+        Assert.Equal((279, 432), PaperCatalog.Dimensions("Tabloid"));
+        Assert.Equal((279, 432), PaperCatalog.Dimensions("Ledger"));
+    }
+
+    [Fact]
+    public void Statement_co_trong_danh_muc()
+        => Assert.Equal((140, 216), PaperCatalog.Dimensions("Statement"));
+
     [Fact]
     public void SummaryText_Shows_Parity_Quality_And_KhoGoc()
     {
