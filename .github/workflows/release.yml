@@ -118,7 +118,7 @@ jobs:
             exit 1
           fi
           sed -e "s/{VER}/$VER/g" -e "s/{HASH}/$HASH/g" "$TPL" > release_body.md
-          grep -q '^- ' release_body.md || { echo "::error::Release notes trống — điền .github/release_notes.template.md trước khi tag"; exit 1; }
+          grep -Eq '^[[:space:]]*([-*]|[0-9]+\.)[[:space:]]' release_body.md || { echo "::error::Release notes trống — điền .github/release_notes.template.md trước khi tag"; exit 1; }
           echo "Release notes lấy từ $TPL (đã điền version + SHA256)"
 
       # Minisign ký installer (public key nhúng trong app). Khi GitHub secret MINISIGN_SECRET_KEY
@@ -176,4 +176,17 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release edit "v${{ steps.ver.outputs.VER }}" --draft=false --latest
+        run: |
+          VER="v${{ steps.ver.outputs.VER }}"
+          # Re-run một tag CŨ không được kéo "latest" lùi: /releases/latest trỏ vào bản cũ thì
+          # UpdateChecker thấy remote <= current và KHÔNG báo có bản mới cho ai cả.
+          # Phải nói rõ --latest=false: bỏ trống thì API mặc định true cho release vừa publish.
+          # Một bộ so sánh duy nhất (sort -V) cho cả danh sách tag lẫn VER — trộn -v:refname với
+          # sort -V thì hai bên xếp khác nhau ở tag lạ (v1.0.0a, v1.0.0-rc1, số 0 đầu).
+          HIGHEST=$( { git tag --list 'v*'; echo "$VER"; } | sort -V | tail -n1 )
+          if [ "$VER" = "$HIGHEST" ]; then
+            LATEST=--latest
+          else
+            LATEST=--latest=false
+          fi
+          gh release edit "$VER" --draft=false $LATEST
