@@ -16,7 +16,8 @@ on:
       - 'v*'
 
 # GITHUB_TOKEN mặc định KHÔNG có quyền tạo GitHub Release → softprops fail "Resource not
-# accessible by integration". Khai báo contents: write để action-gh-release tạo draft release.
+# accessible by integration". Khai báo contents: write để workflow tạo release dạng draft,
+# rồi publish ở bước cuối (sau khi đã upload đủ asset).
 permissions:
   contents: write
 
@@ -117,6 +118,7 @@ jobs:
             exit 1
           fi
           sed -e "s/{VER}/$VER/g" -e "s/{HASH}/$HASH/g" "$TPL" > release_body.md
+          grep -q '^- ' release_body.md || { echo "::error::Release notes trống — điền .github/release_notes.template.md trước khi tag"; exit 1; }
           echo "Release notes lấy từ $TPL (đã điền version + SHA256)"
 
       # Minisign ký installer (public key nhúng trong app). Khi GitHub secret MINISIGN_SECRET_KEY
@@ -162,5 +164,16 @@ jobs:
           # Glob `*.exe*` → khớp installer + .minisig NẾU có (khi chưa đặt secret minisign thì file .minisig
           # không tồn tại — tham chiếu literal path sẽ làm step fail).
           files: setup/printonator-setup.exe*
+          # Glob sai → fail ngay, không tạo release thiếu asset (auto-update sẽ chết im lặng).
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Tạo release dạng draft → upload asset → CHỈ KHI đó mới publish: `latest` không bao giờ
+      # trỏ vào release chưa có installer. Publish bằng bước tường minh cũng sửa re-run, vốn
+      # giữ nguyên state draft cũ nên sẽ bỏ qua `draft:` của action.
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "v${{ steps.ver.outputs.VER }}" --draft=false --latest
