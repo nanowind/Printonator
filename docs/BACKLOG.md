@@ -61,7 +61,7 @@ Việc còn lại của Printonator — ưu tiên cho các lần làm sau. Cập
 
 - [ ] **PDF in toàn bộ qua browser render không có đường ép xám** — `BrowserPrintEngine` nhánh full-PDF/non-PDF (`:105-117`) render thẳng file nguồn, không có HTML để chèn `filter: grayscale(1)` như các nhánh slice/watermark/merge. Trên driver bỏ qua `dmColor`, PDF in toàn bộ kèm option (scale/khổ/chiều/quality) vẫn ra màu. Upgrade path: bọc file nguồn trong HTML wrapper có CSS, hoặc chuyển sang `WindowsPdfRasterizer` + CSS.
 - [ ] **`dmColor` chưa được xác minh trên máy in thật** — readback chỉ so DEVMODE lưu trong spooler, không chứng minh job đã in xám (Word/Excel/PPT/printto tự dựng DEVMODE riêng từ driver). Cần 1 tờ in thử có thanh đỏ 100% để chốt. Cùng lớp với mục duplex DEVMODE ở trên.
-- [ ] **`SetPrinter` level 2 khi user không phải admin chưa kiểm** — duplex đã chạy production nhưng chưa có bằng chứng trên tài khoản standard user. Nếu fail, `PRINTER_INFO_9` (per-user) là đường thay thế.
+- [x] **`SetPrinter` level 2 khi user không phải admin — ĐÃ ĐO 2026-11-23: luôn fail.** Trên app non-elevated (Medium integrity, Administrators deny-only, không `requestedExecutionLevel`) `SetPrinter(h, 2, …)` trả win32 **5 ACCESS_DENIED kể cả khi buffer không đổi**, đo trên 3 máy in ⇒ mọi job có option chết `SPOOLER_FAILED`. Đường GHI nay đi `PRINTER_INFO_9` (per-user, không cần admin); `PRINTER_INFO_9` là đường đang chạy, không còn là phương án dự phòng.
 - [ ] **CSS `filter: grayscale(1)` trong Chromium print pipeline chưa verify** — nếu Chromium bỏ filter khi in, các đường render (ảnh/TXT/watermark/merge/slice) quay lại phụ thuộc driver. Kiểm bằng 1 lệnh in thử; nếu fail thì chuyển sang chuyển đổi pixel thật.
 
 ## Từ đợt rà soát option bị bỏ qua im lặng (2026-11-14, đợt 2)
