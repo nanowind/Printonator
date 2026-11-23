@@ -125,7 +125,8 @@ public sealed class OfficeComPrintEngine : IPrintEngine
             // ponytail: chỉ restore được lease CÒN SỐNG trong tiến trình này — nếu app bị kill cứng giữa
             // chừng thì DEVMODE vẫn kẹt (không có bước đối soát lúc khởi động); nâng cấp: lưu giá trị
             // gốc xuống đĩa + đối soát/khôi phục khi app start.
-            // CHỈ máy in của job NÀY: RestoreActive() không tham số dọn MỌI lease → job khác đang in trên
+            // CHỈ máy in của job NÀY: trước đây có overload RestoreActive() không tham số dọn MỌI lease —
+            // đã bỏ; giờ chỉ restore theo tên máy in. Dọn tất cả thì job khác đang in trên
             // máy in khác dưới lease riêng sẽ bị revert khổ giấy/màu/duplex GIỮA PrintOut (in sai giấy).
             RestoreLeaseFor(job);
             return Result<bool>.Fail(new PrintError
@@ -151,7 +152,8 @@ public sealed class OfficeComPrintEngine : IPrintEngine
     }
 
     /// <summary>Khôi phục DEVMODE của ĐÚNG máy in job này đã dùng khi STA thread bị bỏ rơi (timeout/cancel).
-    /// TUYỆT ĐỐI không gọi RestoreActive() trần: bản không tham số dọn MỌI lease trong tiến trình → job khác
+    /// TUYỆT ĐỐI không dọn mọi lease: trước đây có overload RestoreActive() không tham số dọn MỌI lease
+    /// trong tiến trình — đã bỏ; giờ chỉ restore theo tên máy in. Dọn tất cả thì job khác
     /// đang PrintOut trên máy in khác sẽ bị revert khổ giấy/màu/duplex giữa chừng (in sai giấy).
     /// Khoá = chính tên ApplyDevMode đã dùng; không xác định được tên thì không có lease nào của job này
     /// để dọn (và null nghĩa là dọn tất cả) → bỏ qua.</summary>

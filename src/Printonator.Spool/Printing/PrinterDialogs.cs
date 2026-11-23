@@ -38,9 +38,6 @@ public static class PrinterDialogs
     [DllImport("winspool.drv", EntryPoint = "SetPrinterW", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool SetPrinter(IntPtr hPrinter, int level, IntPtr pPrinter, int command);
 
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern IntPtr LocalFree(IntPtr hMem);
-
     [DllImport("winspool.drv", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern int DocumentProperties(IntPtr hWnd, IntPtr hPrinter, string pDeviceName,
         IntPtr pDevModeOutput, IntPtr pDevModeInput, int fMode);
@@ -173,6 +170,11 @@ public static class PrinterDialogs
     private const int DmDuplexOffset = 94;         // dmDuplex (Int16)
     private const int MinDevModeSize = 96;         // DEVMODE phải chứa tới dmDuplex (trường xa nhất ta đụng)
     private const int PDevModeFieldIndex = 7;      // PRINTER_INFO_2.pDevMode (x64: 7*8 = 56)
+    private const int DmDriverExtraOffset = 70;    // dmDriverExtra (Int16)
+    // PRINTER_INFO_9 = DEVMODE RIÊNG của user. SetPrinter(2) cần quyền admin (user thường → lỗi 5
+    // ACCESS_DENIED, kể cả khi buffer không đổi); SetPrinter(9) ghi được không nâng quyền và là bản
+    // mà app thật sự thấy. Layout level 9: pDevMode@0, DEVMODE nằm ngay sau (offset IntPtr.Size).
+    private const int DevModeLevel = 9;
 
     // Vùng liền mạch dmFields(72) .. dmDuplex(94) — chụp/restore một khối duy nhất.
     private const int DevModeWindowOffset = DmFieldsOffset;   // 72
@@ -201,34 +203,45 @@ public static class PrinterDialogs
     private const short DmResDraft = -1;           // DMRES_DRAFT
 
     /// <summary>Trả DEVMODE về cấu hình ban đầu — Dispose để restore.
-    /// MỘT lease giữ MỘT handle + MỘT buffer PRINTER_INFO_2 và restore CẢ vùng 72..95 (dmFields..dmDuplex)
-    /// trong MỘT SetPrinter: hai lease song song thì lease restore sau cùng sẽ ghi đè cài đặt của lease kia
-    /// bằng snapshot cũ hơn (đó là lý do gộp duplex/màu/khổ giấy về một lớp).
+    /// MỘT lease giữ MỘT handle + MỘT buffer PRINTER_INFO_9 (DEVMODE RIÊNG của user) và restore CẢ vùng
+    /// 72..95 (dmFields..dmDuplex) trong MỘT SetPrinter(9): hai lease song song thì lease restore sau cùng
+    /// sẽ ghi đè cài đặt của lease kia bằng snapshot cũ hơn (đó là lý do gộp duplex/màu/khổ giấy về một lớp).
+    /// Level 9 chứ không phải 2: SetPrinter(2) cần quyền admin (user thường → lỗi 5 ACCESS_DENIED), còn
+    /// level 9 ghi được không nâng quyền và chính là bản mà app thật sự thấy.
+    /// ponytail: CHƯA đo bằng trang in thật rằng Office/LibreOffice/shell tôn trọng DEVMODE per-user
+    /// (đã chứng minh cho đường ĐỌC qua DocumentProperties, chưa cho tờ giấy in ra) — nâng cấp = in thật
+    /// rồi đo khổ/màu trên giấy.
+    /// ponytail: giả định thứ hai CHƯA đo — rằng SetPrinter(9, pDevMode = NULL) thật sự XOÁ override
+    /// per-user (đường restore khi trước đó user chưa có override); đúng theo tài liệu API nhưng chưa
+    /// kiểm trên máy này. Nâng cấp: đọc lại level 9 sau khi xoá, xác nhận pDevMode = NULL.
     /// ponytail: nếu tiến trình bị kill cứng giữa lúc lease còn sống, cài đặt máy in ở lại giá trị đã đặt;
     /// đường nâng cấp = reconcile lúc khởi động (đã ghi ở docs/BACKLOG.md:49).
     /// </summary>
     public sealed class DevModeLease : IDisposable
     {
         private readonly IntPtr _hPrinter;
-        private readonly IntPtr _buffer;           // buffer PRINTER_INFO_2 tròn vẹn (SetPrinter cần đủ driver data)
+        private readonly IntPtr _buffer;           // buffer PRINTER_INFO_9 tròn vẹn (pDevMode@0 + DEVMODE inline)
         private readonly IntPtr _devMode;
         private readonly byte[] _original;         // bản chụp 24 byte vùng 72..95
+        private readonly bool _hadPerUserDevMode;  // máy in ĐÃ có DEVMODE riêng của user trước khi ta ghi
         private readonly object _lock = new();     // STA thread + timeout path cùng gọi Dispose → guard chống double-free
         private bool _disposed;
 
-        internal DevModeLease(string printerName, IntPtr hPrinter, IntPtr buffer, IntPtr devMode, byte[] original)
+        internal DevModeLease(string printerName, IntPtr hPrinter, IntPtr buffer, IntPtr devMode, byte[] original,
+            bool hadPerUserDevMode)
         {
             PrinterName = printerName;
             _hPrinter = hPrinter;
             _buffer = buffer;
             _devMode = devMode;
             _original = original;
+            _hadPerUserDevMode = hadPerUserDevMode;
         }
 
         /// <summary>Máy in mà lease này đã ghi — khoá của slot trong _activeLeases (không phải khoá cấp phát).</summary>
         public string PrinterName { get; }
 
-        /// <summary>Restore nguyên vùng 72..95 qua MỘT SetPrinter(2) rồi ClosePrinter + LocalFree.
+        /// <summary>Restore qua MỘT SetPrinter(9) rồi ClosePrinter + FreeHGlobal.
         /// Idempotent (thread-safe — khoá _lock, lần gọi thứ hai là no-op, KHÔNG free lần hai);
         /// lỗi restore chỉ ghi log — KHÔNG ném ra ngoài (an toàn khi gọi trong finally).</summary>
         public void Dispose()
@@ -239,9 +252,24 @@ public static class PrinterDialogs
                 _disposed = true;
                 try
                 {
-                    Marshal.Copy(_original, 0, _devMode + DevModeWindowOffset, DevModeWindowLength);
-                    if (!SetPrinter(_hPrinter, 2, _buffer, 0))
-                        DevModeLog($"restore devmode: SetPrinter fail err={Marshal.GetLastWin32Error()}");
+                    if (_hadPerUserDevMode)
+                    {
+                        Marshal.Copy(_original, 0, _devMode + DevModeWindowOffset, DevModeWindowLength);
+                        if (!SetPrinter(_hPrinter, DevModeLevel, _buffer, 0))
+                            DevModeLog($"restore devmode: SetPrinter fail err={Marshal.GetLastWin32Error()}");
+                    }
+                    else
+                    {
+                        // Trước khi ta ghi, máy in CHƯA có DEVMODE riêng của user → trả lại bằng cách XOÁ
+                        // override (pDevMode = NULL), KHÔNG ghi snapshot vào. Ghi snapshot sẽ để lại một
+                        // DEVMODE per-user vĩnh viễn chép từ bản dùng chung, và từ đó che mọi thay đổi cài
+                        // đặt máy in sau này — hỏng im lặng cho chính user đó.
+                        Marshal.WriteIntPtr(_buffer, 0, IntPtr.Zero);
+                        if (!SetPrinter(_hPrinter, DevModeLevel, _buffer, 0))
+                            DevModeLog($"restore devmode: xoá override per-user fail err={Marshal.GetLastWin32Error()}");
+                        else
+                            DevModeLog($"restore devmode: đã xoá override per-user (trước đó máy in dùng cài đặt chung)");
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -252,7 +280,7 @@ public static class PrinterDialogs
                     try
                     {
                         ClosePrinter(_hPrinter);
-                        LocalFree(_buffer);
+                        Marshal.FreeHGlobal(_buffer);
                     }
                     finally
                     {
@@ -279,18 +307,10 @@ public static class PrinterDialogs
 
     /// <summary>Dọn lease DEVMODE đang treo khi thread STA bị abandon (timeout/cancel trong
     /// OfficeComPrintEngine) — gọi từ luồng await, KHÔNG thay Dispose của caller (luồng thường vẫn tự restore).
-    /// printerName = null → dọn TẤT CẢ (giữ nguyên hành vi cho call site cũ); có tên → chỉ lease của máy in đó.</summary>
-    public static void RestoreActive(string? printerName = null)
+    /// BẮT BUỘC có tên máy in: dọn tất cả sẽ revert cài đặt của job KHÁC đang in dưới lease riêng (in sai giấy).</summary>
+    public static void RestoreActive(string printerName)
     {
-        if (printerName is not null)
-        {
-            if (_activeLeases.TryRemove(printerName, out var lease)) lease.Dispose();
-            return;
-        }
-
-        foreach (var key in _activeLeases.Keys)
-            if (_activeLeases.TryRemove(key, out var lease))
-                lease.Dispose();   // swallow-and-log như Dispose — không ném ra ngoài
+        if (_activeLeases.TryRemove(printerName, out var lease)) lease.Dispose();
     }
 
     /// <summary>Cài đặt MẶC ĐỊNH hiện tại của máy in (đọc từ DEVMODE) — dùng cho nút "Lấy theo máy in".
@@ -343,29 +363,15 @@ public static class PrinterDialogs
         // sống ngoài try để catch còn hoàn lại được (khai báo ở đây vì catch không thấy biến trong try).
         var wrote = false;
         var devMode = IntPtr.Zero;
+        var hadPerUserDevMode = false;
         byte[]? snapshot = null;
         try
         {
-            // Đo size trước (GetPrinter level 2 luôn trả false ở lần gọi rỗng — chỉ đọc cbNeeded).
-            GetPrinter(hPrinter, 2, IntPtr.Zero, 0, out var needed);
-            if (needed <= 0)
-                return FailDevModeWin32($"Không lấy được cài đặt của máy in \"{printerName}\".",
+            // Dựng buffer PRINTER_INFO_9 (pDevMode@0 + DEVMODE inline) từ DEVMODE hiện hành: bản per-user
+            // nếu có, không thì seed từ level 2 (cài đặt chung) — đọc ở MỘT chỗ để khỏi lệch nguồn.
+            if (!TryBuildInfo9Buffer(hPrinter, printerName, out buffer, out devMode, out hadPerUserDevMode, out var buildFail))
+                return FailDevMode(buildFail ?? $"Không đọc được bảng cài đặt (DEVMODE) của \"{printerName}\".",
                     "Mở 'Printing Preferences' một lần hoặc cài lại driver máy in.");
-
-            buffer = Marshal.AllocHGlobal(needed);
-            if (!GetPrinter(hPrinter, 2, buffer, needed, out _))
-                return FailDevModeWin32($"Không đọc được bảng cài đặt (DEVMODE) của \"{printerName}\".",
-                    "Mở 'Printing Preferences' một lần hoặc cài lại driver máy in.");
-
-            // PRINTER_INFO_2 xếp tuần tự trong buffer; pDevMode trỏ vào DEVMODE CÙNG buffer này.
-            devMode = Marshal.ReadIntPtr(buffer, PDevModeFieldIndex * IntPtr.Size);
-            if (devMode == IntPtr.Zero)
-                return FailDevMode($"Máy in \"{printerName}\" không trả về bảng cài đặt (DEVMODE).",
-                    "Mở 'Printing Preferences' để driver tạo cài đặt, rồi thử lại.");
-
-            if (Marshal.ReadInt16(devMode, DmSizeOffset) < MinDevModeSize)
-                return FailDevMode($"Bảng cài đặt của \"{printerName}\" quá ngắn (không đủ ô cài đặt in).",
-                    "Cập nhật driver máy in — bản cũ không hỗ trợ các cài đặt này.");
 
             // Chụp vùng 72..95 NGAY (trước mọi lần ghi) để restore chính xác cả 4 nhóm cài đặt.
             snapshot = new byte[DevModeWindowLength];
@@ -428,8 +434,8 @@ public static class PrinterDialogs
                     DevModeLog($"print quality: printer=\"{printerName}\" dmPrintQuality={storedQuality} (DPI/thang thật, không phải DMRES_*) — bỏ qua (giữ chất lượng của driver)");
             }
 
-            if (!SetPrinter(hPrinter, 2, buffer, 0))
-                return FailDevModeWin32($"Không ghi được cấu hình in vào máy in \"{printerName}\".",
+            if (!SetPrinter(hPrinter, DevModeLevel, buffer, 0))
+                return FailDevModeWin32($"Không ghi được cấu hình in (màu / hai mặt / khổ giấy / chiều / chất lượng) vào máy in \"{printerName}\".",
                     "Đặt tay trong 'Printing Preferences' rồi in lại.");
 
             wrote = true;
@@ -441,14 +447,14 @@ public static class PrinterDialogs
             // Bảo đảm thật nằm ở pixel của các đường render; ở đây chỉ ghi log rồi trao lease như thường.
             if (wroteColor)
             {
-                var back = ReadBackColor(hPrinter);
+                var back = ReadBackColor(hPrinter, printerName);
                 if (back != targetColor)
                     DevModeLog($"color readback: printer=\"{printerName}\" wrote={targetColor} " +
                                $"read={(back is null ? "unreadable" : back.Value.ToString())}");
             }
 
             leaseGiven = true;
-            var lease = new DevModeLease(printerName, hPrinter, buffer, devMode, snapshot);
+            var lease = new DevModeLease(printerName, hPrinter, buffer, devMode, snapshot, hadPerUserDevMode);
             _activeLeases[printerName] = lease;   // timeout path gọi RestoreActive(printerName) nếu STA bị abandon
             return Result<DevModeLease?>.Ok(lease);
         }
@@ -457,13 +463,16 @@ public static class PrinterDialogs
             // SetPrinter đã thành công mà có gì ném sau đó (đăng ký lease vào _activeLeases) thì máy in
             // vẫn đang mang DEVMODE đã sửa cho MỌI app, và lease chưa nằm trong từ điển nên
             // RestoreActive(printerName) cũng không cứu được → tự hoàn lại ở đây, y hệt DevModeLease.Dispose
-            // (cùng 2 dòng, cố ý không tách hàm để lease giữ nguyên). Lỗi hoàn lại chỉ ghi log, không che lỗi gốc.
+            // (cùng logic, cố ý không tách hàm để lease giữ nguyên). Lỗi hoàn lại chỉ ghi log, không che lỗi gốc.
             if (wrote && snapshot is not null)
             {
                 try
                 {
-                    Marshal.Copy(snapshot, 0, devMode + DevModeWindowOffset, DevModeWindowLength);
-                    if (!SetPrinter(hPrinter, 2, buffer, 0))
+                    if (hadPerUserDevMode)
+                        Marshal.Copy(snapshot, 0, devMode + DevModeWindowOffset, DevModeWindowLength);
+                    else
+                        Marshal.WriteIntPtr(buffer, 0, IntPtr.Zero);   // xoá override per-user (xem DevModeLease.Dispose)
+                    if (!SetPrinter(hPrinter, DevModeLevel, buffer, 0))
                         DevModeLog($"restore devmode (apply failed): SetPrinter fail err={Marshal.GetLastWin32Error()}");
                 }
                 catch (Exception restoreEx)
@@ -479,9 +488,131 @@ public static class PrinterDialogs
         {
             if (!leaseGiven)
             {
-                if (buffer != IntPtr.Zero) LocalFree(buffer);
+                if (buffer != IntPtr.Zero) Marshal.FreeHGlobal(buffer);
                 ClosePrinter(hPrinter);
             }
+        }
+    }
+
+    /// <summary>Kích thước khối DEVMODE cần chép (dmSize + dmDriverExtra); 0 = header vô lý.
+    /// Một chỗ duy nhất quyết định "hợp lệ" để không bao giờ AllocHGlobal bằng số rác.</summary>
+    internal static int DevModePayloadSize(int dmSize, int dmDriverExtra)
+        => dmSize < MinDevModeSize || dmDriverExtra < 0 ? 0 : dmSize + dmDriverExtra;
+
+    /// <summary>Đọc DEVMODE HIỆN HÀNH: bản riêng của user (level 9) nếu có, không thì bản chung (level 2).
+    /// CHỈ ĐỌC — không SetPrinter. buffer trả về phải free bằng Marshal.FreeHGlobal (khi false thì đã free).
+    /// Đọc level 2 khi đã có override per-user là so hai kho khác nhau: app thật thấy bản level 9.
+    /// </summary>
+    private static bool TryReadCurrentDevMode(IntPtr hPrinter, string printerName,
+        out IntPtr buffer, out IntPtr devMode, out bool hadPerUserDevMode, out string? failReason)
+    {
+        buffer = IntPtr.Zero;
+        devMode = IntPtr.Zero;
+        hadPerUserDevMode = false;
+        failReason = null;
+
+        // Level 9: pDevMode@0 = DEVMODE riêng của user (NULL = user chưa có override).
+        // need9 > 0 với MỌI máy in (truy vấn kích thước luôn trả struct PRINTER_INFO_9), nên need9 KHÔNG
+        // cho biết có override hay không — chỉ lần đọc thật mới biết. Ba kết cục phải tách rõ:
+        //   đọc được + pDevMode != NULL → có override per-user;
+        //   đọc được + pDevMode = NULL → CHƯA có override, seed từ level 2;
+        //   đọc HỎNG → không được coi là "chưa có override": Dispose sẽ SetPrinter(9, NULL) (xoá override)
+        //   đúng cái mình vừa không đọc được → mất dữ liệu. Không khôi phục nổi trạng thái mình không
+        //   quan sát được → fail, để user tự xử lý.
+        GetPrinter(hPrinter, DevModeLevel, IntPtr.Zero, 0, out var need9);
+        if (need9 > 0)
+        {
+            var buf9 = Marshal.AllocHGlobal(need9);
+            try
+            {
+                if (!GetPrinter(hPrinter, DevModeLevel, buf9, need9, out _))
+                {
+                    failReason = $"Không đọc được cài đặt riêng của user cho máy in \"{printerName}\" (lỗi {Marshal.GetLastWin32Error()}) — không dám ghi vì không khôi phục lại được.";
+                    return false;
+                }
+
+                var dm9 = Marshal.ReadIntPtr(buf9, 0);
+                if (dm9 != IntPtr.Zero)
+                {
+                    buffer = buf9;
+                    devMode = dm9;
+                    hadPerUserDevMode = true;
+                    buf9 = IntPtr.Zero;   // trao quyền sở hữu buffer cho caller
+                    return true;
+                }
+            }
+            finally
+            {
+                if (buf9 != IntPtr.Zero) Marshal.FreeHGlobal(buf9);
+            }
+        }
+
+        // Đọc được và pDevMode = NULL → user CHƯA có override → seed từ cài đặt chung (level 2)
+        // (vài máy in trên máy này — OneNote, AnyDesk — trả NULL thật). pDevMode là field thứ 7.
+        GetPrinter(hPrinter, 2, IntPtr.Zero, 0, out var needed);
+        if (needed <= 0)
+        {
+            failReason = $"Không lấy được cài đặt của máy in \"{printerName}\".";
+            return false;
+        }
+
+        buffer = Marshal.AllocHGlobal(needed);
+        if (!GetPrinter(hPrinter, 2, buffer, needed, out _))
+        {
+            failReason = $"Không đọc được bảng cài đặt (DEVMODE) của \"{printerName}\".";
+            Marshal.FreeHGlobal(buffer);
+            buffer = IntPtr.Zero;
+            return false;
+        }
+
+        devMode = Marshal.ReadIntPtr(buffer, PDevModeFieldIndex * IntPtr.Size);
+        if (devMode == IntPtr.Zero)
+        {
+            failReason = $"Máy in \"{printerName}\" không trả về bảng cài đặt (DEVMODE).";
+            Marshal.FreeHGlobal(buffer);
+            buffer = IntPtr.Zero;
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>Dựng buffer PRINTER_INFO_9 đúng shape SetPrinter(9) cần: pDevMode@0 trỏ tới DEVMODE nằm
+    /// ngay sau con trỏ (offset IntPtr.Size), tổng = IntPtr.Size + dmSize + dmDriverExtra. Nguồn DEVMODE:
+    /// bản per-user nếu có, không thì seed từ cài đặt chung — một nguồn duy nhất (TryReadCurrentDevMode).
+    /// </summary>
+    private static bool TryBuildInfo9Buffer(IntPtr hPrinter, string printerName,
+        out IntPtr buffer, out IntPtr devMode, out bool hadPerUserDevMode, out string? failReason)
+    {
+        buffer = IntPtr.Zero;
+        devMode = IntPtr.Zero;
+
+        if (!TryReadCurrentDevMode(hPrinter, printerName, out var srcBuffer, out var src,
+                out hadPerUserDevMode, out failReason))
+            return false;
+
+        try
+        {
+            var dmSize = (int)Marshal.ReadInt16(src, DmSizeOffset);
+            var dmExtra = (int)Marshal.ReadInt16(src, DmDriverExtraOffset);
+            var payload = DevModePayloadSize(dmSize, dmExtra);
+            if (payload == 0)
+            {
+                failReason = $"Bảng cài đặt của \"{printerName}\" quá ngắn (không đủ ô cài đặt in).";
+                return false;
+            }
+
+            buffer = Marshal.AllocHGlobal(IntPtr.Size + payload);
+            Marshal.WriteIntPtr(buffer, 0, buffer + IntPtr.Size);
+            var bytes = new byte[payload];
+            Marshal.Copy(src, bytes, 0, payload);
+            Marshal.Copy(bytes, 0, buffer + IntPtr.Size, payload);
+            devMode = buffer + IntPtr.Size;
+            return true;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(srcBuffer);
         }
     }
 
@@ -505,22 +636,11 @@ public static class PrinterDialogs
         var buffer = IntPtr.Zero;
         try
         {
-            // Đo size trước (GetPrinter level 2 luôn trả false ở lần gọi rỗng — chỉ đọc cbNeeded).
-            GetPrinter(hPrinter, 2, IntPtr.Zero, 0, out var needed);
-            if (needed <= 0)
-                return FailPrinterDefaultsWin32($"Không lấy được cài đặt của máy in \"{printerName}\".",
+            // Đọc DEVMODE hiện hành — ưu tiên bản per-user (level 9) vì đó là bản app thật sự thấy;
+            // chỉ rơi về level 2 khi user chưa có override. Chỉ đọc: không SetPrinter, không lease.
+            if (!TryReadCurrentDevMode(hPrinter, printerName, out buffer, out var devMode, out _, out var readFail))
+                return FailPrinterDefaultsWin32(readFail ?? $"Không đọc được cài đặt của máy in \"{printerName}\".",
                     "Mở 'Printing Preferences' một lần hoặc cài lại driver máy in.");
-
-            buffer = Marshal.AllocHGlobal(needed);
-            if (!GetPrinter(hPrinter, 2, buffer, needed, out _))
-                return FailPrinterDefaultsWin32($"Không đọc được bảng cài đặt (DEVMODE) của \"{printerName}\".",
-                    "Mở 'Printing Preferences' một lần hoặc cài lại driver máy in.");
-
-            var devMode = Marshal.ReadIntPtr(buffer, PDevModeFieldIndex * IntPtr.Size);
-            if (devMode == IntPtr.Zero)
-                return FailPrinterDefaults($"Máy in \"{printerName}\" không trả về bảng cài đặt (DEVMODE).",
-                    "Mở 'Printing Preferences' để driver tạo cài đặt, rồi thử lại.");
-
             if (Marshal.ReadInt16(devMode, DmSizeOffset) < MinDevModeSize)
                 return FailPrinterDefaults($"Bảng cài đặt của \"{printerName}\" quá ngắn (không đủ ô cài đặt in).",
                     "Cập nhật driver máy in — bản cũ không hỗ trợ các cài đặt này.");
@@ -553,7 +673,7 @@ public static class PrinterDialogs
         }
         finally
         {
-            if (buffer != IntPtr.Zero) LocalFree(buffer);
+            if (buffer != IntPtr.Zero) Marshal.FreeHGlobal(buffer);
             ClosePrinter(hPrinter);
         }
     }
@@ -672,18 +792,14 @@ public static class PrinterDialogs
         });
 
     /// <summary>Đọc lại dmColor từ driver (buffer MỚI) — CHỈ để ghi log chẩn đoán, không phải cổng chặn.
-    /// null = không đọc được (buffer tạm luôn được free trước khi trả về).</summary>
-    private static short? ReadBackColor(IntPtr hPrinter)
+    /// Đọc CÙNG kho mà ta vừa ghi (level 9 trước, level 2 khi chưa có override) — so level 2 với level 9
+    /// là so hai kho khác nhau và luôn báo lệch. null = không đọc được (buffer tạm luôn được free).</summary>
+    private static short? ReadBackColor(IntPtr hPrinter, string printerName)
     {
-        GetPrinter(hPrinter, 2, IntPtr.Zero, 0, out var needed);
-        if (needed <= 0) return null;
-
-        var fresh = Marshal.AllocHGlobal(needed);
+        if (!TryReadCurrentDevMode(hPrinter, printerName, out var fresh, out var devMode, out _, out _))
+            return null;
         try
         {
-            if (!GetPrinter(hPrinter, 2, fresh, needed, out _)) return null;
-            var devMode = Marshal.ReadIntPtr(fresh, PDevModeFieldIndex * IntPtr.Size);
-            if (devMode == IntPtr.Zero) return null;
             if (Marshal.ReadInt16(devMode, DmSizeOffset) < MinDevModeSize) return null;
             return ReadColor(devMode);
         }
@@ -693,13 +809,33 @@ public static class PrinterDialogs
         }
     }
 
+    /// <summary>win32 → mã lỗi chuẩn. 5 (ACCESS_DENIED) và 1314 (PRIVILEGE_NOT_HELD) là lỗi QUYỀN của
+    /// user trên máy in (trước đây SetPrinter level 2 luôn trả 5 cho user thường) — tách khỏi lỗi spooler
+    /// chung để UI/AI gợi ý đúng hướng (quyền tài khoản), không phải "cài lại driver".</summary>
+    internal static string DevModeErrorCode(int win32) => win32 switch
+    {
+        5 => ErrorCodes.PrinterNoPermission,
+        1314 => ErrorCodes.PrinterNoPermission,
+        _ => ErrorCodes.SpoolerFailed,
+    };
+
     private static Result<DevModeLease?> FailDevModeWin32(string message, string hint)
-        => FailDevMode(message, hint, Marshal.GetLastWin32Error().ToString());
+    {
+        var win32 = Marshal.GetLastWin32Error();
+        if (DevModeErrorCode(win32) != ErrorCodes.SpoolerFailed)
+            return FailDevModeWithCode(ErrorCodes.PrinterNoPermission, message,
+                hint + " Kiểm tra thêm quyền tài khoản Windows trên máy in (Printing Preferences → Security).",
+                win32.ToString());
+        return FailDevMode(message, hint, win32.ToString());
+    }
 
     private static Result<DevModeLease?> FailDevMode(string message, string hint, string? detail = null)
+        => FailDevModeWithCode(ErrorCodes.SpoolerFailed, message, hint, detail);
+
+    private static Result<DevModeLease?> FailDevModeWithCode(string code, string message, string hint, string? detail)
         => Result<DevModeLease?>.Fail(new PrintError
         {
-            Code = ErrorCodes.SpoolerFailed,
+            Code = code,
             Category = PrintErrorCategory.Printer,
             Message = message,
             Hint = hint,

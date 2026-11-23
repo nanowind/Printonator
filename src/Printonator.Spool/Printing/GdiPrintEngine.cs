@@ -21,7 +21,14 @@ namespace Printonator.Spool.Printing;
 /// </summary>
 public sealed class GdiPrintEngine : IPrintEngine
 {
-    private static readonly string[] SupportedFormats = ["PDF"];
+    // Ảnh vào thẳng GDI: máy nào không có verb shell\printto cho .jpg (UserChoice = PhotoViewer, chỉ có
+    // "open") thì đường cũ render browser → shell printto ném "No application is associated" → job chết.
+    // GDI không cần handler nào — PrintDocument đi thẳng spooler.
+    // WEBP bị LOẠI: GDI+ (System.Drawing) không có codec WebP (đo 2026-11-23: `new Bitmap` ném
+    // ArgumentException). Để trong danh sách thì mọi file .webp mất một lượt decode hỏng rồi mới rớt
+    // browser — đi thẳng BrowserPrintEngine (Chrome/Edge giải mã được) là đúng đường.
+    private static readonly string[] SupportedFormats =
+        ["PDF", .. FileFormatRegistry.ImageFormats.Where(f => f != "WEBP")];
 
     /// <summary>Đổi ảnh sang XÁM ngay lúc VẼ (DrawImage + ImageAttributes) — không cấp bitmap mới
     /// mỗi trang (WindowsPdfRasterizer giữ tới PrintGuard.MaxPagesPerBatch ảnh trong RAM).
@@ -141,6 +148,12 @@ public sealed class GdiPrintEngine : IPrintEngine
             GdiLog($"GdiPrintEngine: máy ảo '{printer}' ({job.Format}) → browser render (xuất PDF cạnh file)");
             return await _browserInner.PrintAsync(job, ct);
         }
+
+        // Ảnh (trừ máy ảo ở trên): đọc thẳng file → MỘT trang GDI, KHÔNG qua shell printto.
+        // Không phụ thuộc app nào đăng ký verb printto cho .jpg/.png — đó là lỗi thật 2026-11-23
+        // (PhotoViewer chỉ có "open" → Process.Start(verb=printto) ném → SPOOLER_FAILED).
+        if (!job.Format.Equals("PDF", StringComparison.OrdinalIgnoreCase))
+            return await PrintSingleImageAsync(job, printer, ct);
 
         // Đếm số trang PDF TRƯỚC — ResolveSelectedPages cần PageCount để lọc range/parity đúng.
         // Dùng PdfPageCountReliableAsync: Windows.Data.Pdf đếm THIẾU trang với PDF linearized/tạo
@@ -759,11 +772,154 @@ public sealed class GdiPrintEngine : IPrintEngine
         return (kind, (int)Math.Round(pw * 100), (int)Math.Round(ph * 100));
     }
 
+    /// <summary>
+    /// In MỘT file ảnh qua GDI (không shell): ảnh là 1 trang nên page-range/parity/copies/N-up
+    /// được QUY VỀ "in 1 trang" hoặc báo lỗi RÕ — không im lặng in sai.
+    /// </summary>
+    private async Task<Result<bool>> PrintSingleImageAsync(PrintJob job, string printer, CancellationToken ct)
+    {
+        // Trước đây ảnh rớt xuống shell printto; giờ GDI nhận. Range/parity của preset cũ (đặt cho
+        // PDF nhiều trang) áp lên ảnh 1 trang: "2" hay "trang chẵn" không có gì để in → phải báo lỗi,
+        // KHÔNG in trang 1 trong im lặng (đúng hợp đồng ResolveSelectedPagesChecked).
+        job.PageCount = 1;
+        var sel = CdpPrintParams.ResolveSelectedPagesChecked(job);
+        if (!sel.IsSuccess)
+        {
+            GdiLog($"GdiPrintEngine: ảnh '{job.FileName}' range='{job.Config.PageRange}' parity={job.Config.Parity} → {sel.Error!.Code}");
+            return Result<bool>.Fail(sel.Error!);
+        }
+        if (sel.Value is null)
+        {
+            // Ảnh luôn 1 trang nên resolver chỉ trả Fail hoặc [1] — không có nhánh "in tất cả".
+            GdiLog($"GdiPrintEngine: ảnh '{job.FileName}' resolver trả null (bất thường) → coi như 1 trang");
+        }
+
+        var imgPage = LoadImagePage(job, out var imgErr);
+        if (imgPage is null)
+        {
+            // GDI+ không có codec cho một số định dạng (WEBP) — KHÔNG chặn: rớt về browser
+            // (Chrome/Edge giải mã được). Chặn ở đây = format trước đây in được nay hỏng.
+            GdiLog($"GdiPrintEngine: không giải mã được ảnh '{job.FileName}' ({imgErr}) → rớt browser render");
+            var fallback = await _browserInner.PrintAsync(job, ct);
+            GdiLog($"GdiPrintEngine: browserInner trả {fallback.IsSuccess} code={fallback.Error?.Code}");
+            return fallback;
+        }
+
+        // N-up áp cho ảnh 1 trang = ảnh co vào 1 ô của lưới, còn lại trắng — vô nghĩa và lệch preview
+        // (preview khai PagesPerSheetHonoured=false cho ảnh). In đúng 1 tờ đầy đủ.
+        var nUpBackup = job.Config.PagesPerSheet;
+        job.Config.PagesPerSheet = 1;
+        try
+        {
+            // Ảnh NGANG (chụp máy ảnh/điện thoại) trên tờ dọc: auto-rotate của đường PDF xoay 90° —
+            // đúng cho trang tài liệu nằm ngang, SAI cho ảnh (người xem phải nghiêng đầu).
+            // Đánh dấu trang là "dọc" để auto-rotate không chạy; GDI vẫn vẽ nguyên bitmap ĐỘ PHÂN GIẢI GỐC,
+            // thu vừa khổ + canh giữa (nhánh fit ở PrintImagesToPrinter). KHÔNG rasterize lại (padding
+            // ảnh sẽ hạ độ phân giải: canvas bị transpose → rộng = chiều cao ảnh).
+            if (job.Config.Orientation != PrintOrientation.Landscape && imgPage.WidthDip > imgPage.HeightDip)
+                imgPage = imgPage with { WidthDip = imgPage.HeightDip, HeightDip = imgPage.WidthDip };
+            GdiLog($"GdiPrintEngine: ảnh '{job.FileName}' → GDI trực tiếp ({imgPage.WidthDip:0}x{imgPage.HeightDip:0} px) '{printer}'");
+
+            var printTask = Task.Run(() => PrintImagesToPrinter(job, printer, [imgPage], ct), ct);
+            Result<bool> r;
+            try
+            {
+                r = await printTask.WaitAsync(TimeSpan.FromSeconds(GdiPrintTimeoutSeconds), ct);
+            }
+            catch (TimeoutException)
+            {
+                GdiLog($"GdiPrintEngine: IN ẢNH QUÁ LÂU '{job.FileName}' → '{printer}' (>{GdiPrintTimeoutSeconds}s) → EngineTimeout");
+                return Result<bool>.Fail(new PrintError
+                {
+                    Code = ErrorCodes.EngineTimeout,
+                    Category = PrintErrorCategory.System,
+                    Message = $"In ảnh {job.FileName} tới \"{printer}\" quá lâu ({GdiPrintTimeoutSeconds}s) — đã hủy.",
+                    Hint = "Kiểm tra hàng đợi máy in trước — nếu job đã in rồi thì đừng in lại; còn treo/kẹt giấy thì xử lý rồi in lại.",
+                });
+            }
+
+            if (!r.IsSuccess)
+                GdiLog($"GdiPrintEngine: IN ẢNH LỖI '{job.FileName}' → '{printer}': code={r.Error!.Code} msg='{r.Error.Message}'");
+            return r;
+        }
+        finally
+        {
+            job.Config.PagesPerSheet = nUpBackup;
+        }
+    }
+
     /// <summary>PNG bytes → Bitmap (dispose sau khi vẽ). null nếu ảnh hỏng.</summary>
     private static Bitmap? LoadImage(byte[] png)
     {
         try { using var ms = new MemoryStream(png); return new Bitmap(ms); }
         catch { return null; }
+    }
+
+    /// <summary>File ảnh → một trang GDI (giữ nguyên bytes, <see cref="LoadImage"/> giải mã lúc vẽ).
+    /// WidthDip/HeightDip chỉ dùng để phát hiện trang NGANG (tỷ lệ pixel == tỷ lệ dip) nên dùng
+    /// thẳng kích thước pixel; DPI thật của ảnh không đổi cách vẽ (ảnh luôn được fit vào vùng in).
+    /// Không đọc lại kích thước bằng cách decode bitmap (đường vẽ decode rồi) — đọc header: PNG 24 byte,
+    /// còn lại để GDI+ probe. Decode hai lần tốn gấp đôi thời gian trên ảnh lớn.
+    /// ponytail: TIFF nhiều khung chỉ in khung đầu — nâng cấp khi có user in TIFF nhiều trang.</summary>
+    private static RenderedPdfPage? LoadImagePage(PrintJob job, out string? error)
+    {
+        error = null;
+        try
+        {
+            var bytes = File.ReadAllBytes(job.FilePath);
+            if (!TryReadImageSize(bytes, out var w, out var h))
+            {
+                // Định dạng không đọc được từ header → decode một lần để lấy kích thước; CHỈ ảnh lạ
+                // mới chịu chi phí này, và thất bại ở đây = không in được ảnh (rớt browser).
+                using var bmp = LoadImage(bytes);
+                if (bmp is null)
+                {
+                    error = "Không giải mã được ảnh.";
+                    return null;
+                }
+                w = bmp.Width;
+                h = bmp.Height;
+            }
+            return new RenderedPdfPage(bytes, w, h);
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return null;
+        }
+    }
+
+    /// <summary>Đọc kích thước ảnh từ header (không decode pixel): PNG + JPEG đủ cho 99% ảnh in.
+    /// Định dạng khác → false (caller tự decode). Chỉ cần TỶ LỆ ngang/dọc đúng nên không đọc DPI.</summary>
+    internal static bool TryReadImageSize(byte[] b, out int w, out int h)
+    {
+        w = h = 0;
+        if (b.Length > 24
+            && b[0] == 0x89 && b[1] == 0x50 && b[2] == 0x4E && b[3] == 0x47)   // PNG: IHDR ngay sau sig
+        {
+            w = (b[16] << 24) | (b[17] << 16) | (b[18] << 8) | b[19];
+            h = (b[20] << 24) | (b[21] << 16) | (b[22] << 8) | b[23];
+            return w > 0 && h > 0;
+        }
+        if (b.Length > 4 && b[0] == 0xFF && b[1] == 0xD8)   // JPEG: quét marker tới SOFn
+        {
+            var i = 2;
+            while (i + 9 < b.Length)
+            {
+                if (b[i] != 0xFF) { i++; continue; }
+                var marker = b[i + 1];
+                if (marker is 0xC0 or 0xC1 or 0xC2 or 0xC3 or 0xC5 or 0xC6 or 0xC7
+                    or 0xC9 or 0xCA or 0xCB or 0xCD or 0xCE or 0xCF)
+                {
+                    h = (b[i + 5] << 8) | b[i + 6];
+                    w = (b[i + 7] << 8) | b[i + 8];
+                    return w > 0 && h > 0;
+                }
+                if (marker is 0xD8 or 0xD9 or 0x01 || (marker >= 0xD0 && marker <= 0xD7)) { i += 2; continue; }
+                i += 2 + ((b[i + 2] << 8) | b[i + 3]);   // bỏ qua segment
+            }
+        }
+        return false;
     }
 
     /// <summary>PNG → PNG XÁM (dùng cùng ma trận với đường in GDI — <see cref="CreateGrayscaleAttributes"/>).
