@@ -113,6 +113,7 @@ public partial class MainWindow : Window
         _orchestrator.ToastRequested += ShowToast;
         _orchestrator.BannerRequested += ShowBanner;
         _orchestrator.FooterUpdated += () => { UpdateFooter(); SyncCoverState(); };
+        _orchestrator.PreparingChanged += OnPreparingChanged;
         _orchestrator.RefreshRequested += () => JobList.Items.Refresh();
         // Nguồn thêm/xóa job duy nhất là _queue.Jobs (AddFiles, CtxRemove, watcher, popup "In xong") —
         // bám CollectionChanged để cờ bìa + dòng bìa luôn khớp số file, khỏi sót đường nào.
@@ -1320,6 +1321,19 @@ public partial class MainWindow : Window
     private void StartPrintBatch(List<PrintJob> ready, string action)
     {
         _orchestrator.StartPrintBatch(ready, action);
+    }
+
+    /// <summary>Đang chuẩn bị lô (gộp file / đếm trang / dựng bìa) — khoá nút in + báo ngay để user
+    /// không bấm lại (bấm lặp = in trùng tờ bìa).</summary>
+    private void OnPreparingChanged()
+    {
+        var busy = _orchestrator.IsPreparing;
+        PrintMainBtn.IsEnabled = !busy;
+        // Toast CHỈ khi đang chuẩn bị VÀ không có hộp thoại nào sắp hiện: hộp xác nhận in lại /
+        // xác nhận lô lớn sẽ che toast, toast hết hạn sau 4s trong lúc user đang trả lời modal →
+        // báo "đang chuẩn bị" trong khi thật ra đang chờ bấm. Nút khoá + footer đã đủ tín hiệu.
+        if (busy && !_orchestrator.WillPromptBeforePrint(_orchestrator.PreparingJobs)) ShowToast(L10n.S(Keys.Toast.Preparing));
+        UpdateFooter();
     }
 
     /// <summary>Ép máy in đang chọn lên job — máy in thanh công cụ luôn thắng máy cũ đã ghi trong config.</summary>

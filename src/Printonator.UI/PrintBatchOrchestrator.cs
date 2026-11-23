@@ -42,6 +42,17 @@ public sealed class PrintBatchOrchestrator
     /// <summary>Tên lô in do user đặt trên dòng bìa (MainWindow set). Rỗng → engine tự fallback tên thư mục/ngày giờ.</summary>
     public string? BatchName { get; set; }
 
+    /// <summary>Đang pre-flight (gộp file / đếm trang / dựng + in bìa). Bấm In lặp trong lúc này = in trùng tờ bìa.</summary>
+    public bool IsPreparing => _preparing;
+
+    /// <summary>Fire khi IsPreparing đổi — MainWindow khoá nút in + báo toast.</summary>
+    public event Action? PreparingChanged;
+
+    /// <summary>Job mà handler <see cref="PreparingChanged"/> dùng để biết có modal nào sắp chặn không.</summary>
+    public IReadOnlyList<PrintJob> PreparingJobs { get; private set; } = Array.Empty<PrintJob>();
+
+    private bool _preparing;
+
     public PrintBatchOrchestrator(PrintQueue queue, Dispatcher dispatcher,
         Func<PrinterInfo?> selectedPrinterGetter, Window owner)
     {
@@ -86,6 +97,39 @@ public sealed class PrintBatchOrchestrator
     /// In batch — xác nhận in lại, pre-flight, rồi chạy StartPrintBatch.
     /// </summary>
     public async Task PrintJobsAsync(List<PrintJob> jobs, string action)
+    {
+        // Đang chuẩn bị (merge/probe/bìa) — bấm lặp không được chạy lại (sẽ in trùng tờ bìa).
+        // Cờ chỉ giữ trong PRE-FLIGHT: vào tới StartPrintBatch là nhả, vì lô đã do queue bảo vệ
+        // và nút in phải chuyển thành nút Tạm dừng ngay khi in bắt đầu.
+        if (_preparing) return;
+        try
+        {
+            // Trong try: handler ném ở lần invoke ĐẦU cũng không được kẹt _preparing=true
+            // (kẹt = mọi lần bấm Print All sau đó bị chặn tới khi khởi động lại app).
+            _preparing = true;
+            PreparingJobs = jobs;
+            PreparingChanged?.Invoke();
+            await PrintJobsCoreAsync(jobs, action);
+        }
+        finally
+        {
+            _preparing = false;
+            PreparingJobs = Array.Empty<PrintJob>();
+            PreparingChanged?.Invoke();
+        }
+    }
+
+    /// <summary>Lệnh in này có hiện hộp thoại chặn user TRƯỚC khi in không (xác nhận in lại file đã
+    /// in, hoặc xác nhận lô &gt;100 tờ). UI dùng để KHÔNG báo "đang chuẩn bị" khi thật ra đang chờ bấm —
+    /// toast sẽ bị modal che và hết hạn trong lúc user trả lời.</summary>
+    public bool WillPromptBeforePrint(IEnumerable<PrintJob> jobs)
+    {
+        var ready = jobs.Where(j => j.State is JobState.Queued or JobState.Done or JobState.Error or JobState.Cancelled).ToList();
+        if (ready.Any(j => j.State == JobState.Done)) return true;
+        return PrintConfirmWindow.EstimateSheets(ready) > 100;
+    }
+
+    private async Task PrintJobsCoreAsync(List<PrintJob> jobs, string action)
     {
         var ready = jobs.Where(j => j.State is JobState.Queued or JobState.Done or JobState.Error or JobState.Cancelled).ToList();
         if (ready.Count == 0) { BannerRequested?.Invoke(ErrorCodes.NoFilesSelected, L10n.S(Keys.Banner.NoFilesSelected), ""); return; }
@@ -186,7 +230,9 @@ public sealed class PrintBatchOrchestrator
                 // Mọi format đều ? khi bìa dựng TRƯỚC khi in (PageCount điền trong lúc in) → probe hết ở đây.
                 // PDF: nhanh (không mở app). Ảnh: 1. Office: 1 session/nhóm (~4s lần đầu Excel). TXT: giữ ? (không ước lượng bừa).
                 // Không bao giờ ném — probe lỗi → bìa ghi ? cho file đó.
-                try { await PageCountProber.ProbeAsync(ready, CancellationToken.None); }
+                // Chạy trên thread pool: lô toàn Office thì ProbeAsync chưa await gì trước khi vào COM
+                // → gọi thẳng sẽ đứng UI thread tới ~15s.
+                try { await Task.Run(() => PageCountProber.ProbeAsync(ready, CancellationToken.None)); }
                 catch { /* PageCount giữ 0 → bìa ghi "?" */ }
 
                 var html = CoverPageRenderer.BuildHtml(

@@ -530,6 +530,7 @@ public static class Keys
         public const string FilesAddedFromFolder = "Toast.FilesAddedFromFolder";
         public const string NoDuplicates = "Toast.NoDuplicates";
         public const string Paused = "Toast.Paused";
+        public const string Preparing = "Toast.Preparing";
         public const string Resumed = "Toast.Resumed";
         public const string SkipSummarySome = "Toast.SkipSummarySome";
         public const string SkippedFormat = "Toast.SkippedFormat";
